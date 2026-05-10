@@ -1,0 +1,143 @@
+# 内容：AI 平台-国外
+payload:
+  - DOMAIN-SUFFIX,nightyu.com,DIRECT
+  # --- OpenAI & ChatGPT ---
+  - DOMAIN,chat.openai.com
+  - DOMAIN,api.openai.com
+  - DOMAIN-SUFFIX,chatgpt.com
+  - DOMAIN-SUFFIX,openai.com
+  - DOMAIN-SUFFIX,oaistatic.com
+  - DOMAIN-SUFFIX,oaiusercontent.com
+  - DOMAIN-SUFFIX,auth0.com
+  - DOMAIN-SUFFIX,challenges.cloudflare.com
+  - DOMAIN-SUFFIX,client-api.arkoselabs.com
+  - DOMAIN-SUFFIX,events.statsigapi.net
+  - DOMAIN-SUFFIX,featuregates.org
+  - DOMAIN-SUFFIX,openaiapi-site.azureedge.net
+  - DOMAIN-SUFFIX,intercom.io
+  - DOMAIN-SUFFIX,intercomcdn.com
+  - DOMAIN-SUFFIX,stripe.com
+  - DOMAIN-SUFFIX,sora.com
+  - DOMAIN-SUFFIX,sentry.io
+  - DOMAIN-KEYWORD,openai
+
+  # --- Anthropic & Claude ---
+  - DOMAIN,claude.ai
+  - DOMAIN-SUFFIX,claude.ai
+  - DOMAIN-SUFFIX,claude.com
+  - DOMAIN-SUFFIX,clau.de
+  - DOMAIN-SUFFIX,anthropic.com
+  - DOMAIN-SUFFIX,claudemcpclient.com
+  - DOMAIN-SUFFIX,claudeusercontent.com
+  - DOMAIN-KEYWORD,anthropic
+  - DOMAIN-KEYWORD,claude
+
+  # --- Google (Gemini / AI Studio) ---
+  - DOMAIN,aistudio.google.com
+  - DOMAIN,gemini.google.com
+  - DOMAIN,bard.google.com
+  - DOMAIN,makersuite.google.com
+  - DOMAIN-SUFFIX,googleapis.com
+  - DOMAIN-SUFFIX,googleapis.cn
+  - DOMAIN-SUFFIX,gstatic.com
+  - DOMAIN-REGEX,google.*
+  - DOMAIN-KEYWORD,google
+
+  # --- xAI & Grok ---
+  - DOMAIN-SUFFIX,grok.com
+  - DOMAIN-SUFFIX,x.com
+  - DOMAIN-SUFFIX,x.ai
+
+  # --- Cursor ---
+  - DOMAIN,cursor.com
+  - DOMAIN,api.cursor.com
+  - DOMAIN,repo49.cursor.com
+  - DOMAIN-SUFFIX,cursor.com
+  - DOMAIN-SUFFIX,cursor.sh
+  - DOMAIN-SUFFIX,cursorapi.com
+  - DOMAIN-REGEX,cursor.*
+  - DOMAIN-KEYWORD,cursor
+
+  # --- Augment Code ---
+  - DOMAIN-SUFFIX,augmentcode.com
+  - DOMAIN-REGEX,augmentcode.*
+  - DOMAIN-KEYWORD,augmentcode
+
+  # --- Microsoft & Copilot ---
+  - DOMAIN,copilot.microsoft.com
+  - DOMAIN,sydney.bing.com
+  - DOMAIN-SUFFIX,bing.com
+  - DOMAIN-SUFFIX,microsofttranslator.com
+  - DOMAIN-SUFFIX,edge.microsoft.com
+  - DOMAIN-KEYWORD,cognitive.microsofttranslator
+
+  # --- Apple Intelligence ---
+  - DOMAIN,apple-relay.apple.com
+  - DOMAIN,apple-relay.cloudflare.com
+  - DOMAIN,guzzoni.apple.com
+  - DOMAIN,gspe1-ssl.ls.apple.com
+  - DOMAIN-SUFFIX,apple-dns.net
+  - DOMAIN-SUFFIX,apple-relay.apple.com
+  - DOMAIN-SUFFIX,apple-relay.cloudflare.com
+  - DOMAIN-SUFFIX,apple-relay.fastly-edge.com
+  - DOMAIN-SUFFIX,apps.mzstatic.com
+  - DOMAIN-SUFFIX,cp4.cloudflare.com
+  - DOMAIN-SUFFIX,gateway.icloud.com
+  - DOMAIN-SUFFIX,smoot.apple.com
+  - DOMAIN-KEYWORD,apple-relay
+
+  # --- Midjourney & AI 绘图 ---
+  - DOMAIN,www.midjourney.com
+  - DOMAIN,cdn.midjourney.com
+  - DOMAIN-SUFFIX,midjourney.com
+  - DOMAIN-SUFFIX,mj-gallery.com
+  - DOMAIN-SUFFIX,discord.com
+  - DOMAIN-SUFFIX,discord.gg
+  - DOMAIN-SUFFIX,discordapp.com
+  - DOMAIN-SUFFIX,discordapp.net
+  - DOMAIN-REGEX,midjourney.*
+  - DOMAIN-KEYWORD,midjourney
+
+  # --- 其他主流 AI & 辅助服务 ---
+  - DOMAIN,www.perplexity.ai
+  - DOMAIN-SUFFIX,perplexity.ai
+  - DOMAIN-SUFFIX,genspark.ai
+  - DOMAIN-SUFFIX,meta.ai
+  - DOMAIN-SUFFIX,metademolab.com
+  - DOMAIN-SUFFIX,poe.com
+  - DOMAIN-SUFFIX,groq.com
+  - DOMAIN-SUFFIX,mistral.ai
+  - DOMAIN-SUFFIX,arena.ai
+  - DOMAIN-SUFFIX,lmarena.ai
+  - DOMAIN-SUFFIX,nof1.ai
+  - DOMAIN-SUFFIX,lovable.dev
+  - DOMAIN-SUFFIX,deepwiki.com
+  - DOMAIN-SUFFIX,linux.do
+  - DOMAIN-SUFFIX,daiju.live
+  - DOMAIN-SUFFIX,figma.com
+  - DOMAIN-SUFFIX,framelink.ai
+  - DOMAIN-SUFFIX,opencode.ai
+  - DOMAIN-SUFFIX,difyai.com
+  - DOMAIN-SUFFIX,modelcontextprotocol.io
+  - DOMAIN-SUFFIX,immersivetranslate.com
+  - DOMAIN-SUFFIX,identrust.com
+  - DOMAIN-SUFFIX,signalr.net
+  - DOMAIN-SUFFIX,you.com
+
+  # --- 社区与小众协议 (Gemini/Gopher Space) ---
+  - DOMAIN-SUFFIX,circumlunar.space
+  - DOMAIN-SUFFIX,vulpes.one
+  - DOMAIN-SUFFIX,mozz.us
+  - DOMAIN-SUFFIX,conman.org
+  - DOMAIN-SUFFIX,bortzmeyer.org
+  - DOMAIN-KEYWORD,ping0
+
+  # ---- add... ----
+  - DOMAIN-SUFFIX,grazie.ai
+  - DOMAIN-SUFFIX,grazie.aws.intellij.net
+  - DOMAIN-SUFFIX,mcp.so
+  - DOMAIN-SUFFIX,neuroapi.host
+  - DOMAIN-SUFFIX,openai.azure.com
+  - DOMAIN-KEYWORD,cohere
+  - DOMAIN-KEYWORD,coze
+  - DOMAIN-KEYWORD,groq

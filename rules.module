@@ -1,0 +1,139 @@
+#!url=https://gitee.com/uxiew/share/raw/main/rules.module
+#!name=！个人自定义规则
+#!desc=解决未被添加到配置文件，和模块中的一些网址。
+
+# sr: 2025-3-26 23:35:19
+[General]
+# 默认关闭 ipv6 支持，如果需要请手动开启
+ipv6 = false
+bypass-system = true
+skip-proxy = 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, localhost, *.local, e.crashlytics.com, captive.apple.com
+
+[Rule]
+
+### ——————— 直连——————
+
+DOMAIN-SUFFIX, topthink.com, DIRECT
+
+DOMAIN-SUFFIX, zhihu.com, DIRECT
+
+DOMAIN-SUFFIX, aliyun.com, DIRECT
+
+DOMAIN-SUFFIX, gitee.com, DIRECT
+
+#DOMAIN-SUFFIX, npmjs.com, DIRECT
+
+DOMAIN-SUFFIX, bilibili.com, DIRECT
+
+#DOMAIN-SUFFIX, byted.org, DIRECT
+
+DOMAIN-SUFFIX, lanzou*.com, DIRECT
+
+###	————---—代理 —————
+
+# DOMAIN-SUFFIX, 103.101.205.226, PROXY
+
+# DOMAIN-SUFFIX, cloudinary.com, PROXY
+
+DOMAIN-SUFFIX, linux.do, PROXY
+
+DOMAIN-SUFFIX, discord.com, PROXY
+
+DOMAIN-SUFFIX, ahhhhfs.com, PROXY
+
+DOMAIN-SUFFIX, rsbuild.dev, PROXY
+
+DOMAIN-SUFFIX, webdevmastery.com, PROXY
+
+DOMAIN-SUFFIX, googleadservices.com, PROXY
+
+DOMAIN-SUFFIX, googleapis.com, PROXY
+
+DOMAIN-SUFFIX, tiktok.com, PROXY
+
+DOMAIN-SUFFIX, static.frontendmasters.com, PROXY
+
+### ------ download --------
+
+DOMAIN-SUFFIX, trbt.cc, PROXY
+
+DOMAIN-SUFFIX, coderprog.com, PROXY
+
+DOMAIN-SUFFIX, downloadlynet.ir, DIRECT
+
+DOMAIN-SUFFIX, downloadly.ir, PROXY
+
+DOMAIN-SUFFIX, tbit.to, PROXY
+
+DOMAIN-SUFFIX, naixi.net, PROXY
+
+### ——————— AI ———----——
+
+DOMAIN-SUFFIX, trae.ai, PROXY
+
+DOMAIN-SUFFIX, x.ai, PROXY
+
+DOMAIN-SUFFIX, phind.com, PROXY
+
+DOMAIN-SUFFIX, sourcegraph.com, PROXY
+
+DOMAIN-SUFFIX, chatgpt.com, PROXY
+
+DOMAIN-SUFFIX, openai.com, PROXY
+
+### ——-----—— 开发 ——----—
+
+DOMAIN-SUFFIX, docs.rs, PROXY
+
+# DOMAIN-SUFFIX, crates.io, PROXY
+
+DOMAIN-SUFFIX, dev.to, PROXY
+
+DOMAIN-SUFFIX, pub.dev, PROXY
+
+DOMAIN-SUFFIX, flutter.dev, PROXY
+
+DOMAIN-SUFFIX, jquery.com, PROXY
+
+DOMAIN-SUFFIX, visactor.io, PROXY
+
+DOMAIN-SUFFIX, jsdelivr.net, PROXY
+
+DOMAIN-SUFFIX, npmjs.org, PROXY
+
+DOMAIN-SUFFIX, codesandbox.io, PROXY
+
+DOMAIN-SUFFIX, pornhub.com, PROXY
+
+DOMAIN-SUFFIX, phncdn.com, PROXY
+
+DOMAIN-SUFFIX, easywithai.com, PROXY
+
+DOMAIN-SUFFIX, ciciai.com, PROXY
+
+DOMAIN-SUFFIX, chitchop.com, PROXY
+
+DOMAIN-SUFFIX, coze.com, PROXY
+
+DOMAIN-SUFFIX, trbbt.net, PROXY
+
+DOMAIN-SUFFIX, libhunt.com, PROXY
+
+DOMAIN-SUFFIX, pepsicola.cc, PROXY
+
+DOMAIN-SUFFIX, github.dev, PROXY
+
+DOMAIN-SUFFIX, vrporn.com, PROXY
+
+DOMAIN-SUFFIX, akamai-content-network.com, PROXY
+
+
+DOMAIN-SUFFIX, unsplash.com, PROXY
+
+DOMAIN-SUFFIX, itpanda.net, PROXY
+
+DOMAIN-SUFFIX, getmerlin.in, PROXY
+
+DOMAIN-SUFFIX, send.cm, PROXY
+
+DOMAIN-SUFFIX, youglish.com, PROXY
