@@ -65,52 +65,55 @@ const directSSHIPs = [
 ];
 
 // ===========自动识别并分配 策略组=========
+const or = (words) => `^(?=.*(${words})).*$`;
+const nor = (words) => `^(?!.*(${words})).*$`;
+
 const smartGroups = {
   延迟选优: {
     type: 'url-test',
     tolerance: 50,
-    filter: '^(?!.*(套餐|剩余|到期|流量|官网)).*$',
+    filter: nor('套餐|剩余|到期|流量|官网'),
     icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/speed.svg',
   },
   台湾: {
-    filter: '(?!)台|TW|Tai|🇹🇼',
+    filter: or('台|TW|Tai|🇹🇼'),
     icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/cn.svg',
   },
   韩国: {
-    filter: '(?!)韩|韓|KR|首|爾|春川|🇰🇷|Korea',
+    filter: or('韩|韓|KR|首|爾|春川|🇰🇷|Korea'),
     icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/kr.svg',
   },
   香港: {
-    filter: '(?!)港|HK|Hong|🇭🇰',
+    filter: '^(?=.*(港|HK|Hong|🇭🇰)).*$',
     icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/hk.svg',
   },
   日本: {
-    filter: '(?!)JP|日|東|东|大阪|埼玉|🇯🇵|Japan',
+    filter: or('JP|日|東|东|大阪|埼玉|🇯🇵|Japan'),
     // icon: "https://testingcf.jsdelivr.net/gh/Orz-3/mini@master/Color/JP.png",
     icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/jp.svg',
   },
   新加坡: {
-    filter: '(?!)新加坡|SG|坡|狮城|🇸🇬|Singapore',
+    filter: or('新加坡|SG|坡|狮城|🇸🇬|Singapore'),
     icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/jp.svg',
   },
   美国: {
     type: 'url-test',
     tolerance: 100,
-    filter: '(?i)US|美|🇺🇸|States|American|洛杉',
+    filter: or('US|美|🇺🇸|States|American|洛杉'),
     'exclude-filter': '(?i)日|俄|韩',
     icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/us.svg',
   },
   英国: {
-    filter: '(?i)EG|英|🇬🇧|Kingdom|British',
+    filter: or('EG|英|🇬🇧|Kingdom|British|England'),
     type: 'url-test',
     icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/us.svg',
   },
   德国: {
-    filter: '(?!)柏|德|🇩🇪',
+    filter: or('柏|德|🇩🇪'),
     icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/jp.svg',
   },
   欧盟: {
-    filter: '(?!)时|🇧🇪|丹|🇩🇰|法|🇫🇷|德|🇩🇪|希|爱|意|卢森|荷|葡|牙|英|奥|芬|瑞|',
+    filter: or('时|🇧🇪|丹|🇩🇰|法|🇫🇷|德|🇩🇪|希|爱|意|卢森|荷|葡|牙|英|奥|芬|瑞'),
     icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/eu.svg',
   },
   // ---------------
