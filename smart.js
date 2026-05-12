@@ -42,7 +42,7 @@ const directKeywords = [
     'jd.com',
     'cn', // 所有 .cn 结尾的域名
     'microsoft.com', // 微软服务直连通常更稳
-    'apple.com', // 苹果服务
+    'apple.com.cn', // 苹果服务
   ];
 
 // 拦截关键词
@@ -65,85 +65,94 @@ const directSSHIPs = [
 ];
 
 // ===========自动识别并分配 策略组=========
-const or = (words) => `^(?=.*(${words})).*$`;
-const nor = (words) => `^(?!.*(${words})).*$`;
+// ===========自动识别并分配 策略组=========
+// ⚠️ 修复：移除了不兼容 Go 正则引擎的 or() 和 nor() 预查函数
 
 const smartGroups = {
-  延迟选优: {
-    type: 'url-test',
+  SPEED: {
     tolerance: 50,
-    filter: nor('套餐|剩余|到期|流量|官网'),
+    type: 'url-test',
+    filter: '.*', // 匹配所有节点
+    'exclude-filter': '套餐|剩余|到期|流量|官网', // 使用原生的排除字段
     icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/speed.svg',
   },
-  台湾: {
-    filter: or('台|TW|Tai|🇹🇼'),
-    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/cn.svg',
+  TW: {
+    filter: '台|TW|Tai|🇹🇼',
+    icon: '${CDN_BASE}/uxiew/easy_proxy_rules@main/assets/cn.svg',
   },
-  韩国: {
-    filter: or('韩|韓|KR|首|爾|春川|🇰🇷|Korea'),
-    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/kr.svg',
-  },
-  香港: {
-    filter: '^(?=.*(港|HK|Hong|🇭🇰)).*$',
+  HK: {
+    filter: '港|HK|Hong|🇭🇰',
     icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/hk.svg',
   },
-  日本: {
-    filter: or('JP|日|東|东|大阪|埼玉|🇯🇵|Japan'),
-    // icon: "https://testingcf.jsdelivr.net/gh/Orz-3/mini@master/Color/JP.png",
+  JP: {
+    filter: 'JP|日|東|东|大阪|埼玉|🇯🇵|Japan',
     icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/jp.svg',
   },
-  新加坡: {
-    filter: or('新加坡|SG|坡|狮城|🇸🇬|Singapore'),
-    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/jp.svg',
+  KR: {
+    filter: '韩|韓|首|爾|春川|🇰🇷|KR|Korea',
+    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/kr.svg',
   },
-  美国: {
+  SG: {
+    filter: '新加坡|SG|坡|狮城|🇸🇬|Singapore',
+    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/sg.svg',
+  },
+  US: {
     type: 'url-test',
     tolerance: 100,
-    filter: or('US|美|🇺🇸|States|American|洛杉'),
-    'exclude-filter': '(?i)日|俄|韩',
+    filter: 'US|美|🇺🇸|States|American|洛杉',
+    'exclude-filter': '日|俄|韩', // 直接写字符串即可
     icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/us.svg',
   },
-  英国: {
-    filter: or('EG|英|🇬🇧|Kingdom|British|England'),
+  UK: {
+    filter: 'UK|英|🇬🇧|Kingdom|Britain|British|England',
     type: 'url-test',
-    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/us.svg',
+    icon: '${CDN_BASE}/uxiew/easy_proxy_rules@main/assets/uk.svg',
   },
-  德国: {
-    filter: or('柏|德|🇩🇪'),
-    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/jp.svg',
+  DE: {
+    filter: '柏|德|🇩🇪|Germany',
+    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/de.svg',
   },
-  欧盟: {
-    filter: or('时|🇧🇪|丹|🇩🇰|法|🇫🇷|德|🇩🇪|希|爱|意|卢森|荷|葡|牙|英|奥|芬|瑞'),
+  EU: {
+    filter: '时|🇧🇪|丹|🇩🇰|法|🇫🇷|德|🇩🇪|希|爱|意|卢森|荷|葡|牙|英|奥|芬|瑞',
     icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/eu.svg',
   },
-  // ---------------
-  节点选择: {
-    proxies: ['美国', '延迟选优', 'DIRECT'],
+  // --------------- 以下为静态代理组 ---------------
+  AUTO: {
+    proxies: ['US', 'JP', 'HK', 'SPEED', 'DIRECT'],
+    // 根据 interval: 300（每 5 分钟），拿测试网址（代码里写的是 Apple 的测试页）去挨个测试组里的节点。
+    // 在浏览器输入网址时，Clash 会自动选择当前测速结果最快、且能连通的节点。
+    interval: 300, // 每 5 分钟
+    type: 'url-test',
     icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/adjust.svg',
   },
   AI: {
-    proxies: ['新加坡', '日本', '美国', '德国', '韩国'],
-    interval: 300, // 专用组保留 5分钟测速，保持敏感度
-    icon: 'https://github.com/DustinWin/ruleset_geodata/releases/download/icons/ai.png',
+    // 关键修改：将类型改为 fallback
+    type: 'fallback',
+    // 顺序很重要：流量会从左往右按顺序探测，第一个（新加坡）不通才跳下一个
+    proxies: ['SG', 'JP', 'US', 'DE', 'KR'],
+    // 建议缩短 interval，比如 200 秒探测一次，确保切换及时
+    interval: 200,
+    tolerance: 50, // 对于 fallback，这个值代表判定失败的容差
+    icon: 'https://testingcf.jsdelivr.net/gh/Orz-3/mini@master/Color/Pornhub.png',
   },
   NSFW: {
-    proxies: ['日本', '香港', '韩国'],
+    proxies: ['JP', 'HK', 'KR'],
     icon: 'https://github.com/DustinWin/ruleset_geodata/releases/download/icons/ai.png',
   },
-  全局直连: {
-    proxies: ['DIRECT', '节点选择', '延迟选优'],
-    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/link.svg',
-  },
-  全局拦截: {
-    proxies: ['REJECT', 'DIRECT', '节点选择', '延迟选优'],
-    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/block.svg',
-  },
-  广告过滤: {
-    proxies: ['REJECT', 'DIRECT', '节点选择', '延迟选优'],
+  // _DIRECT: {
+  //   proxies: ['DIRECT'], // 强制必须直连，不留备选项
+  //   icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/link.svg',
+  // },
+  // _REJECT: {
+  //   proxies: ['REJECT'], // 强制必须拦截，不留备选项
+  //   icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/block.svg',
+  // },
+  ADS_FILTER: {
+    proxies: ['REJECT', 'DIRECT', 'AUTO'], // 默认拦截，留备选项用于除错
     icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/bug.svg',
   },
-  漏网之鱼: {
-    proxies: ['DIRECT', '节点选择', '延迟选优'],
+  CATCH: {
+    proxies: ['AUTO', 'DIRECT'], // 未知流量优先走代理，以防外网连不上
     icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/fish.svg',
   },
 };
@@ -152,17 +161,17 @@ const smartGroups = {
 // 自动生成规则
 const customRules = [
   // 代理关键词规则
-  ...proxyKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords},节点选择`),
+  ...proxyKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords},AUTO`),
   // 直连关键词规则
   ...directKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords},DIRECT`),
   // 拦截关键词规则
   ...rejectKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords},REJECT`),
 
   // 其他预设规则
-  'DOMAIN-SUFFIX,googleapis.cn,节点选择', // Google 服务
-  'DOMAIN-SUFFIX,gstatic.com,节点选择', // Google 静态资源
-  'DOMAIN-SUFFIX,xn--ngstr-lra8j.com,节点选择', // Google Play下载服务
-  'DOMAIN-SUFFIX,github.io,节点选择', // GitHub Pages
+  'DOMAIN-SUFFIX,googleapis.cn,AUTO', // Google 服务
+  'DOMAIN-SUFFIX,gstatic.com,AUTO', // Google 静态资源
+  'DOMAIN-SUFFIX,xn--ngstr-lra8j.com,AUTO', // Google Play下载服务
+  'DOMAIN-SUFFIX,github.io,AUTO', // GitHub Pages
 ];
 
 // 4.3 域名直连规则 (第三优先级)
@@ -180,43 +189,43 @@ directPorts.forEach((port) => {
 // ======= 自定义规则集 =======
 const customRuleSets = [
   // 局域网与私有地址
-  'GEOIP,LAN,全局直连,no-resolve',
-  'RULE-SET,private,全局直连',
-  'RULE-SET,applications,全局直连',
-  'RULE-SET,lancidr,全局直连,no-resolve',
+  'GEOIP,LAN, DIRECT, no-resolve',
+  'RULE-SET,private, DIRECT',
+  'RULE-SET,applications, DIRECT',
+  'RULE-SET,lancidr, DIRECT,no-resolve',
 
   // 国内直连
-  'RULE-SET,ChinaMedia,全局直连',
-  'RULE-SET,ChinaDomain,全局直连',
-  'RULE-SET,direct,全局直连',
-  'RULE-SET,cncidr,全局直连,no-resolve',
-  'GEOIP,CN,全局直连,no-resolve',
+  'RULE-SET,ChinaMedia, DIRECT',
+  'RULE-SET,ChinaDomain, DIRECT',
+  'RULE-SET,direct, DIRECT',
+  'RULE-SET,cncidr, DIRECT,no-resolve',
+  'GEOIP,CN,DIRECT,no-resolve',
 
   // AI服务规则
-  'RULE-SET,ai,AI',
+  'RULE-SET,ai, AI',
 
   // 通用服务代理规则
-  'RULE-SET,OneDrive,节点选择',
-  'RULE-SET,icloud,节点选择',
-  'RULE-SET,apple,节点选择',
-  'RULE-SET,google,节点选择',
-  'RULE-SET,GoogleCN,节点选择',
-  'RULE-SET,telegramcidr,节点选择,no-resolve',
-  'RULE-SET,telegramcidr,节点选择,no-resolve',
+  'RULE-SET,GoogleCN,AUTO',
+  'RULE-SET,apple,AUTO',
+  'RULE-SET,OneDrive,AUTO',
+  'RULE-SET,icloud,AUTO',
+  'RULE-SET,google,AUTO',
+  'RULE-SET,telegramcidr,AUTO,no-resolve',
+  'RULE-SET,telegramcidr,AUTO,no-resolve',
   'RULE-SET,nsfw,NSFW,no-resolve',
 
   // 国外代理
-  'RULE-SET,proxy,节点选择',
-  'RULE-SET,gfw,节点选择',
-  'RULE-SET,tld-not-cn,节点选择',
+  'RULE-SET,proxy,AUTO',
+  'RULE-SET,gfw,AUTO',
+  'RULE-SET,tld-not-cn,AUTO',
 
   //拦截规则
-  'RULE-SET,reject,全局拦截',
-  'RULE-SET,BanEasyListChina,广告过滤',
-  'RULE-SET,BanEasyList,广告过滤',
+  'RULE-SET,reject,REJECT',
+  'RULE-SET,BanEasyListChina,ADS_FILTER',
+  'RULE-SET,BanEasyList,ADS_FILTER',
 
   // 兜底规则
-  'MATCH,漏网之鱼',
+  'MATCH, AUTO',
 ];
 
 // ======== 配置代理组 ========
@@ -515,19 +524,91 @@ function main(config) {
   //   proxies: [myStaticNode.name], // 此时连接该节点会自动经过 entranceGroupName
   // },
 
-  // 覆盖代理组配置
-  config['proxy-groups'] = Object.entries(smartGroups).map(
-    ([name, i]) => (
-      console.log(i.type),
-      {
+  // ===========================
+  // 覆盖代理组配置（支持动态去除空组 + 修复 include-all 污染）
+  // ===========================
+
+  // 1. 收集当前订阅所有的节点名称
+  const allProxyNames = config.proxies ? config.proxies.map((p) => p.name) : [];
+  // 定义有效的基础目标（内置策略 + 存在的节点）
+  const validGroupNames = new Set([
+    'DIRECT',
+    'REJECT',
+    'GLOBAL',
+    ...allProxyNames,
+  ]);
+  const finalGroups = [];
+
+  // 第一遍：处理基于 filter 正则的动态地区/特征组（例如：日本、韩国、延迟选优）
+  Object.entries(smartGroups).forEach(([name, groupConfig]) => {
+    if (groupConfig.filter) {
+      const filterRegex = new RegExp(groupConfig.filter);
+      const excludeRegex = groupConfig['exclude-filter']
+        ? new RegExp(groupConfig['exclude-filter'])
+        : null;
+
+      // 预演：检查当前所有节点中，是否有匹配该正则的节点
+      const hasProxy = allProxyNames.some(
+        (pName) =>
+          filterRegex.test(pName) &&
+          !(excludeRegex && excludeRegex.test(pName)),
+      );
+
+      if (hasProxy) {
+        validGroupNames.add(name); // 标记此组有效
+        finalGroups.push({
+          ...groupBaseOption,
+          name,
+          type: groupConfig.type || 'url-test',
+          ...groupConfig,
+          'include-all': true, // 只有通过正则过滤的动态组，才开启 include-all
+        });
+      } else {
+        // 如果没有匹配的节点，直接抛弃该组（即去除空组）
+        console.log(`[节点清洗] 动态组 "${name}" 无匹配节点，已自动去除`);
+      }
+    }
+  });
+
+  // 第二遍：处理基于 proxies 数组硬编码的静态策略组（例如：AUTO, AI, NSFW 等）
+  Object.entries(smartGroups).forEach(([name, groupConfig]) => {
+    if (groupConfig.proxies) {
+      // 清理失效的依赖（例如如果"韩国"在第一遍因无节点被去除了，这里也会把它从 proxies 列表里干掉）
+      let validProxies = groupConfig.proxies.filter((p) =>
+        validGroupNames.has(p),
+      );
+
+      // 防崩溃兜底：如果清理后数组空了（比如订阅里没有任何目标国家节点），强制加一个 DIRECT
+      // 否则下方的 config.rules 引用了一个不存在的策略组会导致 Clash 直接崩溃
+      if (validProxies.length === 0) {
+        validProxies = ['DIRECT'];
+        console.log(
+          `[节点清洗] 策略组 "${name}" 引用全部失效，已兜底至 DIRECT`,
+        );
+      }
+
+      validGroupNames.add(name);
+      finalGroups.push({
         ...groupBaseOption,
         name,
-        'include-all': i['include-all'] || true,
-        type: i.type || 'select',
-        ...i,
-      }
-    ),
-  );
+        type: groupConfig.type || 'select',
+        ...groupConfig,
+        proxies: validProxies,
+        'include-all': false, // 【重要修复】关闭 include-all，确保组内只包含你指定的 validProxies
+      });
+    }
+  });
+
+  config['proxy-groups'] = finalGroups;
+  // config['proxy-groups'] = Object.entries(smartGroups).map(([name, i]) => {
+  //   return {
+  //     ...groupBaseOption,
+  //     name,
+  //     'include-all': i['include-all'] || true,
+  //     type: i.type || 'select',
+  //     ...i,
+  //   };
+  // });
 
   // 覆盖规则配置
   config['rule-providers'] = ruleProviders;
