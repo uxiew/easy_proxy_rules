@@ -15,7 +15,7 @@
 
 // CDN 配置（可切换）
 const CDN_BASE = 'https://cdn.jsdmirror.com/gh'; // 推荐：JSDMirror站点
-const CDN_BASE_1 = '${CDN_BASE}'; // jsDelivr官方CDN
+const CDN_BASE_1 = `${CDN_BASE}`; // jsDelivr官方CDN
 // const CDN_BASE = "https://gcore.jsdelivr.net/gh";      // 备用：GCore CDN
 // const CDN_BASE = "https://testingcf.jsdelivr.net/gh";  // 备用：Cloudflare CDN
 
@@ -74,47 +74,47 @@ const smartGroups = {
     type: 'url-test',
     filter: '.*', // 匹配所有节点
     'exclude-filter': '套餐|剩余|到期|流量|官网', // 使用原生的排除字段
-    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/speed.svg',
+    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/speed.svg`,
   },
   TW: {
     filter: '台|TW|Tai|🇹🇼',
-    icon: '${CDN_BASE}/uxiew/easy_proxy_rules@main/assets/cn.svg',
+    icon: `${CDN_BASE}/uxiew/easy_proxy_rules@main/assets/cn.svg`,
   },
   HK: {
     filter: '港|HK|Hong|🇭🇰',
-    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/hk.svg',
+    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/hk.svg`,
   },
   JP: {
     filter: 'JP|日|東|东|大阪|埼玉|🇯🇵|Japan',
-    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/jp.svg',
+    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/jp.svg`,
   },
   KR: {
     filter: '韩|韓|首|爾|春川|🇰🇷|KR|Korea',
-    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/kr.svg',
+    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/kr.svg`,
   },
   SG: {
     filter: '新加坡|SG|坡|狮城|🇸🇬|Singapore',
-    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/sg.svg',
+    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/sg.svg`,
   },
   US: {
     type: 'url-test',
     tolerance: 100,
     filter: 'US|美|🇺🇸|States|American|洛杉',
     'exclude-filter': '日|俄|韩', // 直接写字符串即可
-    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/us.svg',
+    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/us.svg`,
   },
   UK: {
     filter: 'UK|英|🇬🇧|Kingdom|Britain|British|England',
     type: 'url-test',
-    icon: '${CDN_BASE}/uxiew/easy_proxy_rules@main/assets/uk.svg',
+    icon: `${CDN_BASE}/uxiew/easy_proxy_rules@main/assets/uk.svg`,
   },
   DE: {
     filter: '柏|德|🇩🇪|Germany',
-    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/de.svg',
+    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/de.svg`,
   },
   EU: {
     filter: '时|🇧🇪|丹|🇩🇰|法|🇫🇷|德|🇩🇪|希|爱|意|卢森|荷|葡|牙|英|奥|芬|瑞',
-    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/eu.svg',
+    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/eu.svg`,
   },
   // --------------- 以下为静态代理组 ---------------
   AUTO: {
@@ -123,7 +123,7 @@ const smartGroups = {
     // 在浏览器输入网址时，Clash 会自动选择当前测速结果最快、且能连通的节点。
     interval: 300, // 每 5 分钟
     type: 'url-test',
-    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/adjust.svg',
+    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/adjust.svg`,
   },
   AI: {
     // 关键修改：将类型改为 fallback
@@ -141,19 +141,19 @@ const smartGroups = {
   },
   // _DIRECT: {
   //   proxies: ['DIRECT'], // 强制必须直连，不留备选项
-  //   icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/link.svg',
+  //   icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/link.svg`,
   // },
   // _REJECT: {
   //   proxies: ['REJECT'], // 强制必须拦截，不留备选项
-  //   icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/block.svg',
+  //   icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/block.svg`,
   // },
   ADS_FILTER: {
     proxies: ['REJECT', 'DIRECT', 'AUTO'], // 默认拦截，留备选项用于除错
-    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/bug.svg',
+    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/bug.svg`,
   },
   CATCH: {
     proxies: ['AUTO', 'DIRECT'], // 未知流量优先走代理，以防外网连不上
-    icon: '${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/fish.svg',
+    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/fish.svg`,
   },
 };
 
@@ -382,7 +382,7 @@ const ruleProviders = {
     ...ruleProviderCommon,
     behavior: 'classical',
     type: 'http',
-    url: '${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/telegram.yaml',
+    url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/telegram.yaml`,
     path: './ruleset/uxiew/telegram.yaml',
   },
   // 🔞 魅力艺术
@@ -390,7 +390,7 @@ const ruleProviders = {
     ...ruleProviderCommon,
     behavior: 'classical',
     format: 'text',
-    url: '${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/nsfw.list',
+    url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/nsfw.list`,
     path: './ruleset/uxiew/nsfw.yaml',
   },
 };
