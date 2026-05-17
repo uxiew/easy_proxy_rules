@@ -41,7 +41,6 @@ const directKeywords = [
     'taobao.com',
     'jd.com',
     'cn', // 所有 .cn 结尾的域名
-    'microsoft.com', // 微软服务直连通常更稳
     'apple.com.cn', // 苹果服务
   ];
 
