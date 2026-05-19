@@ -201,7 +201,7 @@ const customRuleSets = [
   'GEOIP,CN,DIRECT,no-resolve',
 
   // AI服务规则
-  'RULE-SET,ai, AI',
+  'RULE-SET,AI, AI',
 
   // 通用服务代理规则
   'RULE-SET,GoogleCN,AUTO',
