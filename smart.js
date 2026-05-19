@@ -345,11 +345,10 @@ const ruleProviders = {
     path: './ruleset/loyalsoldier/direct.yaml',
   },
   // AI服务规则集
-  ai: {
+  AI: {
     ...ruleProviderCommon,
     behavior: 'classical',
-    format: 'text',
-    url: `${CDN_BASE}//uxiew/easy_proxy_rules@main/ruleset/ai.yaml`,
+    url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/ai.yaml`,
     path: './ruleset/uxiew/ai.yaml',
   },
   cncidr: {
