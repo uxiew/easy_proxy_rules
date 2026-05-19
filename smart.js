@@ -132,11 +132,11 @@ const smartGroups = {
     // 建议缩短 interval，比如 200 秒探测一次，确保切换及时
     interval: 200,
     tolerance: 50, // 对于 fallback，这个值代表判定失败的容差
-    icon: 'https://testingcf.jsdelivr.net/gh/Orz-3/mini@master/Color/Pornhub.png',
+    icon: 'https://github.com/DustinWin/ruleset_geodata/releases/download/icons/ai.png',
   },
   NSFW: {
     proxies: ['JP', 'HK', 'KR'],
-    icon: 'https://github.com/DustinWin/ruleset_geodata/releases/download/icons/ai.png',
+    icon: 'https://testingcf.jsdelivr.net/gh/Orz-3/mini@master/Color/Pornhub.png',
   },
   // _DIRECT: {
   //   proxies: ['DIRECT'], // 强制必须直连，不留备选项
