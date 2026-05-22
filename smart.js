@@ -107,12 +107,23 @@ const smartGroups = {
     type: 'url-test',
     icon: `${CDN_BASE}/uxiew/easy_proxy_rules@main/assets/uk.svg`,
   },
+  FR: {
+    filter: 'FR|法国|🇫🇷',
+    type: 'url-test',
+    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/fr.svg`,
+  },
   DE: {
-    filter: '柏|德|🇩🇪|Germany',
+    filter: 'DE|柏|德国|🇩🇪|Germany',
     icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/de.svg`,
   },
+  CA: {
+    filter: 'CA|柏|加拿大|🇨🇦|Canada',
+    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/ca.svg`,
+  },
   EU: {
-    filter: '时|🇧🇪|丹|🇩🇰|法|🇫🇷|德|🇩🇪|希|爱|意|卢森|荷|葡|牙|英|奥|芬|瑞',
+    filter:
+      '时|🇧🇪|丹|🇩🇰|希|🇬🇷|爱|🇮🇪|荷兰|NL|🇳🇱|意|🇮🇹|卢森|葡|🇵🇹|西班|🇪🇸|奥地利|🇦🇹|芬|🇫🇮|瑞典|🇸🇪|RO|罗马尼亚‌|🇷🇴‌',
+    proxies: ['DE', 'FR'],
     icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/eu.svg`,
   },
   // --------------- 以下为静态代理组 ---------------
@@ -523,81 +534,127 @@ function main(config) {
   // },
 
   // ===========================
-  // 覆盖代理组配置（支持动态去除空组 + 修复 include-all 污染）
+  // 覆盖代理组配置：JS 递归展开版
   // ===========================
 
-  // 1. 收集当前订阅所有的节点名称
-  const allProxyNames = config.proxies ? config.proxies.map((p) => p.name) : [];
-  // 定义有效的基础目标（内置策略 + 存在的节点）
-  const validGroupNames = new Set([
-    'DIRECT',
-    'REJECT',
-    'GLOBAL',
-    ...allProxyNames,
-  ]);
-  const finalGroups = [];
+  // 1. 收集当前订阅所有原始节点名称
+  const allProxyNames = Array.isArray(config.proxies)
+    ? config.proxies.map((p) => p.name).filter(Boolean)
+    : [];
 
-  // 第一遍：处理基于 filter 正则的动态地区/特征组（例如：日本、韩国、延迟选优）
-  Object.entries(smartGroups).forEach(([name, groupConfig]) => {
-    if (groupConfig.filter) {
-      const filterRegex = new RegExp(groupConfig.filter);
-      const excludeRegex = groupConfig['exclude-filter']
-        ? new RegExp(groupConfig['exclude-filter'])
-        : null;
+  const BUILTIN_PROXIES = ['DIRECT', 'REJECT', 'GLOBAL'];
 
-      // 预演：检查当前所有节点中，是否有匹配该正则的节点
-      const hasProxy = allProxyNames.some(
-        (pName) =>
-          filterRegex.test(pName) &&
-          !(excludeRegex && excludeRegex.test(pName)),
+  // 2. 判断某个组自身 filter 能匹配到哪些真实节点
+  function getFilterMatchedNodes(groupConfig) {
+    if (!groupConfig.filter) return [];
+
+    const filterRegex = new RegExp(groupConfig.filter, 'i');
+    const excludeRegex = groupConfig['exclude-filter']
+      ? new RegExp(groupConfig['exclude-filter'], 'i')
+      : null;
+
+    return allProxyNames.filter((pName) => {
+      const included = filterRegex.test(pName);
+      const excluded = excludeRegex ? excludeRegex.test(pName) : false;
+      return included && !excluded;
+    });
+  }
+
+  // 3. 缓存，避免重复计算
+  const expandCache = new Map();
+
+  // 4. 递归展开某个组最终应该包含的节点
+  function expandGroup(groupName, visiting = new Set()) {
+    if (expandCache.has(groupName)) {
+      return expandCache.get(groupName);
+    }
+
+    const groupConfig = smartGroups[groupName];
+    if (!groupConfig) {
+      return [];
+    }
+
+    // 防止循环引用：A -> B -> A
+    if (visiting.has(groupName)) {
+      console.log(
+        `[节点清洗] 检测到循环引用，已跳过: ${[...visiting, groupName].join(' -> ')}`,
       );
+      return [];
+    }
 
-      if (hasProxy) {
-        validGroupNames.add(name); // 标记此组有效
-        finalGroups.push({
-          ...groupBaseOption,
-          name,
-          type: groupConfig.type || 'url-test',
-          ...groupConfig,
-          'include-all': true, // 只有通过正则过滤的动态组，才开启 include-all
-        });
-      } else {
-        // 如果没有匹配的节点，直接抛弃该组（即去除空组）
-        console.log(`[节点清洗] 动态组 "${name}" 无匹配节点，已自动去除`);
+    visiting.add(groupName);
+
+    let result = [];
+
+    // 4.1 展开当前组自己的 filter 匹配节点
+    result.push(...getFilterMatchedNodes(groupConfig));
+
+    // 4.2 展开当前组 proxies 中的内容
+    if (Array.isArray(groupConfig.proxies)) {
+      for (const p of groupConfig.proxies) {
+        if (allProxyNames.includes(p) || BUILTIN_PROXIES.includes(p)) {
+          // 真实节点或内置策略
+          result.push(p);
+        } else if (smartGroups[p]) {
+          // 引用的是另一个智能组：递归展开其具体节点
+          result.push(...expandGroup(p, visiting));
+        }
       }
+    }
+
+    visiting.delete(groupName);
+
+    // 去重
+    result = [...new Set(result)];
+
+    expandCache.set(groupName, result);
+    return result;
+  }
+
+  // 5. 计算所有活跃组
+  const activeGroups = new Set();
+
+  Object.keys(smartGroups).forEach((name) => {
+    const expanded = expandGroup(name);
+    if (expanded.length > 0) {
+      activeGroups.add(name);
     }
   });
 
-  // 第二遍：处理基于 proxies 数组硬编码的静态策略组（例如：AUTO, AI, NSFW 等）
+  // 6. 组装最终 proxy-groups
+  const finalGroups = [];
+
   Object.entries(smartGroups).forEach(([name, groupConfig]) => {
-    if (groupConfig.proxies) {
-      // 清理失效的依赖（例如如果"韩国"在第一遍因无节点被去除了，这里也会把它从 proxies 列表里干掉）
-      let validProxies = groupConfig.proxies.filter((p) =>
-        validGroupNames.has(p),
-      );
-
-      // 防崩溃兜底：如果清理后数组空了（比如订阅里没有任何目标国家节点），强制加一个 DIRECT
-      // 否则下方的 config.rules 引用了一个不存在的策略组会导致 Clash 直接崩溃
-      if (validProxies.length === 0) {
-        validProxies = ['DIRECT'];
-        console.log(
-          `[节点清洗] 策略组 "${name}" 引用全部失效，已兜底至 DIRECT`,
-        );
-      }
-
-      validGroupNames.add(name);
-      finalGroups.push({
-        ...groupBaseOption,
-        name,
-        type: groupConfig.type || 'select',
-        ...groupConfig,
-        proxies: validProxies,
-        'include-all': false, // 【重要修复】关闭 include-all，确保组内只包含你指定的 validProxies
-      });
+    if (!activeGroups.has(name)) {
+      console.log(`[节点清洗] 组 "${name}" 无匹配节点或有效引用，已自动去除`);
+      return;
     }
+
+    let combinedProxies = expandGroup(name);
+
+    // 极端防空组崩溃兜底
+    if (combinedProxies.length === 0) {
+      combinedProxies = ['DIRECT'];
+    }
+
+    const clashGroup = {
+      ...groupBaseOption,
+      name,
+      type: groupConfig.type || (groupConfig.filter ? 'url-test' : 'select'),
+      ...groupConfig,
+      proxies: combinedProxies,
+      'include-all': false,
+    };
+
+    // 关键：禁止 Clash 内核再次二次 filter
+    delete clashGroup.filter;
+    delete clashGroup['exclude-filter'];
+
+    finalGroups.push(clashGroup);
   });
 
   config['proxy-groups'] = finalGroups;
+
   // config['proxy-groups'] = Object.entries(smartGroups).map(([name, i]) => {
   //   return {
   //     ...groupBaseOption,
