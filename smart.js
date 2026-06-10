@@ -139,7 +139,7 @@ const smartGroups = {
     // 关键修改：将类型改为 fallback
     type: 'fallback',
     // 顺序很重要：流量会从左往右按顺序探测，第一个（新加坡）不通才跳下一个
-    proxies: ['SG', 'JP', 'US', 'DE', 'KR'],
+    proxies: ['JP', 'US', 'SG', 'DE', 'KR'],
     // 建议缩短 interval，比如 200 秒探测一次，确保切换及时
     interval: 200,
     tolerance: 50, // 对于 fallback，这个值代表判定失败的容差
