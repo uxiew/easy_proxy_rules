@@ -68,6 +68,46 @@ const directSSHIPs = [
 // ⚠️ 修复：移除了不兼容 Go 正则引擎的 or() 和 nor() 预查函数
 
 const smartGroups = {
+  // --------------- 以下为静态代理组 ---------------
+  AUTO: {
+    proxies: ['US', 'JP', 'HK', 'SPEED', 'DIRECT'],
+    // 根据 interval: 300（每 5 分钟），拿测试网址（代码里写的是 Apple 的测试页）去挨个测试组里的节点。
+    // 在浏览器输入网址时，Clash 会自动选择当前测速结果最快、且能连通的节点。
+    interval: 300, // 每 5 分钟
+    type: 'url-test',
+    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/adjust.svg`,
+  },
+  AI: {
+    // 关键修改：将类型改为 fallback
+    type: 'fallback',
+    // 顺序很重要：流量会从左往右按顺序探测，第一个（新加坡）不通才跳下一个
+    proxies: ['JP', 'US', 'SG', 'DE', 'KR'],
+    // 建议缩短 interval，比如 200 秒探测一次，确保切换及时
+    interval: 200,
+    tolerance: 50, // 对于 fallback，这个值代表判定失败的容差
+    icon: 'https://github.com/DustinWin/ruleset_geodata/releases/download/icons/ai.png',
+  },
+  ADS_FILTER: {
+    proxies: ['REJECT', 'DIRECT', 'AUTO'], // 默认拦截，留备选项用于除错
+    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/bug.svg`,
+  },
+  NSFW: {
+    proxies: ['JP', 'HK', 'KR'],
+    icon: 'https://testingcf.jsdelivr.net/gh/Orz-3/mini@master/Color/Pornhub.png',
+  },
+  // _DIRECT: {
+  //   proxies: ['DIRECT'], // 强制必须直连，不留备选项
+  //   icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/link.svg`,
+  // },
+  // _REJECT: {
+  //   proxies: ['REJECT'], // 强制必须拦截，不留备选项
+  //   icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/block.svg`,
+  // },
+  CATCH: {
+    proxies: ['AUTO', 'DIRECT'], // 未知流量优先走代理，以防外网连不上
+    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/fish.svg`,
+  },
+  // --------------- 以下为静态代理组 ---------------
   SPEED: {
     tolerance: 50,
     type: 'url-test',
@@ -125,45 +165,6 @@ const smartGroups = {
       '时|🇧🇪|丹|🇩🇰|希|🇬🇷|爱|🇮🇪|荷兰|NL|🇳🇱|意|🇮🇹|卢森|葡|🇵🇹|西班|🇪🇸|奥地利|🇦🇹|芬|🇫🇮|瑞典|🇸🇪|RO|罗马尼亚‌|🇷🇴‌',
     proxies: ['DE', 'FR'],
     icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/eu.svg`,
-  },
-  // --------------- 以下为静态代理组 ---------------
-  AUTO: {
-    proxies: ['US', 'JP', 'HK', 'SPEED', 'DIRECT'],
-    // 根据 interval: 300（每 5 分钟），拿测试网址（代码里写的是 Apple 的测试页）去挨个测试组里的节点。
-    // 在浏览器输入网址时，Clash 会自动选择当前测速结果最快、且能连通的节点。
-    interval: 300, // 每 5 分钟
-    type: 'url-test',
-    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/adjust.svg`,
-  },
-  AI: {
-    // 关键修改：将类型改为 fallback
-    type: 'fallback',
-    // 顺序很重要：流量会从左往右按顺序探测，第一个（新加坡）不通才跳下一个
-    proxies: ['JP', 'US', 'SG', 'DE', 'KR'],
-    // 建议缩短 interval，比如 200 秒探测一次，确保切换及时
-    interval: 200,
-    tolerance: 50, // 对于 fallback，这个值代表判定失败的容差
-    icon: 'https://github.com/DustinWin/ruleset_geodata/releases/download/icons/ai.png',
-  },
-  NSFW: {
-    proxies: ['JP', 'HK', 'KR'],
-    icon: 'https://testingcf.jsdelivr.net/gh/Orz-3/mini@master/Color/Pornhub.png',
-  },
-  // _DIRECT: {
-  //   proxies: ['DIRECT'], // 强制必须直连，不留备选项
-  //   icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/link.svg`,
-  // },
-  // _REJECT: {
-  //   proxies: ['REJECT'], // 强制必须拦截，不留备选项
-  //   icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/block.svg`,
-  // },
-  ADS_FILTER: {
-    proxies: ['REJECT', 'DIRECT', 'AUTO'], // 默认拦截，留备选项用于除错
-    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/bug.svg`,
-  },
-  CATCH: {
-    proxies: ['AUTO', 'DIRECT'], // 未知流量优先走代理，以防外网连不上
-    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/fish.svg`,
   },
 };
 
