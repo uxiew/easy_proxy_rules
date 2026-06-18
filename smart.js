@@ -80,7 +80,7 @@ const smartGroups = {
   AI: {
     // 关键修改：将类型改为 fallback
     type: 'fallback',
-    // 顺序很重要：流量会从左往右按顺序探测，第一个（新加坡）不通才跳下一个
+    // 顺序很重要：流量会从左往右按顺序探测，第一个（小日子）不通才跳下一个
     proxies: ['JP', 'US', 'SG', 'DE', 'KR'],
     // 建议缩短 interval，比如 200 秒探测一次，确保切换及时
     interval: 200,
@@ -350,7 +350,7 @@ const ruleProviders = {
     url: `${CDN_BASE}/ACL4SSR/ACL4SSR/Clash/ChinaDomain.list`,
     path: './ruleset/acl4ssr/ChinaDomain.yaml',
   },
-  direct: {
+  direct: {filter
     ...ruleProviderCommon,
     behavior: 'domain',
     url: `${CDN_BASE}/Loyalsoldier/clash-rules@release/direct.txt`,
