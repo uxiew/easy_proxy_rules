@@ -80,20 +80,17 @@ const smartGroups = {
   AI: {
     // 关键修改：将类型改为 fallback
     type: 'fallback',
-    // 顺序很重要：流量会从左往右按顺序探测，第一个（小日子）不通才跳下一个
-    proxies: ['JP', 'US', 'SG', 'DE', 'KR'],
     // 建议缩短 interval，比如 200 秒探测一次，确保切换及时
     interval: 200,
-    tolerance: 50, // 对于 fallback，这个值代表判定失败的容差
+    // 对于 fallback，这个值代表判定失败的容差
+    tolerance: 50,
+    // 顺序很重要：流量会从左往右按顺序探测，第一个（小日子）不通才跳下一个
+    proxies: ['JP', 'US', 'SG', 'DE', 'KR'],
     icon: 'https://github.com/DustinWin/ruleset_geodata/releases/download/icons/ai.png',
   },
   ADS_FILTER: {
     proxies: ['REJECT', 'DIRECT', 'AUTO'], // 默认拦截，留备选项用于除错
     icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/bug.svg`,
-  },
-  NSFW: {
-    proxies: ['JP', 'HK', 'KR'],
-    icon: 'https://testingcf.jsdelivr.net/gh/Orz-3/mini@master/Color/Pornhub.png',
   },
   // _DIRECT: {
   //   proxies: ['DIRECT'], // 强制必须直连，不留备选项
@@ -114,6 +111,13 @@ const smartGroups = {
     filter: '.*', // 匹配所有节点
     'exclude-filter': '套餐|剩余|到期|流量|官网', // 使用原生的排除字段
     icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/speed.svg`,
+  },
+  NSFW: {
+    type: 'fallback',
+    interval: 200,
+    tolerance: 50,
+    proxies: ['JP', 'TW', 'KR', 'US', 'DE'],
+    icon: 'https://testingcf.jsdelivr.net/gh/Orz-3/mini@master/Color/Pornhub.png',
   },
   TW: {
     filter: '台|TW|Tai|🇹🇼',
