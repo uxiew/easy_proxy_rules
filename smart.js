@@ -222,7 +222,6 @@ const customRuleSets = [
   'RULE-SET,icloud,AUTO',
   'RULE-SET,google,AUTO',
   'RULE-SET,telegramcidr,AUTO,no-resolve',
-  'RULE-SET,telegramcidr,AUTO,no-resolve',
   'RULE-SET,nsfw,NSFW,no-resolve',
 
   // 国外代理
@@ -350,7 +349,7 @@ const ruleProviders = {
     url: `${CDN_BASE}/ACL4SSR/ACL4SSR/Clash/ChinaDomain.list`,
     path: './ruleset/acl4ssr/ChinaDomain.yaml',
   },
-  direct: {filter
+  direct: {
     ...ruleProviderCommon,
     behavior: 'domain',
     url: `${CDN_BASE}/Loyalsoldier/clash-rules@release/direct.txt`,
