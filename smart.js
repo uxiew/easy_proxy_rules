@@ -186,7 +186,6 @@ const customRules = [
   'DOMAIN-SUFFIX,googleapis.cn,AUTO', // Google 服务
   'DOMAIN-SUFFIX,gstatic.com,AUTO', // Google 静态资源
   'DOMAIN-SUFFIX,xn--ngstr-lra8j.com,AUTO', // Google Play下载服务
-  'DOMAIN-SUFFIX,github.io,AUTO', // GitHub Pages
 ];
 
 // 4.3 域名直连规则 (第三优先级)
@@ -214,29 +213,32 @@ const customRuleSets = [
   'RULE-SET,ChinaDomain, DIRECT',
   'RULE-SET,direct, DIRECT',
   'RULE-SET,cncidr, DIRECT,no-resolve',
-  'GEOIP,CN,DIRECT,no-resolve',
+  'GEOIP,CN, DIRECT,no-resolve',
 
-  // AI服务规则
-  'RULE-SET,AI, AI',
+  // AI 服务规则
+  'RULE-SET,forAI, AI',
 
   // 通用服务代理规则
-  'RULE-SET,GoogleCN,AUTO',
-  'RULE-SET,apple,AUTO',
-  'RULE-SET,OneDrive,AUTO',
-  'RULE-SET,icloud,AUTO',
-  'RULE-SET,google,AUTO',
-  'RULE-SET,telegramcidr,AUTO,no-resolve',
-  'RULE-SET,nsfw,NSFW,no-resolve',
+  'RULE-SET,apple, AI',
+  'RULE-SET,google, AI',
+  'RULE-SET,github, AI',
+
+  'RULE-SET,GoogleCN, AUTO',
+  'RULE-SET,OneDrive, AUTO',
+  'RULE-SET,icloud, AUTO',
+  'RULE-SET,telegramcidr, AUTO,no-resolve',
+  'RULE-SET,telegram, AUTO,no-resolve',
+  'RULE-SET,forNSFW, NSFW,no-resolve',
 
   // 国外代理
-  'RULE-SET,proxy,AUTO',
-  'RULE-SET,gfw,AUTO',
-  'RULE-SET,tld-not-cn,AUTO',
+  'RULE-SET,proxy, AUTO',
+  'RULE-SET,gfw, AUTO',
+  'RULE-SET,tld-not-cn, AUTO',
 
   //拦截规则
-  'RULE-SET,reject,REJECT',
-  'RULE-SET,BanEasyListChina,ADS_FILTER',
-  'RULE-SET,BanEasyList,ADS_FILTER',
+  'RULE-SET,reject, REJECT',
+  'RULE-SET,BanEasyListChina, ADS_FILTER',
+  'RULE-SET,BanEasyList, ADS_FILTER',
 
   // 兜底规则
   'MATCH, AUTO',
@@ -359,8 +361,8 @@ const ruleProviders = {
     url: `${CDN_BASE}/Loyalsoldier/clash-rules@release/direct.txt`,
     path: './ruleset/loyalsoldier/direct.yaml',
   },
-  // AI服务规则集
-  AI: {
+  // AI 服务规则集
+  forAI: {
     ...ruleProviderCommon,
     behavior: 'classical',
     url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/ai.yaml`,
@@ -399,7 +401,7 @@ const ruleProviders = {
     path: './ruleset/uxiew/telegram.yaml',
   },
   // 🔞 魅力艺术
-  nsfw: {
+  forNSFW: {
     ...ruleProviderCommon,
     behavior: 'classical',
     format: 'text',
