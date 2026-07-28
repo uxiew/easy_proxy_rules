@@ -182,21 +182,14 @@ const customRules = [
   // 拦截关键词规则
   ...rejectKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords},REJECT`),
 
+
+  'DOMAIN-SUFFIX, googleapis.com, AI',
+  'DOMAIN-SUFFIX, co.jp, EU',
   // 其他预设规则
   'DOMAIN-SUFFIX,googleapis.cn,AUTO', // Google 服务
   'DOMAIN-SUFFIX,gstatic.com,AUTO', // Google 静态资源
   'DOMAIN-SUFFIX,xn--ngstr-lra8j.com,AUTO', // Google Play下载服务
 ];
-
-// 4.3 域名直连规则 (第三优先级)
-directDomains.forEach((domain) => {
-  customRules.push(`DOMAIN-SUFFIX,${domain},DIRECT`);
-});
-
-// 4.1 端口直连规则 (最高优先级 - TUN模式下优先匹配端口)
-directPorts.forEach((port) => {
-  customRules.push(`DST-PORT,${port},DIRECT`);
-});
 
 // ===========================
 // 第二部分：规则集和代理组配置
@@ -217,6 +210,8 @@ const customRuleSets = [
 
   // AI 服务规则
   'RULE-SET,forAI, AI',
+
+
 
   // 通用服务代理规则
   'RULE-SET,apple, AI',
@@ -409,6 +404,16 @@ const ruleProviders = {
     path: './ruleset/uxiew/nsfw.yaml',
   },
 };
+
+// 域名直连规则 (第三优先级)
+directDomains.forEach((domain) => {
+  customRules.push(`DOMAIN-SUFFIX,${domain},DIRECT`);
+});
+
+// 端口直连规则 (最高优先级 - TUN模式下优先匹配端口)
+directPorts.forEach((port) => {
+  customRules.push(`DST-PORT,${port},DIRECT`);
+});
 
 // 最终规则列表
 const rules = [...customRules, ...customRuleSets];
