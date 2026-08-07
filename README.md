@@ -1,6 +1,6 @@
 ## 代理分流规则配置
 
-用于 FlClash/Clash Verge Rev 的规则覆写脚本，整合了主流规则集，优化代理分组，内置 DNS fake‑ip 与 DoH 分流，支持用关键词自动生成 DOMAIN-KEYWORDS，快速自定义代理 / 直连 / 拦截规则。
+用于 FlClash/Clash Party 的规则覆写脚本，整合了主流规则集，优化代理分组，内置 DNS fake‑ip 与 DoH 分流，支持用关键词自动生成 DOMAIN-KEYWORDS，快速自定义代理 / 直连 / 拦截规则。
 
 ## 使用
 可直接导入仓库链接，或者新建 js 脚本粘贴进去
