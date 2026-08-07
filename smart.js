@@ -695,7 +695,12 @@ function main(config) {
 
     // 极端防空组崩溃兜底
     if (combinedProxies.length === 0) {
-      combinedProxies = ['DIRECT'];
+      if (requiredGroupsFromRules.has(name) && smartGroups.AUTO) {
+        // 规则显式引用且该组为空时，优先回退到 AUTO，避免误直连；保留 DIRECT 兜底。
+        combinedProxies = ['AUTO', 'DIRECT'];
+      } else {
+        combinedProxies = ['DIRECT'];
+      }
     }
 
     const clashGroup = {
