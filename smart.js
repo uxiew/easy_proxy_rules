@@ -85,7 +85,7 @@ const smartGroups = {
     // 对于 fallback，这个值代表判定失败的容差
     tolerance: 50,
     // 顺序很重要：流量会从左往右按顺序探测，第一个（小日子）不通才跳下一个
-    proxies: ['JP', 'US', 'SG', 'DE', 'KR'],
+    proxies: ['US', 'SG', 'JP', 'DE', 'KR'],
     icon: 'https://github.com/DustinWin/ruleset_geodata/releases/download/icons/ai.png',
   },
   ADS_FILTER: {
@@ -497,6 +497,56 @@ function main(config) {
     ? Object.keys(config['proxy-providers']).length
     : 0;
 
+  /** @type {Set<string>} */
+  const BUILTIN_POLICIES = new Set(['DIRECT', 'REJECT', 'PASS', 'GLOBAL']);
+
+  /**
+   * 从单条规则字符串中提取最终策略组名（用于验证组是否必须保留）。
+   * 规则格式常见为：
+   * - TYPE,<arg>,<policy>[,...]
+   * - MATCH,<policy>
+   * @param {string} ruleStr
+   * @returns {string | null}
+   */
+  function extractPolicyGroupName(ruleStr) {
+    if (!ruleStr || typeof ruleStr !== 'string') {
+      return null;
+    }
+
+    const ruleLine = ruleStr.trim();
+    if (!ruleLine || ruleLine.startsWith('#')) {
+      return null;
+    }
+
+    const parts = ruleLine.split(',').map((part) => part.trim());
+    if (parts.length < 2) {
+      return null;
+    }
+
+    const ruleType = parts[0].toUpperCase();
+    const policyIndex = ruleType === 'MATCH' ? 1 : 2;
+    if (!parts[policyIndex]) {
+      return null;
+    }
+
+    const policy = parts[policyIndex];
+    const normalized = policy.toUpperCase();
+    if (BUILTIN_POLICIES.has(normalized)) {
+      return null;
+    }
+
+    return policy;
+  }
+
+  // 统计规则中引用到的策略组名；引用到规则组的组即使暂时无节点也必须保留，避免配置校验失败。
+  const requiredGroupsFromRules = new Set();
+  for (const rule of rules) {
+    const policyGroup = extractPolicyGroupName(rule);
+    if (policyGroup && smartGroups[policyGroup]) {
+      requiredGroupsFromRules.add(policyGroup);
+    }
+  }
+
   if (proxyCount === 0 && proxyProviderCount === 0) {
     throw new Error('配置文件中未找到任何代理节点');
   }
@@ -627,7 +677,7 @@ function main(config) {
 
   Object.keys(smartGroups).forEach((name) => {
     const expanded = expandGroup(name);
-    if (expanded.length > 0) {
+    if (expanded.length > 0 || requiredGroupsFromRules.has(name)) {
       activeGroups.add(name);
     }
   });
