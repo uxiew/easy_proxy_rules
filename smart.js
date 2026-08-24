@@ -85,7 +85,7 @@ const smartGroups = {
     // 对于 fallback，这个值代表判定失败的容差
     tolerance: 50,
     // 顺序很重要：流量会从左往右按顺序探测，第一个（小日子）不通才跳下一个
-    proxies: ['US', 'SG', 'JP', 'DE', 'KR'],
+    proxies: [ 'JP', 'US', 'SG', 'DE', 'KR'],
     icon: 'https://github.com/DustinWin/ruleset_geodata/releases/download/icons/ai.png',
   },
   ADS_FILTER: {
