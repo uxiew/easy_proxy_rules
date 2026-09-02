@@ -85,7 +85,7 @@ const smartGroups = {
     // 对于 fallback，这个值代表判定失败的容差
     tolerance: 50,
     // 顺序很重要：流量会从左往右按顺序探测，第一个（小日子）不通才跳下一个
-    proxies: [ 'JP', 'US', 'SG', 'DE', 'KR'],
+    proxies: [ 'JP', 'SG', 'US', 'DE', 'KR'],
     icon: 'https://github.com/DustinWin/ruleset_geodata/releases/download/icons/ai.png',
   },
   ADS_FILTER: {
@@ -419,69 +419,66 @@ directPorts.forEach((port) => {
 const rules = [...customRules, ...customRuleSets];
 
 // ===========================
-// 第三部分：DNS配置
+// 第三部分：DNS配置 (适用于 Mihomo / Clash Meta 内核)
 // ===========================
 const dnsConfig = {
-  // 开关，true表示启用Clash的DNS处理器
-  enable: true,
-  enable: true,
-  listen: '0.0.0.0:1053',
-  ipv6: false,
-  'use-system-hosts': true,
-  'respect-rules': true,
-  'cache-algorithm': 'arc',
+  enable: true,                  // 启用内置 DNS 服务器
+  listen: '0.0.0.0:1053',        // DNS 监听地址和端口
+  ipv6: false,                   // 关闭 IPv6 解析，减少因本地不支持 IPv6 导致的奇葩网络问题
+  'use-system-hosts': true,      // 优先读取系统 hosts 文件
+  'respect-rules': true,         // 让 DNS 按照节点规则去解析，避免代理节点的 DNS 泄漏
+  'cache-algorithm': 'arc',      // 缓存淘汰算法，arc 比 lru 性能更好
 
+  // 解析代理节点域名的 DNS（必须是直连、纯净且快速的 IP）
   'default-nameserver': ['223.5.5.5', '119.29.29.29'],
-
   'proxy-server-nameserver': ['223.5.5.5', '119.29.29.29', '114.114.114.114'],
 
-  // Fake-IP 配置
+  // Fake-IP 模式配置（极大提升网页秒开速度）
   'enhanced-mode': 'fake-ip',
   'fake-ip-range': '198.18.0.1/16',
   'fake-ip-filter': [
     '*.lan',
     '*.local',
-    '*.msftconnecttest.com',
-    'localhost.ptlogin2.qq.com',
-    '+.stun.*',
-    'geosite:cn',
+    '*.msftconnecttest.com',      // 微软网络连通性测试
+    'localhost.ptlogin2.qq.com',  // QQ 快捷登录依赖
+    '+.stun.*',                   // STUN 打洞协议
+    'geosite:cn',                 // 核心！国内域名直连，返回真实 IP 以获得最优 CDN，不走 Fake-IP
   ],
 
+  // 指定特定域名的 DNS 解析策略 (命中即拦截，不往下走 fallback)
   'nameserver-policy': {
-    // 中国域名用国内DNS
+    // 国内域名用国内 DoH DNS，防劫持且速度快
     'geosite:cn': [
-      'https://doh.pub/dns-query',
-      'https://dns.alidns.com/dns-query',
+      'https://doh.pub/dns-query',        // 腾讯
+      'https://dns.alidns.com/dns-query', // 阿里
     ],
-
-    // 国外域名用国外DNS
+    // 国外域名直接用国外 DoH DNS
     'geosite:geolocation-!cn': [
-      'https://1.1.1.1/dns-query',
-      'https://8.8.8.8/dns-query',
+      'https://1.1.1.1/dns-query',        // Cloudflare
+      'https://8.8.8.8/dns-query',        // Google
     ],
   },
 
-  // 主DNS服务器组（会被 nameserver-policy 覆盖），用于解析国内域名，以获取最快的CDN节点。
-  // 使用加密DNS (DoH/DoT) 可以防止ISP的DNS污染。
+  // 兜底主 DNS（如果没有被上面的 nameserver-policy 命中，先向这里请求）
   nameserver: ['https://doh.pub/dns-query', 'https://dns.alidns.com/dns-query'],
 
-  // 备用DNS服务器组。当主DNS解析结果不理想（如被污染或IP归属地非中国）时，
-  // Clash会使用此组DNS进行再次查询，以获取真实、无污染的海外IP。
+  // 兜底备用 DNS（防污染安全网）
+  // 当主 DNS 解析出的 IP 是海外 IP 时，采纳 fallback DNS 的结果以防 DNS 污染
   fallback: [
-    'https://dns.google/dns-query', // Google DNS (DoH)
-    'https://1.1.1.1/dns-query', // Cloudflare DNS (DoH)
-    'tls://8.8.4.4:853', // Google DNS (DoT)
-    'https://8.8.8.8/dns-query',
+    'https://1.1.1.1/dns-query', // Cloudflare DoH
+    'https://8.8.8.8/dns-query', // Google DoH
+    'tls://8.8.4.4:853',         // Google DoT 作为补充
   ],
 
-  // 防污染过滤
+  // 防污染判断条件
   'fallback-filter': {
     geoip: true,
-    'geoip-code': 'CN',
-    ipcidr: ['240.0.0.0/4', '0.0.0.0/8'],
-    domain: ['+.google.com', '+.youtube.com', '+.github.com'],
+    'geoip-code': 'CN',            // 如果 nameserver 解析返回的 IP 不是中国 (CN)，则触发 fallback
+    ipcidr: ['240.0.0.0/4', '0.0.0.0/8'], // 局域网和保留 IP 不会触发 fallback
+    domain: ['+.google.com', '+.youtube.com', '+.github.com'], // 强制走 fallback 的域名清单
   },
 };
+
 // ===========================
 // 第四部分：主函数
 // ===========================
@@ -491,6 +488,12 @@ function main(config) {
   if (!config) {
     throw new Error('配置对象为空');
   }
+
+  // 1. 严格关闭全局 IPv6 处理
+  config['ipv6'] = false;
+
+  // 2. 强制指定域名解析策略为仅用 IPv4 (适用于 Mihomo / Clash Meta 内核)
+  config['domain-strategy'] = 'UseIPv4';
 
   const proxyCount = config?.proxies?.length ?? 0;
   const proxyProviderCount = config?.['proxy-providers']
