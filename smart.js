@@ -70,7 +70,7 @@ const directSSHIPs = [
 const smartGroups = {
   // --------------- 以下为静态代理组 ---------------
   AUTO: {
-    proxies: ['US', 'JP', 'HK', 'SPEED', 'DIRECT'],
+    proxies: ['US', 'JP', 'HK', 'SPEED'],   // , 'DIRECT'
     // 根据 interval: 300（每 5 分钟），拿测试网址（代码里写的是 Apple 的测试页）去挨个测试组里的节点。
     // 在浏览器输入网址时，Clash 会自动选择当前测速结果最快、且能连通的节点。
     interval: 300, // 每 5 分钟
