@@ -89,7 +89,7 @@ const smartGroups = {
     icon: 'https://github.com/DustinWin/ruleset_geodata/releases/download/icons/ai.png',
   },
   ADS_FILTER: {
-    proxies: ['REJECT', 'DIRECT', 'AUTO'], // 默认拦截，留备选项用于除错
+    proxies: ['REJECT', 'AUTO'], // 默认拦截，留备选项用于除错
     icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/bug.svg`,
   },
   // _DIRECT: {
@@ -101,7 +101,7 @@ const smartGroups = {
   //   icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/block.svg`,
   // },
   CATCH: {
-    proxies: ['AUTO', 'DIRECT'], // 未知流量优先走代理，以防外网连不上
+    proxies: ['AUTO'], // 未知流量优先走代理，以防外网连不上
     icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/fish.svg`,
   },
   // --------------- 以下为静态代理组 ---------------
