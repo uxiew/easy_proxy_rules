@@ -443,8 +443,6 @@ const getRules = ()=>{
     // AI 服务规则
     'RULE-SET,forAI, AI',
 
-
-
     // 通用服务代理规则
     'RULE-SET,apple, AI',
     'RULE-SET,google, AI',
@@ -482,11 +480,6 @@ const getRules = ()=>{
 
   // 准备高优先级的兜底规则 👉 请把这里的 "AI" 修改为你实际用来承载 AI 流量的策略组名称
   const aiFallbackRules = [
-    // 强制拦截或代理底层监控探测
-    `DOMAIN-KEYWORD,datadog, AI`,
-    `DOMAIN-KEYWORD,sentry, AI`,
-    `DOMAIN-KEYWORD,sift, AI`,
-
     // 强制同步时区（防风控时区泄露核心）
     `GEOSITE,category-ntp, AI`,
 
