@@ -173,71 +173,6 @@ const smartGroups = {
 };
 
 // ===========================
-// 自动生成规则
-const customRules = [
-  // 代理关键词规则
-  ...proxyKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords},AUTO`),
-  // 直连关键词规则
-  ...directKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords},DIRECT`),
-  // 拦截关键词规则
-  ...rejectKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords},REJECT`),
-
-
-  'DOMAIN-SUFFIX, googleapis.com, AI',
-  'DOMAIN-SUFFIX, co.jp, EU',
-  // 其他预设规则
-  'DOMAIN-SUFFIX,googleapis.cn,AUTO', // Google 服务
-  'DOMAIN-SUFFIX,gstatic.com,AUTO', // Google 静态资源
-  'DOMAIN-SUFFIX,xn--ngstr-lra8j.com,AUTO', // Google Play下载服务
-];
-
-// ===========================
-// 第二部分：规则集和代理组配置
-// ======= 自定义规则集 =======
-const customRuleSets = [
-  // 局域网与私有地址
-  'GEOIP,LAN, DIRECT, no-resolve',
-  'RULE-SET,private, DIRECT',
-  'RULE-SET,applications, DIRECT',
-  'RULE-SET,lancidr, DIRECT,no-resolve',
-
-  // 国内直连
-  'RULE-SET,ChinaMedia, DIRECT',
-  'RULE-SET,ChinaDomain, DIRECT',
-  'RULE-SET,direct, DIRECT',
-  'RULE-SET,cncidr, DIRECT,no-resolve',
-  'GEOIP,CN, DIRECT,no-resolve',
-
-  // AI 服务规则
-  'RULE-SET,forAI, AI',
-
-
-
-  // 通用服务代理规则
-  'RULE-SET,apple, AI',
-  'RULE-SET,google, AI',
-  'RULE-SET,github, AI',
-
-  'RULE-SET,GoogleCN, AUTO',
-  'RULE-SET,OneDrive, AUTO',
-  'RULE-SET,icloud, AUTO',
-  'RULE-SET,telegramcidr, AUTO,no-resolve',
-  'RULE-SET,telegram, AUTO,no-resolve',
-  'RULE-SET,forNSFW, NSFW,no-resolve',
-
-  // 国外代理
-  'RULE-SET,proxy, AUTO',
-  'RULE-SET,gfw, AUTO',
-  'RULE-SET,tld-not-cn, AUTO',
-
-  //拦截规则
-  'RULE-SET,reject, REJECT',
-  'RULE-SET,BanEasyListChina, ADS_FILTER',
-  'RULE-SET,BanEasyList, ADS_FILTER',
-
-  // 兜底规则
-  'MATCH, AUTO',
-];
 
 // ======== 配置代理组 ========
 // 规则集通用配置
@@ -405,18 +340,6 @@ const ruleProviders = {
   },
 };
 
-// 域名直连规则 (第三优先级)
-directDomains.forEach((domain) => {
-  customRules.push(`DOMAIN-SUFFIX,${domain},DIRECT`);
-});
-
-// 端口直连规则 (最高优先级 - TUN模式下优先匹配端口)
-directPorts.forEach((port) => {
-  customRules.push(`DST-PORT,${port},DIRECT`);
-});
-
-// 最终规则列表
-const rules = [...customRules, ...customRuleSets];
 
 // ===========================
 // 第三部分：DNS配置 (适用于 Mihomo / Clash Meta 内核)
@@ -480,8 +403,99 @@ const dnsConfig = {
 };
 
 // ===========================
-// 第四部分：主函数
+// 第四部分：函数
 // ===========================
+//
+const getRules = ()=>{
+  // 最终规则列表
+  const customRules = [
+    // 代理关键词规则
+    ...proxyKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords}, AUTO`),
+    // 直连关键词规则
+    ...directKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords}, DIRECT`),
+    // 拦截关键词规则
+    ...rejectKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords}, REJECT`),
+
+
+    'DOMAIN-SUFFIX, googleapis.com, AI',
+    'DOMAIN-SUFFIX, co.jp, EU',
+    // 其他预设规则
+    'DOMAIN-SUFFIX,googleapis.cn,AUTO', // Google 服务
+    'DOMAIN-SUFFIX,gstatic.com,AUTO', // Google 静态资源
+    'DOMAIN-SUFFIX,xn--ngstr-lra8j.com,AUTO', // Google Play下载服务
+  ];
+
+  // ======= 自定义规则集 =======
+  const customRuleSets = [
+    // 局域网与私有地址
+    'GEOIP,LAN, DIRECT, no-resolve',
+    'RULE-SET,private, DIRECT',
+    'RULE-SET,applications, DIRECT',
+    'RULE-SET,lancidr, DIRECT,no-resolve',
+
+    // 国内直连
+    'RULE-SET,ChinaMedia, DIRECT',
+    'RULE-SET,ChinaDomain, DIRECT',
+    'RULE-SET,direct, DIRECT',
+    'RULE-SET,cncidr, DIRECT,no-resolve',
+    'GEOIP,CN, DIRECT,no-resolve',
+
+    // AI 服务规则
+    'RULE-SET,forAI, AI',
+
+
+
+    // 通用服务代理规则
+    'RULE-SET,apple, AI',
+    'RULE-SET,google, AI',
+    'RULE-SET,github, AI',
+
+    'RULE-SET,GoogleCN, AUTO',
+    'RULE-SET,OneDrive, AUTO',
+    'RULE-SET,icloud, AUTO',
+    'RULE-SET,telegramcidr, AUTO,no-resolve',
+    'RULE-SET,telegram, AUTO,no-resolve',
+    'RULE-SET,forNSFW, NSFW,no-resolve',
+
+    // 国外代理
+    'RULE-SET,proxy, AUTO',
+    'RULE-SET,gfw, AUTO',
+    'RULE-SET,tld-not-cn, AUTO',
+
+    //拦截规则
+    'RULE-SET,reject, REJECT',
+    'RULE-SET,BanEasyListChina, ADS_FILTER',
+    'RULE-SET,BanEasyList, ADS_FILTER',
+
+    // 兜底规则
+    'MATCH, AUTO',
+  ];
+  // 域名直连规则 (第三优先级)
+  directDomains.forEach((domain) => {
+    customRules.push(`DOMAIN-SUFFIX,${domain},DIRECT`);
+  });
+
+  // 端口直连规则 (最高优先级 - TUN模式下优先匹配端口)
+  directPorts.forEach((port) => {
+    customRules.push(`DST-PORT,${port},DIRECT`);
+  });
+
+  // 准备高优先级的兜底规则 👉 请把这里的 "AI" 修改为你实际用来承载 AI 流量的策略组名称
+  const aiFallbackRules = [
+    // 强制拦截或代理底层监控探测
+    `DOMAIN-KEYWORD,datadog, AI`,
+    `DOMAIN-KEYWORD,sentry, AI`,
+    `DOMAIN-KEYWORD,sift, AI`,
+
+    // 强制同步时区（防风控时区泄露核心）
+    `GEOSITE,category-ntp, AI`,
+
+    // Anthropic 官方大类全量兜底
+    `GEOSITE,anthropic, AI`
+  ];
+
+  return  [...aiFallbackRules, ...customRules, ...customRuleSets];
+}
 // 程序入口
 function main(config) {
   // 验证配置
@@ -494,6 +508,9 @@ function main(config) {
 
   // 2. 强制指定域名解析策略为仅用 IPv4 (适用于 Mihomo / Clash Meta 内核)
   config['domain-strategy'] = 'UseIPv4';
+
+  //  确保开启了 UDP，因为 NTP (时间同步) 强制走 UDP 协议
+  config['udp'] = true;
 
   const proxyCount = config?.proxies?.length ?? 0;
   const proxyProviderCount = config?.['proxy-providers']
@@ -543,6 +560,7 @@ function main(config) {
 
   // 统计规则中引用到的策略组名；引用到规则组的组即使暂时无节点也必须保留，避免配置校验失败。
   const requiredGroupsFromRules = new Set();
+  const rules = getRules();
   for (const rule of rules) {
     const policyGroup = extractPolicyGroupName(rule);
     if (policyGroup && smartGroups[policyGroup]) {
