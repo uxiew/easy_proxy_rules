@@ -14,8 +14,8 @@
  */
 
 // CDN 配置（可切换）
-const CDN_BASE = 'https://cdn.jsdmirror.com/gh'; // 推荐：JSDMirror站点
-const CDN_BASE_1 = `${CDN_BASE}`; // jsDelivr官方CDN
+const CDN_BASE_CN = 'https://cdn.jsdmirror.com/gh'; // 推荐：JSDMirror站点
+const CDN_BASE = `https://cdn.jsdelivr.net/gh`; // jsDelivr官方CDN
 // const CDN_BASE = "https://gcore.jsdelivr.net/gh";      // 备用：GCore CDN
 // const CDN_BASE = "https://testingcf.jsdelivr.net/gh";  // 备用：Cloudflare CDN
 
