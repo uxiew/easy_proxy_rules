@@ -59,26 +59,50 @@ payload:
   # 客服与第三方周边分析
   - DOMAIN,cdn.usefathom.com
 
-  # --- OpenAI & ChatGPT ---
-  - DOMAIN,chat.openai.com
-  - DOMAIN,api.openai.com
-  - DOMAIN-SUFFIX,chatgpt.com
+  # ==========================================
+  # --- OpenAI & ChatGPT (深度优化版：含高级语音、客户端与防风控) ---
+  # ==========================================
+
+  # 1. 高级语音模式 (Advanced Voice Mode - LiveKit 架构)
+  # 【极其重要】语音模式强依赖 UDP 协议，请务必确保 Clash 及节点开启了 UDP 转发
+  - DOMAIN-SUFFIX,livekit.cloud
+  - DOMAIN-SUFFIX,livekit.run
+  - DOMAIN-SUFFIX,turn.livekit.cloud
+  - DOMAIN-SUFFIX,chatgpt.livekit.cloud
+
+  # 2. 核心主站与客户端基础设施
   - DOMAIN-SUFFIX,openai.com
+  - DOMAIN-SUFFIX,chatgpt.com
+  - DOMAIN-SUFFIX,chatgptapi.com
   - DOMAIN-SUFFIX,oaistatic.com
   - DOMAIN-SUFFIX,oaiusercontent.com
-  - DOMAIN-SUFFIX,auth0.com
-  - DOMAIN-SUFFIX,challenges.cloudflare.com
-  - DOMAIN-SUFFIX,client-api.arkoselabs.com
-  - DOMAIN-SUFFIX,events.statsigapi.net
-  - DOMAIN-SUFFIX,featuregates.org
   - DOMAIN-SUFFIX,openaiapi-site.azureedge.net
-  - DOMAIN-SUFFIX,intercom.io
-  - DOMAIN-SUFFIX,intercomcdn.com
-  - DOMAIN-SUFFIX,stripe.com
+  - DOMAIN-SUFFIX,openaicom.imgix.net
   - DOMAIN-SUFFIX,sora.com
   - DOMAIN-KEYWORD,openai
 
-  # --- Google (Gemini / AI Studio) ---
+  # 3. 风控与人机验证 (Arkose Labs & Cloudflare)
+  # 解决无限弹验证码、验证码加载不出、一直转圈的问题
+  - DOMAIN-SUFFIX,arkoselabs.com
+  - DOMAIN-SUFFIX,client-api.arkoselabs.com
+  - DOMAIN-SUFFIX,challenges.cloudflare.com
+
+  # 4. 监控、遥测与 A/B 测试 (防止因上报本地 IP 被标记为代理环境)
+  - DOMAIN-SUFFIX,events.statsigapi.net
+  - DOMAIN-SUFFIX,featuregates.org
+  - DOMAIN-SUFFIX,sentry.io
+
+  # 5. 第三方周边组件 (Auth、支付、客服)
+  # 【提示】此处全量走代理，可以大幅降低开通 Plus 会员时 Stripe 支付被拒(Declined)的概率
+  - DOMAIN-SUFFIX,auth0.com
+  - DOMAIN-SUFFIX,intercom.io
+  - DOMAIN-SUFFIX,intercomcdn.com
+  - DOMAIN-SUFFIX,stripe.com
+
+  # 6. 官方全量规则兜底 (防漏配)
+  - GEOSITE,openai
+
+  # ======== Google (Gemini / AI Studio) ========
   - DOMAIN,aistudio.google.com
   - DOMAIN,gemini.google.com
   - DOMAIN,bard.google.com
