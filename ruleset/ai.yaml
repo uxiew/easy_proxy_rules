@@ -1,6 +1,7 @@
 # 内容：AI 平台-国外
 payload:
   - DOMAIN-SUFFIX,nightyu.com,DIRECT
+
   # --- OpenAI & ChatGPT ---
   - DOMAIN,chat.openai.com
   - DOMAIN,api.openai.com
@@ -21,16 +22,38 @@ payload:
   - DOMAIN-SUFFIX,sentry.io
   - DOMAIN-KEYWORD,openai
 
-  # --- Anthropic & Claude ---
-  - DOMAIN,claude.ai
+  # --- Anthropic & Claude (已根据最新规则深度完善) ---
+  # 核心域名
+  - DOMAIN-SUFFIX,anthropic.com
   - DOMAIN-SUFFIX,claude.ai
   - DOMAIN-SUFFIX,claude.com
   - DOMAIN-SUFFIX,clau.de
-  - DOMAIN-SUFFIX,anthropic.com
   - DOMAIN-SUFFIX,claudemcpclient.com
+  - DOMAIN-SUFFIX,claudemcpcontent.com
   - DOMAIN-SUFFIX,claudeusercontent.com
   - DOMAIN-KEYWORD,anthropic
   - DOMAIN-KEYWORD,claude
+
+  # CDN 和静态资源
+  - DOMAIN,servd-anthropic-website.b-cdn.net
+  - DOMAIN,anthropic.com.cdn.cloudflare.net
+
+  # 认证与内容服务
+  - DOMAIN,anthropic.auth0.com
+  - DOMAIN,anthropic-com.ghost.io
+
+  # 监控、遥测和反欺诈组件 (防跨区乱跳触发风控)
+  - DOMAIN,browser-intake-us5-datadoghq.com
+  - DOMAIN-KEYWORD,datadog
+  - DOMAIN-KEYWORD,sift
+
+  # 客服与第三方周边分析
+  - DOMAIN,cdn.usefathom.com
+
+  # IP 段/ASN 兜底规则（防 DNS 泄露，确保流量强制走代理）
+  - IP-CIDR,160.79.104.0/21,no-resolve
+  - IP-CIDR6,2607:6bc0::/32,no-resolve
+  - IP-ASN,399358,no-resolve
 
   # --- Google (Gemini / AI Studio) ---
   - DOMAIN,aistudio.google.com
