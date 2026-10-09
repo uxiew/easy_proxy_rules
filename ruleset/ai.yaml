@@ -1,26 +1,35 @@
-# 内容：AI 平台-国外
+# 内容：AI 平台-国外 (极致防封固化版)
+# 适用内核：Clash Meta / Mihomo
+# 注意：在 Clash 引入该 Provider 时，behavior 建议设置为 classical
 payload:
-  - DOMAIN-SUFFIX,nightyu.com,DIRECT
+  # ==========================================
+  # 🔴 第一优先级：Claude 终极防封与兜底拦截
+  # ==========================================
 
-  # --- OpenAI & ChatGPT ---
-  - DOMAIN,chat.openai.com
-  - DOMAIN,api.openai.com
-  - DOMAIN-SUFFIX,chatgpt.com
-  - DOMAIN-SUFFIX,openai.com
-  - DOMAIN-SUFFIX,oaistatic.com
-  - DOMAIN-SUFFIX,oaiusercontent.com
-  - DOMAIN-SUFFIX,auth0.com
-  - DOMAIN-SUFFIX,challenges.cloudflare.com
-  - DOMAIN-SUFFIX,client-api.arkoselabs.com
-  - DOMAIN-SUFFIX,events.statsigapi.net
-  - DOMAIN-SUFFIX,featuregates.org
-  - DOMAIN-SUFFIX,openaiapi-site.azureedge.net
-  - DOMAIN-SUFFIX,intercom.io
-  - DOMAIN-SUFFIX,intercomcdn.com
-  - DOMAIN-SUFFIX,stripe.com
-  - DOMAIN-SUFFIX,sora.com
+  # 1. IP 与 ASN 底层强制兜底 (防 DNS 泄露，一旦域名漏配直接锁死 IP)
+  - IP-ASN,399358,no-resolve
+  - IP-CIDR,160.79.104.0/21,no-resolve
+  - IP-CIDR6,2607:6bc0::/32,no-resolve
+  - IP-CIDR6,2607:6bc0::/48,no-resolve
+
+  # 2. 封堵隐蔽探针与遥测 (防止 Datadog/Sentry 抓取你的国内真实 IP 发送给官方)
+  - DOMAIN-KEYWORD,sentry
   - DOMAIN-SUFFIX,sentry.io
-  - DOMAIN-KEYWORD,openai
+  - DOMAIN-SUFFIX,statsigapi.net
+  - DOMAIN,cdn.growthbook.io
+
+  # 3. NTP 时区强制伪装 (解决肉身系统时间与 IP 所在时区不符的风控)
+  # 注意：这需要 Clash 开启 UDP 转发
+  - GEOSITE,category-ntp
+
+  # 4. Anthropic 官方大类全量兜底
+  - GEOSITE,anthropic
+
+  # ==========================================
+  # 🔵 第二优先级：具体 AI 平台常规分流
+  # ==========================================
+
+  - DOMAIN-SUFFIX,nightyu.com
 
   # --- Anthropic & Claude (已根据最新规则深度完善) ---
   # 核心域名
@@ -50,10 +59,24 @@ payload:
   # 客服与第三方周边分析
   - DOMAIN,cdn.usefathom.com
 
-  # IP 段/ASN 兜底规则（防 DNS 泄露，确保流量强制走代理）
-  - IP-CIDR,160.79.104.0/21,no-resolve
-  - IP-CIDR6,2607:6bc0::/32,no-resolve
-  - IP-ASN,399358,no-resolve
+  # --- OpenAI & ChatGPT ---
+  - DOMAIN,chat.openai.com
+  - DOMAIN,api.openai.com
+  - DOMAIN-SUFFIX,chatgpt.com
+  - DOMAIN-SUFFIX,openai.com
+  - DOMAIN-SUFFIX,oaistatic.com
+  - DOMAIN-SUFFIX,oaiusercontent.com
+  - DOMAIN-SUFFIX,auth0.com
+  - DOMAIN-SUFFIX,challenges.cloudflare.com
+  - DOMAIN-SUFFIX,client-api.arkoselabs.com
+  - DOMAIN-SUFFIX,events.statsigapi.net
+  - DOMAIN-SUFFIX,featuregates.org
+  - DOMAIN-SUFFIX,openaiapi-site.azureedge.net
+  - DOMAIN-SUFFIX,intercom.io
+  - DOMAIN-SUFFIX,intercomcdn.com
+  - DOMAIN-SUFFIX,stripe.com
+  - DOMAIN-SUFFIX,sora.com
+  - DOMAIN-KEYWORD,openai
 
   # --- Google (Gemini / AI Studio) ---
   - DOMAIN,aistudio.google.com
