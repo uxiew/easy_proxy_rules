@@ -115,6 +115,7 @@ payload:
 
   # --- xAI & Grok ---
   - DOMAIN-SUFFIX,grok.com
+  - DOMAIN-SUFFIX,grokipedia.com
   - DOMAIN-SUFFIX,x.com
   - DOMAIN-SUFFIX,x.ai
 
@@ -170,6 +171,7 @@ payload:
 
   # --- 其他主流 AI & 辅助服务 ---
   - DOMAIN,www.perplexity.ai
+  - DOMAIN-SUFFIX,pplx.ai
   - DOMAIN-SUFFIX,perplexity.ai
   - DOMAIN-SUFFIX,genspark.ai
   - DOMAIN-SUFFIX,meta.ai
@@ -202,6 +204,13 @@ payload:
   - DOMAIN-SUFFIX,bortzmeyer.org
   - DOMAIN-KEYWORD,ping0
 
+  # ======== manus =======
+  - DOMAIN-SUFFIX, manus.im
+  - DOMAIN-SUFFIX, manuscdn.com
+
+  # ======== GLM =======
+  - DOMAIN-SUFFIX, z.ai
+
   # ---- add... ----
   - DOMAIN-SUFFIX,grazie.ai
   - DOMAIN-SUFFIX,grazie.aws.intellij.net
@@ -211,3 +220,4 @@ payload:
   - DOMAIN-KEYWORD,cohere
   - DOMAIN-KEYWORD,coze
   - DOMAIN-KEYWORD,groq
+  - DOMAIN-SUFFIX, codeium.com, AI

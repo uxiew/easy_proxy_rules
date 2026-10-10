@@ -8,6 +8,9 @@
 有关键配置注释，可以根据自己的需求自行修改
 
 
-
 ## PAC
 设置：系统代理 -> 代理模式 PAC
+
+
+## module
+ios shadowrocket 的模块
