@@ -346,7 +346,6 @@ const ruleProviders = {
   },
 };
 
-
 // ===========================
 // 第三部分：DNS配置 (适用于 Mihomo / Clash Meta 内核)
 // ===========================
@@ -455,8 +454,7 @@ const getRules = ()=>{
     'RULE-SET,BanEasyListChina, ADS_FILTER',
     'RULE-SET,BanEasyList, ADS_FILTER',
 
-    // 兜底规则
-    'MATCH, AUTO',
+    // ⚠️ 修复：将此处的兜底规则 'MATCH, AUTO' 移出该数组，移至整个规则集的最后面
   ];
 
   const customRules = [
@@ -466,7 +464,6 @@ const getRules = ()=>{
     ...directKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords}, DIRECT`),
     // 拦截关键词规则
     ...rejectKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords}, REJECT`),
-
 
     'DOMAIN-SUFFIX, googleapis.com, AI',
     'DOMAIN-SUFFIX, co.jp, EU',
@@ -495,8 +492,10 @@ const getRules = ()=>{
     `GEOSITE,anthropic, AI`
   ];
 
-  return  [...whiteListRules,...aiFallbackRules,  ...customRules];
+  // ⚠️ 修复：将截断后续匹配的 'MATCH, AUTO' 放在最后执行
+  return [...whiteListRules, ...aiFallbackRules, ...customRules, 'MATCH, AUTO'];
 }
+
 // 程序入口
 function main(config) {
   // 验证配置
@@ -601,11 +600,14 @@ function main(config) {
   // 代理组通用配置
   const groupBaseOption = {
     interval: 300,
-    timeout: 3000,
+    // ⚠️ 修复 1：放宽 timeout 避免冷门或延迟波动节点被客户端强行隐藏
+    timeout: 10000,
     //url: "https://www.gstatic.com/generate_204",
-    url: 'http://www.apple.com/library/test/success.html',
+    //url: 'http://www.apple.com/library/test/success.html',
+    // ⚠️ 修复 2：使用谷歌无内容 HTTPS 测速，防明文 HTTP 被运营商劫持/阻断
+    url: 'https://www.gstatic.com/generate_204',
     lazy: true,
-    'max-failed-times': 3,
+    'max-failed-times': 5,
     hidden: false,
   };
 
@@ -728,7 +730,9 @@ function main(config) {
     const clashGroup = {
       ...groupBaseOption,
       name,
-      type: groupConfig.type || (groupConfig.filter ? 'url-test' : 'select'),
+      // ⚠️ 修复 3：取消地区组（带 filter 的组）被默认强制判定为 url-test。
+      // 现在如果 groupConfig 里没显式写 type，一律按 'select' 处理，避免无法手动点选和自动丢节点。
+      type: groupConfig.type || 'select',
       ...groupConfig,
       proxies: combinedProxies,
       'include-all': false,
@@ -741,19 +745,19 @@ function main(config) {
     finalGroups.push(clashGroup);
   });
 
-  config['proxy-groups'] = finalGroups;
+  // 假设 config.proxies 存放了你所有的原始节点
+  // 我们强制创建一个名为 "🚀 全部节点" 的 Select (手动选择) 组，
+  // 不做任何正则筛选，直接把所有节点全塞进去
+  const allProxies = config.proxies.map(p => p.name);
 
-  // config['proxy-groups'] = Object.entries(smartGroups).map(([name, i]) => {
-  //   return {
-  //     ...groupBaseOption,
-  //     name,
-  //     'include-all': i['include-all'] || true,
-  //     type: i.type || 'select',
-  //     ...i,
-  //   };
-  // });
+  finalGroups.unshift({
+    name: "🚀 全部节点",
+    type: "select",
+    proxies: ["DIRECT", ...allProxies]
+  });
 
   // 覆盖规则配置
+  config['proxy-groups'] = finalGroups;
   config['rule-providers'] = ruleProviders;
   config.rules = rules;
 
