@@ -730,9 +730,8 @@ function main(config) {
     const clashGroup = {
       ...groupBaseOption,
       name,
-      // ⚠️ 修复 3：取消地区组（带 filter 的组）被默认强制判定为 url-test。
-      // 现在如果 groupConfig 里没显式写 type，一律按 'select' 处理，避免无法手动点选和自动丢节点。
-      type: groupConfig.type || 'select',
+      // 取消地区组（带 filter 的组）被默认强制判定为 url-test。
+      type: groupConfig.type || (groupConfig.filter ? 'url-test' : 'select'),
       ...groupConfig,
       proxies: combinedProxies,
       'include-all': false,
