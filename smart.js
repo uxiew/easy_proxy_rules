@@ -268,7 +268,13 @@ const ruleProviders = {
     ...ruleProviderCommon,
     behavior: 'classical',
     type: 'http',
-    url: 'https://raw.githubusercontent.com/klierx/clash-verge-rev-rules/refs/heads/master/ruleset/github.yaml',
+    url: 'https://raw.githubusercontent.com/uxiew/easy_proxy_rules/refs/heads/main/ruleset/github.yaml',
+  },
+  forGlobal: {
+    ...ruleProviderCommon,
+    behavior: 'classical',
+    type: 'http',
+    url: 'https://raw.githubusercontent.com/uxiew/easy_proxy_rules/refs/heads/main/ruleset/global.yaml',
   },
   // 国内直连
   ChinaMedia: {
@@ -407,26 +413,9 @@ const dnsConfig = {
 // ===========================
 //
 const getRules = ()=>{
-  // 最终规则列表
-  const customRules = [
-    // 代理关键词规则
-    ...proxyKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords}, AUTO`),
-    // 直连关键词规则
-    ...directKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords}, DIRECT`),
-    // 拦截关键词规则
-    ...rejectKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords}, REJECT`),
-
-
-    'DOMAIN-SUFFIX, googleapis.com, AI',
-    'DOMAIN-SUFFIX, co.jp, EU',
-    // 其他预设规则
-    'DOMAIN-SUFFIX,googleapis.cn,AUTO', // Google 服务
-    'DOMAIN-SUFFIX,gstatic.com,AUTO', // Google 静态资源
-    'DOMAIN-SUFFIX,xn--ngstr-lra8j.com,AUTO', // Google Play下载服务
-  ];
-
-  // ======= 自定义规则集 =======
-  const customRuleSets = [
+  // ======= 白名单模式 Rules 配置方式 =======
+  // https://github.com/Loyalsoldier/clash-rules#%E7%99%BD%E5%90%8D%E5%8D%95%E6%A8%A1%E5%BC%8F-rules-%E9%85%8D%E7%BD%AE%E6%96%B9%E5%BC%8F%E6%8E%A8%E8%8D%90
+  const  whiteListRules= [
     // 局域网与私有地址
     'GEOIP,LAN, DIRECT, no-resolve',
     'RULE-SET,private, DIRECT',
@@ -446,11 +435,12 @@ const getRules = ()=>{
     // 通用服务代理规则
     'RULE-SET,apple, AI',
     'RULE-SET,google, AI',
-    'RULE-SET,github, AI',
+    'RULE-SET,github, AUTO',
 
     'RULE-SET,GoogleCN, AUTO',
     'RULE-SET,OneDrive, AUTO',
     'RULE-SET,icloud, AUTO',
+    'RULE-SET,forGlobal, AUTO',
     'RULE-SET,telegramcidr, AUTO,no-resolve',
     'RULE-SET,telegram, AUTO,no-resolve',
     'RULE-SET,forNSFW, NSFW,no-resolve',
@@ -468,6 +458,24 @@ const getRules = ()=>{
     // 兜底规则
     'MATCH, AUTO',
   ];
+
+  const customRules = [
+    // 代理关键词规则
+    ...proxyKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords}, AUTO`),
+    // 直连关键词规则
+    ...directKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords}, DIRECT`),
+    // 拦截关键词规则
+    ...rejectKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords}, REJECT`),
+
+
+    'DOMAIN-SUFFIX, googleapis.com, AI',
+    'DOMAIN-SUFFIX, co.jp, EU',
+    // 其他预设规则
+    'DOMAIN-SUFFIX,googleapis.cn,AUTO', // Google 服务
+    'DOMAIN-SUFFIX,gstatic.com,AUTO', // Google 静态资源
+    'DOMAIN-SUFFIX,xn--ngstr-lra8j.com,AUTO', // Google Play下载服务
+  ];
+
   // 域名直连规则 (第三优先级)
   directDomains.forEach((domain) => {
     customRules.push(`DOMAIN-SUFFIX,${domain},DIRECT`);
@@ -487,7 +495,7 @@ const getRules = ()=>{
     `GEOSITE,anthropic, AI`
   ];
 
-  return  [...aiFallbackRules, ...customRules, ...customRuleSets];
+  return  [...whiteListRules,...aiFallbackRules,  ...customRules];
 }
 // 程序入口
 function main(config) {

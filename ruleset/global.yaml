@@ -5802,10 +5802,6 @@ payload:
   - DOMAIN-SUFFIX,classicnike.com
   - DOMAIN-SUFFIX,classics.ac.uk
   - DOMAIN-SUFFIX,classymomsex.com
-  - DOMAIN-SUFFIX,clau.de
-  - DOMAIN-SUFFIX,claude.ai
-  - DOMAIN-SUFFIX,claudemcpclient.com
-  - DOMAIN-SUFFIX,claudeusercontent.com
   - DOMAIN-SUFFIX,clawhub.ai
   - DOMAIN-SUFFIX,clc-london.ac.uk
   - DOMAIN-SUFFIX,clco.cc
@@ -14967,7 +14963,6 @@ payload:
   - DOMAIN-SUFFIX,mantochichi.com
   - DOMAIN-SUFFIX,manufacturingedc.ac.uk
   - DOMAIN-SUFFIX,manurefetish.com
-  - DOMAIN-SUFFIX,manuscdn.com
   - DOMAIN-SUFFIX,manytoon.com
   - DOMAIN-SUFFIX,manyvids.com
   - DOMAIN-SUFFIX,maoeraobjects.ac.uk
@@ -15876,11 +15871,6 @@ payload:
   - DOMAIN-SUFFIX,mirrorsedge2.com
   - DOMAIN-SUFFIX,mirrorsedge2d.com
   - DOMAIN-SUFFIX,misoc.ac.uk
-  - DOMAIN-SUFFIX,missav.ai
-  - DOMAIN-SUFFIX,missav.live
-  - DOMAIN-SUFFIX,missav.uno
-  - DOMAIN-SUFFIX,missav.vip
-  - DOMAIN-SUFFIX,missav123.com
   - DOMAIN-SUFFIX,missendenabbey.ac.uk
   - DOMAIN-SUFFIX,misshotgirls.com
   - DOMAIN-SUFFIX,misskey-square.net
@@ -19270,7 +19260,6 @@ payload:
   - DOMAIN-SUFFIX,ppe.lawyer
   - DOMAIN-SUFFIX,pplah.com
   - DOMAIN-SUFFIX,pplusstatic.com
-  - DOMAIN-SUFFIX,pplx.ai
   - DOMAIN-SUFFIX,ppnnpp.com
   - DOMAIN-SUFFIX,ppp91.cc
   - DOMAIN-SUFFIX,pppds.com
@@ -27650,7 +27639,6 @@ payload:
   - DOMAIN-SUFFIX,cl.ly
   - DOMAIN-SUFFIX,clarionproject.org
   - DOMAIN-SUFFIX,classicalguitarblog.net
-  - DOMAIN-SUFFIX,claude.com
   - DOMAIN-SUFFIX,clb.org.hk
   - DOMAIN-SUFFIX,cleansite.biz
   - DOMAIN-SUFFIX,cleansite.info
@@ -28876,8 +28864,6 @@ payload:
   - DOMAIN-SUFFIX,greenvpn.net
   - DOMAIN-SUFFIX,greenvpn.org
   - DOMAIN-SUFFIX,grindr.com
-  - DOMAIN-SUFFIX,grok.com
-  - DOMAIN-SUFFIX,grokipedia.com
   - DOMAIN-SUFFIX,grotty-monday.com
   - DOMAIN-SUFFIX,ground.news
   - DOMAIN-SUFFIX,gs-discuss.com
@@ -29901,7 +29887,6 @@ payload:
   - DOMAIN-SUFFIX,mansion.com
   - DOMAIN-SUFFIX,mansionpoker.com
   - DOMAIN-SUFFIX,manta.com
-  - DOMAIN-SUFFIX,manus.im
   - DOMAIN-SUFFIX,manyvoices.news
   - DOMAIN-SUFFIX,maplew.com
   - DOMAIN-SUFFIX,marc.info
@@ -30065,8 +30050,6 @@ payload:
   - DOMAIN-SUFFIX,mirrorbooks.com
   - DOMAIN-SUFFIX,mirrormedia.com.tw
   - DOMAIN-SUFFIX,mirrormedia.mg
-  - DOMAIN-SUFFIX,missav.com
-  - DOMAIN-SUFFIX,missav.ws
   - DOMAIN-SUFFIX,mist.vip
   - DOMAIN-SUFFIX,mit.edu
   - DOMAIN-SUFFIX,mitao.com.tw
@@ -32778,9 +32761,7 @@ payload:
   - DOMAIN-SUFFIX,x-art.com
   - DOMAIN-SUFFIX,x-berry.com
   - DOMAIN-SUFFIX,x-wall.org
-  - DOMAIN-SUFFIX,x.ai
   - DOMAIN-SUFFIX,x.co
-  - DOMAIN-SUFFIX,x.com
   - DOMAIN-SUFFIX,x.company
   - DOMAIN-SUFFIX,x1949x.com
   - DOMAIN-SUFFIX,x24hr.com
