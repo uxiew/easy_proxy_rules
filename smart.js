@@ -119,8 +119,8 @@ const RESIDENTIAL = {
 
   // 住宅专用入口端口：mihomo 的 listeners 会把这个端口整体绑到「住宅出口」组，
   // 进来的流量不再经过规则匹配。给 Proxifier / 不走系统代理的程序用（0 = 关闭）。
-  // 用法：Proxifier 里添加 SOCKS5 代理 127.0.0.1:7893，规则里指定要强制走住宅的程序。
-  dedicatedPort: 7893,
+  // 用法：Proxifier 里添加 SOCKS5 代理 127.0.0.1:7865，规则里指定要强制走住宅的程序。
+  dedicatedPort: 7865,
 
   // 【方案 B｜已关闭】整个 RULE-SET,forAI 走住宅
   // 为什么关掉：ai.yaml 是个大杂烩，除了 AI 服务商还塞了 Apple 全家桶、
