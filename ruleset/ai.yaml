@@ -1,108 +1,49 @@
-# 内容：AI 平台-国外 (极致防封固化版)
-# 适用内核：Clash Meta / Mihomo
-# 注意：在 Clash 引入该 Provider 时，behavior 建议设置为 classical
+# ============================================================
+# AI 相关，但「不适合走住宅」的规则 → AI 组（机场）
+# ============================================================
+# 与 ruleset/ai-strict.list 的分工（两者不重复，各管一段）：
+#
+#   ai-strict.list  → 住宅出口  严格 AI 服务商的精确域名 + 人机验证 + 遥测 + 支付
+#   本文件          → AI 组     宽泛匹配、Google 全量、非严格 AI、非 AI 杂项
+#
+# 为什么不能合并成一个文件：
+#   一条 RULE-SET 只能指向一个策略组。两类目标不同（住宅 vs 机场），
+#   物理上必须是两个 rule-provider。能做的只是「去重 + 划清边界」。
+#
+# 已删除的冗余（原文件与 ai-strict.list 完全重复，且 ai-strict 规则排更前）：
+#   anthropic / claude / openai / sentry / statsig / auth0 / stripe / intercom /
+#   livekit / arkoselabs / challenges.cloudflare / cursor / perplexity / midjourney /
+#   manus / grok / x.ai / x.com / poe / mistral / groq / cohere / augmentcode …
+#
+# ⚠️ 本文件保留的 KEYWORD / REGEX 一律走机场，绝不放进住宅清单：
+#   DOMAIN-REGEX,google.* 会命中 googlevideo.com（YouTube 视频流），
+#   丢给住宅就是几 GB 流量按 GB 计费。
+# ============================================================
+
 payload:
-  # ==========================================
-  # 🔴 第一优先级：Claude 终极防封与兜底拦截
-  # ==========================================
 
-  # 1. IP 与 ASN 底层强制兜底 (防 DNS 泄露，一旦域名漏配直接锁死 IP)
-  - IP-ASN,399358,no-resolve
-  - IP-CIDR,160.79.104.0/21,no-resolve
-  - IP-CIDR6,2607:6bc0::/32,no-resolve
-  - IP-CIDR6,2607:6bc0::/48,no-resolve
-
-  # 2. 封堵隐蔽探针与遥测 (防止 Datadog/Sentry 抓取你的国内真实 IP 发送给官方)
-  - DOMAIN-KEYWORD,sentry
-  - DOMAIN-SUFFIX,sentry.io
-  - DOMAIN-SUFFIX,statsigapi.net
-  - DOMAIN,cdn.growthbook.io
-
-  # 3. NTP 时区强制伪装 (解决肉身系统时间与 IP 所在时区不符的风控)
-  # 注意：这需要 Clash 开启 UDP 转发
-  - GEOSITE,category-ntp
-
-  # 4. Anthropic 官方大类全量兜底
-  - GEOSITE,anthropic
-
-  # ==========================================
-  # 🔵 第二优先级：具体 AI 平台常规分流
-  # ==========================================
-
-  - DOMAIN-SUFFIX,nightyu.com
-
-  # --- Anthropic & Claude (已根据最新规则深度完善) ---
-  # 核心域名
-  - DOMAIN-SUFFIX,anthropic.com
-  - DOMAIN-SUFFIX,claude.ai
-  - DOMAIN-SUFFIX,claude.com
-  - DOMAIN-SUFFIX,clau.de
-  - DOMAIN-SUFFIX,claudemcpclient.com
-  - DOMAIN-SUFFIX,claudemcpcontent.com
-  - DOMAIN-SUFFIX,claudeusercontent.com
+  # ========== 宽泛匹配（只能走机场：会命中大量非 AI 流量）==========
   - DOMAIN-KEYWORD,anthropic
   - DOMAIN-KEYWORD,claude
-
-  # CDN 和静态资源
-  - DOMAIN,servd-anthropic-website.b-cdn.net
-  - DOMAIN,anthropic.com.cdn.cloudflare.net
-
-  # 认证与内容服务
-  - DOMAIN,anthropic.auth0.com
-  - DOMAIN,anthropic-com.ghost.io
-
-  # 监控、遥测和反欺诈组件 (防跨区乱跳触发风控)
-  - DOMAIN,browser-intake-us5-datadoghq.com
+  - DOMAIN-KEYWORD,openai
+  - DOMAIN-KEYWORD,sentry
   - DOMAIN-KEYWORD,datadog
   - DOMAIN-KEYWORD,sift
+  - DOMAIN-KEYWORD,cursor
+  - DOMAIN-REGEX,cursor.*
+  - DOMAIN-KEYWORD,midjourney
+  - DOMAIN-REGEX,midjourney.*
+  - DOMAIN-KEYWORD,augmentcode
+  - DOMAIN-REGEX,augmentcode.*
+  - DOMAIN-KEYWORD,cohere
+  - DOMAIN-KEYWORD,coze
+  - DOMAIN-KEYWORD,groq
+  - DOMAIN-KEYWORD,ping0
+  - DOMAIN-KEYWORD,cognitive.microsofttranslator
 
-  # 客服与第三方周边分析
-  - DOMAIN,cdn.usefathom.com
-
-  # ==========================================
-  # --- OpenAI & ChatGPT (深度优化版：含高级语音、客户端与防风控) ---
-  # ==========================================
-
-  # 1. 高级语音模式 (Advanced Voice Mode - LiveKit 架构)
-  # 【极其重要】语音模式强依赖 UDP 协议，请务必确保 Clash 及节点开启了 UDP 转发
-  - DOMAIN-SUFFIX,livekit.cloud
-  - DOMAIN-SUFFIX,livekit.run
-  - DOMAIN-SUFFIX,turn.livekit.cloud
-  - DOMAIN-SUFFIX,chatgpt.livekit.cloud
-
-  # 2. 核心主站与客户端基础设施
-  - DOMAIN-SUFFIX,openai.com
-  - DOMAIN-SUFFIX,chatgpt.com
-  - DOMAIN-SUFFIX,chatgptapi.com
-  - DOMAIN-SUFFIX,oaistatic.com
-  - DOMAIN-SUFFIX,oaiusercontent.com
-  - DOMAIN-SUFFIX,openaiapi-site.azureedge.net
-  - DOMAIN-SUFFIX,openaicom.imgix.net
-  - DOMAIN-SUFFIX,sora.com
-  - DOMAIN-KEYWORD,openai
-
-  # 3. 风控与人机验证 (Arkose Labs & Cloudflare)
-  # 解决无限弹验证码、验证码加载不出、一直转圈的问题
-  - DOMAIN-SUFFIX,arkoselabs.com
-  - DOMAIN-SUFFIX,client-api.arkoselabs.com
-  - DOMAIN-SUFFIX,challenges.cloudflare.com
-
-  # 4. 监控、遥测与 A/B 测试 (防止因上报本地 IP 被标记为代理环境)
-  - DOMAIN-SUFFIX,events.statsigapi.net
-  - DOMAIN-SUFFIX,featuregates.org
-  - DOMAIN-SUFFIX,sentry.io
-
-  # 5. 第三方周边组件 (Auth、支付、客服)
-  # 【提示】此处全量走代理，可以大幅降低开通 Plus 会员时 Stripe 支付被拒(Declined)的概率
-  - DOMAIN-SUFFIX,auth0.com
-  - DOMAIN-SUFFIX,intercom.io
-  - DOMAIN-SUFFIX,intercomcdn.com
-  - DOMAIN-SUFFIX,stripe.com
-
-  # 6. 官方全量规则兜底 (防漏配)
-  - GEOSITE,openai
-
-  # ======== Google (Gemini / AI Studio) ========
+  # ========== Google / Gemini（默认走机场，不走住宅）==========
+  # googleapis / gstatic 是 Google 全家共用（YouTube、Drive、地图），
+  # 塞给住宅会烧掉大量流量，所以 Gemini 默认不开住宅。
   - DOMAIN,aistudio.google.com
   - DOMAIN,gemini.google.com
   - DOMAIN,bard.google.com
@@ -113,110 +54,40 @@ payload:
   - DOMAIN-REGEX,google.*
   - DOMAIN-KEYWORD,google
 
-  # --- xAI & Grok ---
-  - DOMAIN-SUFFIX,grok.com
-  - DOMAIN-SUFFIX,grokipedia.com
-  - DOMAIN-SUFFIX,x.com
-  - DOMAIN-SUFFIX,x.ai
+  # ========== 非严格 AI / 目录站 / 中转（走机场，不烧住宅流量）==========
+  - DOMAIN-SUFFIX,mcp.so
+  - DOMAIN-SUFFIX,modelcontextprotocol.io
+  - DOMAIN-SUFFIX,immersivetranslate.com
+  - DOMAIN-SUFFIX,z.ai
+  - DOMAIN-SUFFIX,nightyu.com
+  - DOMAIN-SUFFIX,daiju.live
+  - DOMAIN-SUFFIX,grazie.ai
+  - DOMAIN-SUFFIX,grazie.aws.intellij.net
+  - DOMAIN-SUFFIX,neuroapi.host
+  - DOMAIN-SUFFIX,codeium.com
 
-  # --- Cursor ---
-  - DOMAIN,cursor.com
-  - DOMAIN,api.cursor.com
-  - DOMAIN,repo49.cursor.com
-  - DOMAIN-SUFFIX,cursor.com
-  - DOMAIN-SUFFIX,cursor.sh
-  - DOMAIN-SUFFIX,cursorapi.com
-  - DOMAIN-REGEX,cursor.*
-  - DOMAIN-KEYWORD,cursor
-
-  # --- Augment Code ---
-  - DOMAIN-SUFFIX,augmentcode.com
-  - DOMAIN-REGEX,augmentcode.*
-  - DOMAIN-KEYWORD,augmentcode
-
-  # --- Microsoft & Copilot ---
-  - DOMAIN,copilot.microsoft.com
-  - DOMAIN,sydney.bing.com
+  # ========== 非 AI 的通用服务（原来混在 AI 清单里）==========
+  - DOMAIN-SUFFIX,figma.com
   - DOMAIN-SUFFIX,bing.com
   - DOMAIN-SUFFIX,microsofttranslator.com
   - DOMAIN-SUFFIX,edge.microsoft.com
-  - DOMAIN-KEYWORD,cognitive.microsofttranslator
-
-  # --- Apple Intelligence ---
-  - DOMAIN,apple-relay.apple.com
-  - DOMAIN,apple-relay.cloudflare.com
-  - DOMAIN,guzzoni.apple.com
-  - DOMAIN,gspe1-ssl.ls.apple.com
-  - DOMAIN-SUFFIX,apple-dns.net
-  - DOMAIN-SUFFIX,apple-relay.apple.com
-  - DOMAIN-SUFFIX,apple-relay.cloudflare.com
-  - DOMAIN-SUFFIX,apple-relay.fastly-edge.com
-  - DOMAIN-SUFFIX,apps.mzstatic.com
-  - DOMAIN-SUFFIX,cp4.cloudflare.com
-  - DOMAIN-SUFFIX,gateway.icloud.com
-  - DOMAIN-SUFFIX,smoot.apple.com
-  - DOMAIN-KEYWORD,apple-relay
-
-  # --- Midjourney & AI 绘图 ---
-  - DOMAIN,www.midjourney.com
-  - DOMAIN,cdn.midjourney.com
-  - DOMAIN-SUFFIX,midjourney.com
-  - DOMAIN-SUFFIX,mj-gallery.com
   - DOMAIN-SUFFIX,discord.com
   - DOMAIN-SUFFIX,discord.gg
   - DOMAIN-SUFFIX,discordapp.com
   - DOMAIN-SUFFIX,discordapp.net
-  - DOMAIN-REGEX,midjourney.*
-  - DOMAIN-KEYWORD,midjourney
 
-  # --- 其他主流 AI & 辅助服务 ---
-  - DOMAIN,www.perplexity.ai
-  - DOMAIN-SUFFIX,pplx.ai
-  - DOMAIN-SUFFIX,perplexity.ai
-  - DOMAIN-SUFFIX,genspark.ai
-  - DOMAIN-SUFFIX,meta.ai
-  - DOMAIN-SUFFIX,metademolab.com
-  - DOMAIN-SUFFIX,poe.com
-  - DOMAIN-SUFFIX,groq.com
-  - DOMAIN-SUFFIX,mistral.ai
-  - DOMAIN-SUFFIX,arena.ai
-  - DOMAIN-SUFFIX,lmarena.ai
-  - DOMAIN-SUFFIX,nof1.ai
-  - DOMAIN-SUFFIX,lovable.dev
-  - DOMAIN-SUFFIX,deepwiki.com
-  - DOMAIN-SUFFIX,daiju.live
-  - DOMAIN-SUFFIX,figma.com
-  - DOMAIN-SUFFIX,framelink.ai
-  - DOMAIN-SUFFIX,opencode.ai
-  - DOMAIN-SUFFIX,difyai.com
-  - DOMAIN-SUFFIX,modelcontextprotocol.io
-  - DOMAIN-SUFFIX,immersivetranslate.com
-  - DOMAIN-SUFFIX,identrust.com
-  - DOMAIN-SUFFIX,signalr.net
-  - DOMAIN-SUFFIX,you.com
+  # ========== Apple 智能（部分）==========
+  # apps.mzstatic.com / gateway.icloud.com / smoot.apple.com / apple-dns.net 等
+  # 已从这里删除，交给 RULE-SET,apple → DIRECT（TRAFFIC.appleDirect），省机场流量。
+  # 只留 iCloud Private Relay：它本身是代理服务，直连不通，只能走机场。
+  - DOMAIN-SUFFIX,apple-relay.apple.com
+  - DOMAIN-SUFFIX,apple-relay.cloudflare.com
+  - DOMAIN-SUFFIX,apple-relay.fastly-edge.com
+  - DOMAIN-KEYWORD,apple-relay
 
-  # --- 社区与小众协议 (Gemini/Gopher Space) ---
+  # ========== 小众协议 / 兜底 ==========
   - DOMAIN-SUFFIX,circumlunar.space
   - DOMAIN-SUFFIX,vulpes.one
   - DOMAIN-SUFFIX,mozz.us
   - DOMAIN-SUFFIX,conman.org
   - DOMAIN-SUFFIX,bortzmeyer.org
-  - DOMAIN-KEYWORD,ping0
-
-  # ======== manus =======
-  - DOMAIN-SUFFIX, manus.im
-  - DOMAIN-SUFFIX, manuscdn.com
-
-  # ======== GLM =======
-  - DOMAIN-SUFFIX, z.ai
-
-  # ---- add... ----
-  - DOMAIN-SUFFIX,grazie.ai
-  - DOMAIN-SUFFIX,grazie.aws.intellij.net
-  - DOMAIN-SUFFIX,mcp.so
-  - DOMAIN-SUFFIX,neuroapi.host
-  - DOMAIN-SUFFIX,openai.azure.com
-  - DOMAIN-KEYWORD,cohere
-  - DOMAIN-KEYWORD,coze
-  - DOMAIN-KEYWORD,groq
-  - DOMAIN-SUFFIX, codeium.com, AI

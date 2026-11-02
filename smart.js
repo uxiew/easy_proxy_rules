@@ -117,6 +117,11 @@ const RESIDENTIAL = {
   // 中转站、镜像站、API 代理不在这个文件里，继续走普通 AI 组（机场），不浪费住宅带宽。
   aiStrict: true,
 
+  // 住宅专用入口端口：mihomo 的 listeners 会把这个端口整体绑到「住宅出口」组，
+  // 进来的流量不再经过规则匹配。给 Proxifier / 不走系统代理的程序用（0 = 关闭）。
+  // 用法：Proxifier 里添加 SOCKS5 代理 127.0.0.1:7893，规则里指定要强制走住宅的程序。
+  dedicatedPort: 7893,
+
   // 【方案 B｜已关闭】整个 RULE-SET,forAI 走住宅
   // 为什么关掉：ai.yaml 是个大杂烩，除了 AI 服务商还塞了 Apple 全家桶、
   // DOMAIN-KEYWORD,google、DOMAIN-REGEX,google.*、sentry/datadog/auth0 等通用服务商。
@@ -559,6 +564,18 @@ const getRules = ()=>{
     'RULE-SET,applications, DIRECT',
     'RULE-SET,lancidr, DIRECT,no-resolve',
 
+    // ===== Anthropic 的 IP 段 → 住宅出口（必须，否则同一账号两个出口 IP）=====
+    // 原来这三条在 ruleset/ai.yaml 里，跟着 forAI 走 AI 组：
+    // 域名走住宅、程序直连 IP 走机场 → 风控看到「同一会话两个 IP」，比用脏 IP 更糟。
+    // fake-ip 模式下域名请求不会命中 IP 规则，但 Claude 桌面端 / SDK 直连 IP 时会。
+    ...(RESIDENTIAL.enabled && RESIDENTIAL.aiStrict
+      ? [
+          `IP-ASN,399358,${RESIDENTIAL.group},no-resolve`,
+          `IP-CIDR,160.79.104.0/21,${RESIDENTIAL.group},no-resolve`,
+          `IP-CIDR6,2607:6bc0::/32,${RESIDENTIAL.group},no-resolve`,
+        ]
+      : []),
+
     // ===== AI 服务商 → 住宅出口（最高优先级）=====
     // 必须排在 RULE-SET,forAI 之前：ai.yaml 里就有 DOMAIN-SUFFIX,anthropic.com，
     // 放在后面的话 forAI 先命中，Claude 会走机场，住宅出口永远轮不到。
@@ -918,6 +935,29 @@ function main(config) {
   config['proxy-groups'] = finalGroups;
   config['rule-providers'] = ruleProviders;
   config.rules = rules;
+
+  // ===== 住宅专用入口端口（给 Proxifier / 其他客户端「强制走住宅」用）=====
+  // mihomo 的 listeners 可以把某个端口整体绑定到一个策略组，不再经过规则匹配。
+  // 用途：某些程序（Electron 应用、游戏、终端工具）不走系统代理，
+  //      用 Proxifier 指向这个端口，就能让它们的所有流量强制从住宅 IP 出去，
+  //      不必再为每个域名写规则。
+  // 关闭方法：把 RESIDENTIAL.dedicatedPort 设为 0。
+  if (RESIDENTIAL.enabled && RESIDENTIAL.dedicatedPort) {
+    const port = Number(RESIDENTIAL.dedicatedPort);
+    const listeners = Array.isArray(config.listeners) ? config.listeners : [];
+    // 避免重复注册（覆写可能被多次执行）
+    const exists = listeners.some((l) => l && l.name === 'residential-in');
+    if (!exists) {
+      listeners.push({
+        name: 'residential-in',
+        type: 'mixed',
+        port,
+        listen: '127.0.0.1',
+        proxy: RESIDENTIAL.group,
+      });
+    }
+    config.listeners = listeners;
+  }
 
   // 返回修改后的配置
   return config;
