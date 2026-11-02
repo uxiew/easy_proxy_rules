@@ -1,0 +1,176 @@
+# ============================================================
+# AI 服务商官方域名 —— 强制走静态住宅 IP
+# ============================================================
+# 谁在用：smart.js 里 `RULE-SET,aiStrict, 住宅出口`，排在 forAI 之前
+# 格式：classical + text，一行一条，子域自动包含
+#
+# ⚠️ 三条铁律（都踩过坑，别改）：
+#   1. 只用 DOMAIN / DOMAIN-SUFFIX，禁止 DOMAIN-KEYWORD / DOMAIN-REGEX。
+#      ai.yaml 里那句 `DOMAIN-REGEX,google.*` 会连 googlevideo.com（YouTube 视频流）
+#      一起命中——几 GB 流量按住宅计费，一小时烧光一个月额度。
+#   2. 绝对不能写行尾注释。`DOMAIN-SUFFIX,a.com  # 注释` 会被整体当成域名，
+#      规则静默失效、永不匹配（已用 mihomo v1.19 实测）。注释只能单独一行。
+#   3. 主站走住宅，它的「人机验证 / 登录 / 遥测」必须一起走住宅。
+#      Turnstile 看到住宅 IP、主站请求却从机场 IP 来，风控直接判会话异常。
+#
+# 原则：这里只放「有账号体系、会风控」的 AI 服务商。
+#       中转站 / 镜像站 / API 代理留给 AI 组（机场），它们本身不查 IP 画像。
+# ============================================================
+
+
+# ------------------------------------------------------------
+# Anthropic / Claude —— 风控最严，全套覆盖
+# ------------------------------------------------------------
+
+# api / console / docs / support 全在这一个后缀下
+DOMAIN-SUFFIX,anthropic.com
+DOMAIN-SUFFIX,claude.ai
+# docs.claude.com、support.claude.com
+DOMAIN-SUFFIX,claude.com
+# Artifacts 公开分享页
+DOMAIN-SUFFIX,claude.site
+# 官方短链（邮件里的登录/验证链接）
+DOMAIN-SUFFIX,clau.de
+# 附件与文件预览
+DOMAIN-SUFFIX,claudeusercontent.com
+# Claude Code MCP 客户端
+DOMAIN-SUFFIX,claudemcpclient.com
+# Claude Code MCP 内容
+DOMAIN-SUFFIX,claudemcpcontent.com
+# 登录托管页（漏了会一直跳登录）
+DOMAIN,anthropic.auth0.com
+DOMAIN,anthropic.com.cdn.cloudflare.net
+DOMAIN,servd-anthropic-website.b-cdn.net
+# 官方博客（页面内嵌资源）
+DOMAIN,anthropic-com.ghost.io
+
+# --- Claude / OpenAI 的人机验证与登录（必须与主站同 IP）---
+
+# Cloudflare Turnstile 人机验证。这条最关键：
+# 主站走住宅、验证走机场，风控立刻判会话异常，换了 IP 也照样被拦。
+DOMAIN-SUFFIX,challenges.cloudflare.com
+# Arkose Labs 验证码（OpenAI 注册/登录常用）
+DOMAIN-SUFFIX,arkoselabs.com
+DOMAIN-SUFFIX,client-api.arkoselabs.com
+# Auth0 登录托管（anthropic.auth0.com 之外的其他入口）
+DOMAIN-SUFFIX,auth0.com
+
+# --- Claude 的 KYC 与反欺诈 ---
+
+# 证件核验（Persona Identities）
+DOMAIN-SUFFIX,withpersona.com
+# 注册/支付反欺诈打分
+DOMAIN-SUFFIX,sift.com
+DOMAIN-SUFFIX,siftscience.com
+# 证书链，缺了 API 握手失败
+DOMAIN-SUFFIX,identrust.com
+
+# --- Claude 语音 / 客服 / 支付 ---
+
+# 语音对话（WebRTC 信令）
+DOMAIN-SUFFIX,livekit.cloud
+DOMAIN-SUFFIX,livekit.run
+# 客服窗口
+DOMAIN-SUFFIX,intercom.io
+DOMAIN-SUFFIX,intercomcdn.com
+# 订阅付款
+DOMAIN-SUFFIX,stripe.com
+# 实时推送
+DOMAIN-SUFFIX,signalr.net
+
+# --- Claude 的遥测（IP 必须与主站一致，否则会话被判异常）---
+
+# 功能开关 / AB 实验
+DOMAIN-SUFFIX,statsigapi.net
+DOMAIN-SUFFIX,featuregates.org
+DOMAIN,cdn.growthbook.io
+DOMAIN,browser-intake-us5-datadoghq.com
+DOMAIN,cdn.usefathom.com
+# 前端报错上报（流量极小）
+DOMAIN-SUFFIX,sentry.io
+
+
+# ------------------------------------------------------------
+# OpenAI / ChatGPT
+# ------------------------------------------------------------
+DOMAIN-SUFFIX,openai.com
+DOMAIN-SUFFIX,chatgpt.com
+DOMAIN-SUFFIX,chatgptapi.com
+# 网页静态资源
+DOMAIN-SUFFIX,oaistatic.com
+# 上传/下载附件
+DOMAIN-SUFFIX,oaiusercontent.com
+DOMAIN-SUFFIX,openaiapi-site.azureedge.net
+DOMAIN-SUFFIX,openaicom.imgix.net
+DOMAIN-SUFFIX,sora.com
+DOMAIN-SUFFIX,openai.azure.com
+
+
+# ------------------------------------------------------------
+# xAI / Grok
+# ------------------------------------------------------------
+DOMAIN-SUFFIX,grok.com
+DOMAIN-SUFFIX,grokipedia.com
+DOMAIN-SUFFIX,x.ai
+# Grok 登录态挂在 X 账号上
+DOMAIN-SUFFIX,x.com
+
+
+# ------------------------------------------------------------
+# Perplexity / Mistral / Groq / Cohere
+# ------------------------------------------------------------
+DOMAIN-SUFFIX,perplexity.ai
+DOMAIN-SUFFIX,pplx.ai
+DOMAIN-SUFFIX,mistral.ai
+DOMAIN-SUFFIX,groq.com
+DOMAIN-SUFFIX,cohere.com
+DOMAIN-SUFFIX,cohere.ai
+
+
+# ------------------------------------------------------------
+# 其他有账号体系的 AI 服务
+# ------------------------------------------------------------
+DOMAIN-SUFFIX,poe.com
+DOMAIN-SUFFIX,meta.ai
+DOMAIN-SUFFIX,metademolab.com
+# Cursor IDE（含 cursor.sh / api）
+DOMAIN-SUFFIX,cursor.com
+DOMAIN-SUFFIX,cursor.sh
+DOMAIN-SUFFIX,cursorapi.com
+DOMAIN-SUFFIX,augmentcode.com
+DOMAIN-SUFFIX,codeium.com
+DOMAIN,copilot.microsoft.com
+# Copilot 后端
+DOMAIN,sydney.bing.com
+DOMAIN-SUFFIX,midjourney.com
+DOMAIN-SUFFIX,mj-gallery.com
+DOMAIN-SUFFIX,manus.im
+DOMAIN-SUFFIX,manuscdn.com
+DOMAIN-SUFFIX,lovable.dev
+DOMAIN-SUFFIX,opencode.ai
+DOMAIN-SUFFIX,framelink.ai
+DOMAIN-SUFFIX,deepwiki.com
+DOMAIN-SUFFIX,lmarena.ai
+DOMAIN-SUFFIX,arena.ai
+DOMAIN-SUFFIX,genspark.ai
+DOMAIN-SUFFIX,you.com
+DOMAIN-SUFFIX,nof1.ai
+DOMAIN-SUFFIX,difyai.com
+
+
+# ------------------------------------------------------------
+# Gemini / Google AI —— 默认关闭
+# ------------------------------------------------------------
+# 只把 gemini.google.com 丢给住宅、googleapis/gstatic 留在机场，
+# 会造成「页面在住宅 IP、接口在机场 IP」的割裂，反而更容易触发 Google 风控。
+# 真要开，必须把下面 7 行一起放开（含 Google 通用资产）。
+# 注意 gstatic.com / googleapis.com 是 Google 全家共用（YouTube、Drive、地图），
+# 打开后住宅流量会明显上涨，自行权衡。
+#
+# DOMAIN,gemini.google.com
+# DOMAIN,aistudio.google.com
+# DOMAIN,bard.google.com
+# DOMAIN,makersuite.google.com
+# DOMAIN-SUFFIX,generativelanguage.googleapis.com
+# DOMAIN-SUFFIX,googleapis.com
+# DOMAIN-SUFFIX,gstatic.com

@@ -1,0 +1,24 @@
+# ============================================================
+# 补充直连域名清单
+# ============================================================
+# 谁在用：smart.js 里的 `RULE-SET,directExtra, DIRECT`
+# 来源：原 smart.js 里的 directDomains 数组 + customRules 里的 `DOMAIN-SUFFIX, co.jp, EU`
+# 说明：前 7 条其实已被 GEOSITE,cn 覆盖，留着是给「GEOSITE 数据没更新」时兜底。
+# ============================================================
+
+# --- 国内常用 ---
+DOMAIN-SUFFIX,baidu.com
+DOMAIN-SUFFIX,qq.com
+DOMAIN-SUFFIX,163.com
+DOMAIN-SUFFIX,taobao.com
+DOMAIN-SUFFIX,jd.com
+# 所有 .cn 结尾
+DOMAIN-SUFFIX,cn
+# 苹果中国服务
+DOMAIN-SUFFIX,apple.com.cn
+
+# --- 日本站点 ---
+# 原来这条是 `DOMAIN-SUFFIX, co.jp, EU`：日本站点绕道欧洲节点，延迟翻倍还白烧流量。
+# 你人在日本，直连就是最快的。如果确实需要用日本以外的 IP 访问某些日区服务，
+# 把下面这行注释掉，再在覆写 YAML 里自己写 `+rules: [DOMAIN-SUFFIX,co.jp,EU]`。
+DOMAIN-SUFFIX,co.jp

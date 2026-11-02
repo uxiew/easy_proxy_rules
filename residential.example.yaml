@@ -1,0 +1,62 @@
+# ============================================================
+# 住宅出口（Webshare 静态住宅 IP）—— 覆写 YAML 模板
+# ============================================================
+# 用途：只放「连接信息」这种敏感内容，配合 smart.js 使用。
+#   smart.js 负责：建组「住宅出口」+ 决定哪类规则走住宅（逻辑，公开）
+#   ruleset/residential.list 负责：具体哪些域名走住宅（一行一个，随时改）
+#   本文件负责：节点地址/账号/密码/跳板（密钥，私有不提交）
+#
+# 用法：
+#   1. Clash Party → 覆写 → 新建（或导入本地文件）→ 把下面内容粘进去、填好凭据 → 保存
+#   2. 设为「全局」覆写（和 smart.js 一样），顺序不用管
+#      —— smart.js 用 include-all-proxies 动态收编，前后都行（已实测）
+#   3. 重载配置后到「代理」页，把「住宅出口」组切到 🏠 住宅-xxx
+#
+# ⚠️ 三个必须注意的点：
+#   1. 第一行必须是 `+proxies` 而不是 `proxies`：
+#      不带 `+` 会把机场的全部节点整体替换掉，直接全网断流。
+#   2. 节点名必须含「住宅」或「WS-」（对应 smart.js 里的 RESIDENTIAL.nodePattern），
+#      否则不会被收编进「住宅出口」组。
+#   3. 不要在这里重复定义名为「住宅出口」的组，会和 smart.js 建的组重名报错。
+# ============================================================
+
++proxies:
+  # ---------- 美国静态住宅（示例，把 4 个值换成 Webshare 后台的） ----------
+  - name: '🏠 住宅-US' # 名字里的「住宅」是关键，决定它会被收编进哪个组
+    type: http # Webshare 给 HTTP 代理就填 http；给 SOCKS5 就填 socks5
+    server: 203.0.113.10 # ← 换成你的静态住宅 IP
+    port: 12345 # ← 换成端口
+    username: 'your-username' # ← 换成用户名
+    password: 'your-password' # ← 换成密码
+    udp: false # 住宅代理基本不支持 UDP，保持 false（QUIC 会自动回落 TCP）
+    # ⚠️ 链式代理的核心：先经机场节点出去，再由住宅 IP 落地。
+    #    删掉这一行 = 本机直连住宅 IP（国内通常又慢又抖，不建议）。
+    #    可选值：AUTO（全机场自动择优，最稳）/ JP / US / SG（按地区固定，切换更少）
+    dialer-proxy: AUTO
+
+  # ---------- 备用写法：SOCKS5 + HTTPS 代理 ----------
+  # - name: '🏠 住宅-UK'
+  #   type: socks5
+  #   server: 203.0.113.11
+  #   port: 1080
+  #   username: 'your-username'
+  #   password: 'your-password'
+  #   udp: false
+  #   dialer-proxy: AUTO
+  #
+  # - name: '🏠 住宅-DE'      # 如果 Webshare 给的是 https:// 代理
+  #   type: http
+  #   tls: true
+  #   server: 203.0.113.12
+  #   port: 443
+  #   username: 'your-username'
+  #   password: 'your-password'
+  #   dialer-proxy: AUTO
+
+# ------------------------------------------------------------
+# 可选：临时给某些域名补规则（不改 smart.js 也能加）
+# 规则会插到最前面，优先级高于 smart.js 里的住宅规则和所有 RULE-SET。
+# ------------------------------------------------------------
+# +rules:
+#   - DOMAIN-SUFFIX,perplexity.ai,住宅出口
+#   - DOMAIN-SUFFIX,notion.so,住宅出口

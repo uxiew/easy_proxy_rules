@@ -1,0 +1,20 @@
+# ============================================================
+# Google 通用资产（走机场 AUTO，不走住宅）
+# ============================================================
+# 谁在用：smart.js 里的 `RULE-SET,autoExtra, AUTO`
+# 来源：原 smart.js customRules 里硬编码的 3 条
+# 注意：这 3 条与上游 RULE-SET,google / RULE-SET,GoogleCN 有重叠，
+#       正常情况下轮不到它们命中；留着是为了上游规则集调整时不至于掉进 tld-not-cn。
+#       想让它们真正生效，就把 smart.js 里 autoExtra 那一行挪到 google 之前。
+# ============================================================
+
+# Google 服务
+DOMAIN-SUFFIX,googleapis.cn
+# Google 静态资源
+DOMAIN-SUFFIX,gstatic.com
+# Google Play 下载（中文 IDN 域名）
+DOMAIN-SUFFIX,xn--ngstr-lra8j.com
+
+# 原来还有一条 `DOMAIN-SUFFIX, googleapis.com, AI`，已删除：
+# 它被 RULE-SET,google 完全覆盖，而且 googleapis 被所有 Google 服务共用
+# （Drive / Maps / YouTube API），塞给住宅出口只会烧住宅流量。
