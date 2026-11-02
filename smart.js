@@ -36,8 +36,13 @@
  */
 
 // CDN 配置（可切换）
-const CDN_BASE_CN = 'https://cdn.jsdmirror.com/gh'; // 推荐：JSDMirror站点
-const CDN_BASE = `https://cdn.jsdelivr.net/gh`; // jsDelivr官方CDN
+// ⚠️ 规则集是在「内核还没起来」时拉取的，那一刻没有代理可用，必须选国内直连能通的源。
+//    jsDelivr 官方 CDN 在国内多数网络下 TLS 直接失败（实测 HTTP 000，已存在的旧文件也 000），
+//    后果是 rule-provider 全部为空、所有流量掉进 MATCH → AUTO，国内站也绕道境外。
+//    jsdmirror 实测 200，覆盖本仓库和 Loyalsoldier / ACL4SSR 上游。
+const CDN_BASE_CN = 'https://cdn.jsdmirror.com/gh'; // 国内镜像（默认）
+const CDN_BASE = CDN_BASE_CN;
+// const CDN_BASE = `https://cdn.jsdelivr.net/gh`; // 海外网络可切回 jsDelivr 官方
 // const CDN_BASE = "https://gcore.jsdelivr.net/gh";      // 备用：GCore CDN
 // const CDN_BASE = "https://testingcf.jsdelivr.net/gh";  // 备用：Cloudflare CDN
 
