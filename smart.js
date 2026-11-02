@@ -11,6 +11,28 @@
  * - 新增 directSSHIPs 配置SSH服务器IP/网段
  * - 新增 directPorts 配置直连端口(默认22)
  * - 规则优先级：端口直连 > IP直连 > 域名直连 > 专用规则
+ *
+ * 【本文件 vs 覆写 YAML 的职责边界】(新增)
+ * 本文件会被提交到公共仓库，因此只放「逻辑」，不放任何服务器/账号/密码。
+ * - 这里：建组「住宅出口」+ 决定"哪一类规则走哪个组"
+ * - 覆写 YAML：住宅节点的 server/port/username/password/dialer-proxy（密钥）
+ * 两边通过「节点名」解耦：覆写里的节点名只要含「住宅」或「WS-」，就会被自动收编进组里。
+ *
+ * 【规则内容去哪了】(新增)
+ * 域名清单不再写在脚本里，全部在仓库的 ruleset/ 下，改域名不用动 JS：
+ *   ruleset/residential.list  → 住宅出口（OpenAI/Claude/账号支付等）
+ *   ruleset/direct-extra.list → 强制直连（国内常用 + co.jp）
+ *   ruleset/auto-extra.list   → Google 通用资产（走机场 AUTO）
+ *   ruleset/ai.yaml           → AI 平台规则集（forAI）
+ * 脚本里只留三类没法放进规则集的：DOMAIN-KEYWORD / DST-PORT / IP-CIDR。
+ *
+ * 【⚠️ 多个覆写文件的应用顺序】(新增，踩坑点)
+ * Clash Party 按「覆写列表」的顺序依次应用，本脚本是**整体替换**的：
+ *     config['proxy-groups'] = ...   config.rules = ...   config['rule-providers'] = ...
+ * 也就是说，排在 smart.js **前面**的 YAML 覆写，它加的 rules / proxy-groups /
+ * rule-providers 会被本脚本整段丢掉（只有 proxies 能活下来，因为脚本不重建节点列表）。
+ * 结论：所有 YAML 覆写都必须排在 smart.js **后面**，多写几个文件也不会互相覆盖，
+ *       只要每个文件都用 `+` 前缀（`+proxies` / `+rules` / `+proxy-groups`）。
  */
 
 // CDN 配置（可切换）
@@ -29,20 +51,12 @@ const proxyKeywords = [
 
 // 直连关键词
 const directKeywords = [
-    //"example",  示例，可以添加需要直连的关键词
-  ],
-  // 【直连网址 (白名单)】
-  // 作用：列表内的域名，强制不走代理，直接连接。
-  // 理由：国内网站走代理反而变慢，或解决某些应用在代理下无法使用的问题。
-  directDomains = [
-    'baidu.com',
-    'qq.com',
-    '163.com',
-    'taobao.com',
-    'jd.com',
-    'cn', // 所有 .cn 结尾的域名
-    'apple.com.cn', // 苹果服务
-  ];
+  //"example",  示例，可以添加需要直连的关键词
+];
+
+// 【说明】原来这里的 directDomains 数组（baidu/qq/163/taobao/jd/cn/apple.com.cn）
+// 已迁移到 ruleset/direct-extra.list。那 7 条其实全被 GEOSITE,cn 覆盖，属于冗余，
+// 统一放文件里：以后加直连域名只改文件，不用动脚本，smart.js 也不会越写越长。
 
 // 拦截关键词
 const rejectKeywords = [
@@ -63,9 +77,81 @@ const directSSHIPs = [
   // "10.0.0.0/8",      // CIDR网段格式
 ];
 
+// ===========================
+// 【新增】静态住宅 IP 出口（链式代理）
+// ===========================
+// 为什么这么拆：住宅代理的账号密码属于敏感信息，不能进会公开的 smart.js。
+// 所以这里只做「建组 + 写规则」，连接信息全部由覆写 YAML 提供。
+//
+// 链路：本地 → 机场节点(dialer-proxy) → 住宅 IP → 目标站点
+//   机场负责「跑得快」，住宅 IP 负责「脸干净」，这也是住宅代理在国内最稳的用法
+//   （从国内直连海外住宅 IP 通常又慢又不稳，别省掉跳板）。
+//
+// 覆写 YAML 里要写的东西（示例见仓库 residential.example.yaml）：
+//   proxies:
+//     - name: '🏠 住宅-US'          # 名字必须能命中下面的 nodePattern
+//       type: http                   # 或 socks5，按 Webshare 后台给的协议
+//       server: x.x.x.x
+//       port: 12345
+//       username: 'xxx'
+//       password: 'xxx'
+//       dialer-proxy: AUTO           # 关键：用机场节点当跳板
+//       udp: false                   # 住宅代理基本不支持 UDP
+//   proxy-groups 不需要你写，本脚本会建「住宅出口」组并自动收编上面这个节点。
+//
+// 组内默认选中 AI，所以：没配住宅节点时行为与改造前完全一致，不会把配置搞挂；
+// 配好之后在 Clash Party「代理」页把「住宅出口」切到 🏠 住宅-xxx 即生效（只需一次）。
+const RESIDENTIAL = {
+  enabled: true, // 一键开关：false = 完全回到改造前的行为
+  group: '住宅出口', // 组名，规则引用它；不要在覆写 YAML 里重复定义同名组，否则内核报重名
+  nodePattern: '住宅|WS-', // 节点名匹配（Go RE2 正则），覆写里的节点名必须能命中
+
+  // 【方案 A｜当前采用】AI 服务商官方域名走住宅
+  // ai-strict.list 里只放「有账号体系、会风控」的服务商（Claude / OpenAI / Grok / Perplexity …），
+  // 连同它们的人机验证、登录托管、遥测域名一起走住宅——主站和验证必须同 IP，否则照样被拦。
+  // 中转站、镜像站、API 代理不在这个文件里，继续走普通 AI 组（机场），不浪费住宅带宽。
+  aiStrict: true,
+
+  // 【方案 B｜已关闭】整个 RULE-SET,forAI 走住宅
+  // 为什么关掉：ai.yaml 是个大杂烩，除了 AI 服务商还塞了 Apple 全家桶、
+  // DOMAIN-KEYWORD,google、DOMAIN-REGEX,google.*、sentry/datadog/auth0 等通用服务商。
+  // 整段丢给住宅的后果：googlevideo.com（YouTube 视频流）也会命中 DOMAIN-REGEX,google.*，
+  // 几 GB 流量按住宅计费，一小时烧掉一个月额度。
+  // 想回到「一刀切」就把 aiStrict 设 false、这里设 true。
+  allAI: false,
+
+  // 走住宅出口的域名清单已迁出到 ruleset/（一行一个 DOMAIN-SUFFIX），
+  //   ruleset/ai-strict.list   → AI 服务商及其验证/遥测依赖
+  //   ruleset/residential.list → 非 AI 的账号/支付/电商
+  // 以后增删站点直接改那两个文件，不用碰脚本。
+};
+
+// ===========================
+// 【新增】省流量开关（国内直连）
+// ===========================
+// 机场流量是按 GB 算的，下面两类规则会把大量本该直连的流量送进代理，这里统一收口。
+const TRAFFIC = {
+  // GEOSITE,cn → DIRECT。原来只靠 RULE-SET,ChinaDomain/direct + GEOIP,CN 兜底，
+  // 而 GEOIP,CN 是 IP 规则，对 fake-ip 域名无效，漏网的国内站会掉进 tld-not-cn → AUTO 白烧流量。
+  domesticDirect: true,
+  // Apple 全家桶（iCloud 同步 / App Store / 系统更新）原来是 RULE-SET,apple → AI、
+  // RULE-SET,icloud → AUTO，等于把几个 GB 的更新包全走机场。国内/日本直连 Apple 都有 CDN，
+  // 改成 DIRECT 是这份配置里最省流量的一刀。
+  appleDirect: true,
+};
+
 // ===========自动识别并分配 策略组=========
 // ===========自动识别并分配 策略组=========
 // ⚠️ 修复：移除了不兼容 Go 正则引擎的 or() 和 nor() 预查函数
+
+// 【组名规则】回答"组名会不会和内置名冲突"：
+// 1. 内核内置策略只有 4 个：DIRECT / REJECT / PASS / GLOBAL（外加规则里的 MATCH 关键字）。
+//    这些名字**不能**拿来做自定义组名，否则会覆盖内置策略，规则行为直接乱掉。
+// 2. AUTO、CATCH、AI、SPEED、JP、US 这些都不在保留字里，和内核不冲突，可以放心用。
+// 3. 真正的雷是「重名」：同一份配置里出现两个同名组，内核直接校验失败
+//       ProxyGroup xxx: duplicate group name
+//    所以覆写 YAML 里**不要**再定义 住宅出口 / AUTO / AI 这类本脚本已经建好的组。
+// 4. 顺带说明：CATCH 组目前没有被任何规则引用（纯兜底展示），保留是为了手动切流量时方便。
 
 const smartGroups = {
   // --------------- 以下为静态代理组 ---------------
@@ -344,6 +430,44 @@ const ruleProviders = {
     url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/nsfw.list`,
     path: './ruleset/uxiew/nsfw.yaml',
   },
+
+  // ===== 【整理】以下四个是本仓库自己的小规则集，把原先硬编码在脚本里的域名搬了出来 =====
+  // 好处：增删域名只改 ruleset/*.list，smart.js 保持"只有逻辑没有规则内容"。
+  // 格式：classical + text，每行 `DOMAIN-SUFFIX,xxx`（不带策略，策略由 RULE-SET 那一行决定）。
+  // ⚠️ .list 文件里绝对不能写行尾注释：`DOMAIN-SUFFIX,a.com  # 注释` 会被整体当成域名，
+  //    规则静默失效、永不匹配（mihomo v1.19 实测）。注释只能单独占一行。
+  // AI 服务商官方域名（Claude / OpenAI / Grok …，连人机验证和遥测一起，必须同 IP）
+  aiStrict: {
+    ...ruleProviderCommon,
+    behavior: 'classical',
+    format: 'text',
+    url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/ai-strict.list`,
+    path: './ruleset/uxiew/ai-strict.yaml',
+  },
+  // 住宅出口域名（非 AI 的账号/支付/电商，怕共享 IP 风控的站点）
+  residential: {
+    ...ruleProviderCommon,
+    behavior: 'classical',
+    format: 'text',
+    url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/residential.list`,
+    path: './ruleset/uxiew/residential.yaml',
+  },
+  // 补充直连域名（原 directDomains + co.jp）
+  directExtra: {
+    ...ruleProviderCommon,
+    behavior: 'classical',
+    format: 'text',
+    url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/direct-extra.list`,
+    path: './ruleset/uxiew/direct-extra.yaml',
+  },
+  // Google 通用资产（原 customRules 里的 googleapis.cn / gstatic / googleplay 中文域名）
+  autoExtra: {
+    ...ruleProviderCommon,
+    behavior: 'classical',
+    format: 'text',
+    url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/auto-extra.list`,
+    path: './ruleset/uxiew/auto-extra.yaml',
+  },
 };
 
 // ===========================
@@ -414,6 +538,15 @@ const dnsConfig = {
 const getRules = ()=>{
   // ======= 白名单模式 Rules 配置方式 =======
   // https://github.com/Loyalsoldier/clash-rules#%E7%99%BD%E5%90%8D%E5%8D%95%E6%A8%A1%E5%BC%8F-rules-%E9%85%8D%E7%BD%AE%E6%96%B9%E5%BC%8F%E6%8E%A8%E8%8D%90
+  // 「AI 走住宅」的落点。
+  // aiStrict 模式（默认）：只有 ai-strict.list 里的 AI 服务商官方域名走住宅，
+  //   其余 AI 规则（中转站、镜像站、通用服务商）走普通 AI 组 = 机场。
+  // allAI 模式：整个 RULE-SET,forAI 一刀切走住宅（默认关闭，会连带 YouTube 视频流）。
+  const aiPolicy = RESIDENTIAL.enabled && RESIDENTIAL.allAI ? RESIDENTIAL.group : 'AI';
+  const aiStrictPolicy = RESIDENTIAL.enabled && RESIDENTIAL.aiStrict ? RESIDENTIAL.group : aiPolicy;
+  // Apple 流量去向（TRAFFIC.appleDirect 见文件顶部，默认直连省流量）
+  const applePolicy = TRAFFIC.appleDirect ? 'DIRECT' : 'AI';
+
   const  whiteListRules= [
     // 局域网与私有地址
     'GEOIP,LAN, DIRECT, no-resolve',
@@ -421,24 +554,39 @@ const getRules = ()=>{
     'RULE-SET,applications, DIRECT',
     'RULE-SET,lancidr, DIRECT,no-resolve',
 
-    // 国内直连
+    // ===== AI 服务商 → 住宅出口（最高优先级）=====
+    // 必须排在 RULE-SET,forAI 之前：ai.yaml 里就有 DOMAIN-SUFFIX,anthropic.com，
+    // 放在后面的话 forAI 先命中，Claude 会走机场，住宅出口永远轮不到。
+    // 规则集内容见 ruleset/ai-strict.list（含 Claude 的 Turnstile、auth0、Persona、遥测）。
+    ...(RESIDENTIAL.enabled && RESIDENTIAL.aiStrict
+      ? [`RULE-SET,aiStrict, ${RESIDENTIAL.group}`]
+      : []),
+
+    // 住宅出口：非 AI 的账号/支付/电商，清单在 ruleset/residential.list
+    ...(RESIDENTIAL.enabled ? [`RULE-SET,residential, ${RESIDENTIAL.group}`] : []),
+
+    // 国内直连（GEOSITE,cn 是新增的兜底：GEOIP,CN 对 fake-ip 域名无效，
+    // 漏网的国内站会掉进 tld-not-cn → AUTO 白烧机场流量）
+    ...(TRAFFIC.domesticDirect ? ['GEOSITE,cn, DIRECT'] : []),
     'RULE-SET,ChinaMedia, DIRECT',
     'RULE-SET,ChinaDomain, DIRECT',
     'RULE-SET,direct, DIRECT',
+    'RULE-SET,directExtra, DIRECT', // 补充直连：原 directDomains + co.jp，见 ruleset/direct-extra.list
     'RULE-SET,cncidr, DIRECT,no-resolve',
     'GEOIP,CN, DIRECT,no-resolve',
 
-    // AI 服务规则
-    'RULE-SET,forAI, AI',
+    // AI 服务规则 → aiPolicy（默认 'AI' 普通 AI 组；aiStrict.list 已提前把严格的 AI 服务商捞走）
+    `RULE-SET,forAI, ${aiPolicy}`,
 
     // 通用服务代理规则
-    'RULE-SET,apple, AI',
+    `RULE-SET,apple, ${applePolicy}`,
     'RULE-SET,google, AI',
     'RULE-SET,github, AUTO',
 
     'RULE-SET,GoogleCN, AUTO',
     'RULE-SET,OneDrive, AUTO',
-    'RULE-SET,icloud, AUTO',
+    `RULE-SET,icloud, ${TRAFFIC.appleDirect ? 'DIRECT' : 'AUTO'}`,
+    'RULE-SET,autoExtra, AUTO', // 原 customRules 里的 googleapis.cn/gstatic/googleplay 域名，见 ruleset/auto-extra.list
     'RULE-SET,forGlobal, AUTO',
     'RULE-SET,telegramcidr, AUTO,no-resolve',
     'RULE-SET,telegram, AUTO,no-resolve',
@@ -457,6 +605,7 @@ const getRules = ()=>{
     // ⚠️ 修复：将此处的兜底规则 'MATCH, AUTO' 移出该数组，移至整个规则集的最后面
   ];
 
+  // 只剩「关键词 / 端口 / IP」这类没法塞进规则集文件的东西；域名规则已全部迁到 ruleset/*.list
   const customRules = [
     // 代理关键词规则
     ...proxyKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords}, AUTO`),
@@ -464,32 +613,20 @@ const getRules = ()=>{
     ...directKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords}, DIRECT`),
     // 拦截关键词规则
     ...rejectKeywords.map((keywords) => `DOMAIN-KEYWORD,${keywords}, REJECT`),
-
-    'DOMAIN-SUFFIX, googleapis.com, AI',
-    'DOMAIN-SUFFIX, co.jp, EU',
-    // 其他预设规则
-    'DOMAIN-SUFFIX,googleapis.cn,AUTO', // Google 服务
-    'DOMAIN-SUFFIX,gstatic.com,AUTO', // Google 静态资源
-    'DOMAIN-SUFFIX,xn--ngstr-lra8j.com,AUTO', // Google Play下载服务
+    // 【补齐】directSSHIPs 原来只在文件头注释里写了、代码里从未使用（死配置），这里补上
+    ...directSSHIPs.map((ip) => `IP-CIDR,${ip}, DIRECT,no-resolve`),
+    // 端口直连规则 (最高优先级 - TUN模式下优先匹配端口)
+    ...directPorts.map((port) => `DST-PORT,${port}, DIRECT`),
   ];
 
-  // 域名直连规则 (第三优先级)
-  directDomains.forEach((domain) => {
-    customRules.push(`DOMAIN-SUFFIX,${domain},DIRECT`);
-  });
-
-  // 端口直连规则 (最高优先级 - TUN模式下优先匹配端口)
-  directPorts.forEach((port) => {
-    customRules.push(`DST-PORT,${port},DIRECT`);
-  });
-
-  // 准备高优先级的兜底规则 👉 请把这里的 "AI" 修改为你实际用来承载 AI 流量的策略组名称
   const aiFallbackRules = [
     // 强制同步时区（防风控时区泄露核心）
+    // ⚠️ 必须留在机场组：NTP 走 UDP，而住宅代理基本不支持 UDP，丢给住宅会直接超时。
     `GEOSITE,category-ntp, AI`,
 
-    // Anthropic 官方大类全量兜底
-    `GEOSITE,anthropic, AI`
+    // Anthropic 官方大类全量兜底 → aiStrictPolicy（aiStrict 开启时即住宅出口）
+    // geosite 的 anthropic 分类比 ai-strict.list 更宽，但全是 Anthropic 自家域名，走住宅安全。
+    `GEOSITE,anthropic, ${aiStrictPolicy}`,
   ];
 
   // ⚠️ 修复：将截断后续匹配的 'MATCH, AUTO' 放在最后执行
@@ -572,27 +709,16 @@ function main(config) {
     throw new Error('配置文件中未找到任何代理节点');
   }
 
-  // 1. 定义前置节点组名称 (必须在下面 proxy-groups 中存在)
-  const entranceGroupName = '港台日新韩-自动';
-
-  // 2. 定义静态住宅 IP 节点，并直接绑定前置代理组
-  const myStaticNode = {
-    name: '🏠 静态住宅落地',
-    type: 'http',
-    server: '166.141.100.13',
-    port: 5782,
-    username: 'test',
-    password: '12345678',
-    'skip-cert-verify': true,
-    // 核心改动：在这里指定 dialer-proxy，实现链式代理
-    'dialer-proxy': entranceGroupName,
-  };
-
-  // 3. 将静态住宅节点注入到 proxies 列表
+  // 【改造】原先这里硬编码了一个静态住宅节点（含 server/username/password 和
+  // 一个并不存在的入口组 '港台日新韩-自动'），已整体删除，原因：
+  //   1) 本文件要提交到公共仓库，任何真实凭据都会泄露；示例值又容易被误当成真配置；
+  //   2) 入口组 '港台日新韩-自动' 在 smartGroups 里根本不存在，
+  //      一旦放开 push，dialer-proxy 会指向空组，内核直接报错。
+  // 现在住宅节点由覆写 YAML 提供，节点名命中 RESIDENTIAL.nodePattern 即自动进组，
+  // 前置跳板（dialer-proxy）也写在覆写 YAML 里，推荐填 AUTO / JP / US 这类本脚本建好的组。
   if (!config.proxies) {
     config.proxies = [];
   }
-  // config.proxies.push(myStaticNode);
 
   // 覆盖DNS配置
   config.dns = dnsConfig;
@@ -634,9 +760,17 @@ function main(config) {
     if (!groupConfig.filter) return [];
 
     const filterRegex = new RegExp(groupConfig.filter, 'i');
-    const excludeRegex = groupConfig['exclude-filter']
-      ? new RegExp(groupConfig['exclude-filter'], 'i')
-      : null;
+    // ⚠️ 新增：住宅落地节点永远不参与地区组 / SPEED 的自动筛选。
+    // 原因有两个，任一踩中都是灾难：
+    //   1) SPEED 的 filter 是 '.*'，US/JP 等地区组也会按名字命中（如「🏠 住宅-US」含 US），
+    //      节点一旦被 AUTO 选为普通出口，住宅流量按 GB 计费会被瞬间烧光；
+    //   2) 住宅节点自己带着 dialer-proxy: AUTO，若它又被塞进 AUTO，
+    //      就形成 AUTO → 住宅 → AUTO 的调用环，内核会直接异常。
+    // 把住宅节点的匹配规则并进 exclude-filter，一处改动覆盖所有带 filter 的组。
+    const excludePattern = [groupConfig['exclude-filter'], RESIDENTIAL.nodePattern]
+      .filter(Boolean)
+      .join('|');
+    const excludeRegex = excludePattern ? new RegExp(excludePattern, 'i') : null;
 
     return allProxyNames.filter((pName) => {
       const included = filterRegex.test(pName);
@@ -754,6 +888,26 @@ function main(config) {
     type: "select",
     proxies: ["DIRECT", ...allProxies]
   });
+
+  // 【新增】住宅出口组：插在「全部节点」之后，方便在 UI 里一眼找到。
+  // 这里用 include-all-proxies + filter 做「动态收编」，而不是把节点名写死：
+  //   - 节点由覆写 YAML 提供，本脚本在它之前运行，根本拿不到节点名；
+  //   - include-all-proxies 的成员是内核在「所有覆写合并完之后」才计算的，
+  //     所以覆写 YAML 排在前面或后面都能被正确收编；
+  //   - proxies 里先放一个 AI 作为兜底：没配住宅节点时该组 = [AI]，
+  //     规则命中后走 AI，与改造前的分流结果一致，不会出现空组报错。
+  // 注意：不要把本组写进 smartGroups，否则会被上面的 filter 展开逻辑当成静态组处理，
+  //       filter 被删掉后就收编不到任何节点了。
+  if (RESIDENTIAL.enabled) {
+    finalGroups.splice(1, 0, {
+      name: RESIDENTIAL.group,
+      type: 'select',
+      proxies: ['AI'], // 兜底项，配好住宅节点后在 UI 里手动切过去（只需一次，会记忆）
+      'include-all-proxies': true,
+      filter: RESIDENTIAL.nodePattern,
+      'include-all': false, // 防止内核二次筛选，保持成员完全由 filter 决定
+    });
+  }
 
   // 覆盖规则配置
   config['proxy-groups'] = finalGroups;
