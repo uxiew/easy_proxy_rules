@@ -122,6 +122,20 @@ const RESIDENTIAL = {
   // 用法：Proxifier 里添加 SOCKS5 代理 127.0.0.1:7865，规则里指定要强制走住宅的程序。
   dedicatedPort: 7865,
 
+  // 【上游出口】住宅节点 dialer-proxy 指向的组：任意日本节点自动择优，全灭则阻断。
+  // 为什么不固定单个节点、也不用全机场 AUTO：
+  //   - AUTO 是 url-test 全量收编，中转可能跳到美/新/韩——出口 IP 没变，
+  //     但中转路径的 ASN 和延迟特征每次都在变，对风控不友好；
+  //   - 固定单节点最稳，但那一个节点挂了就全断，可用性太差。
+  // 折中：只收「日本」节点。节点名必须含 filter 关键词，订阅改名后组会变空，
+  // 此时 url-test 落到 REJECT 兜底（阻断而不是泄漏），把 filter 改成新关键词即可恢复。
+  // 覆写 YAML 里的住宅节点写 dialer-proxy: 前置-日本 即可。
+  upstream: {
+    enabled: true,
+    group: '前置-日本', // 组名，覆写 YAML 的 dialer-proxy 引用它；别重复定义同名组
+    filter: '日本', // 节点名匹配关键词（Go RE2 正则，不区分大小写）
+  },
+
   // 【方案 B｜已关闭】整个 RULE-SET,forAI 走住宅
   // 为什么关掉：ai.yaml 是个大杂烩，除了 AI 服务商还塞了 Apple 全家桶、
   // DOMAIN-KEYWORD,google、DOMAIN-REGEX,google.*、sentry/datadog/auth0 等通用服务商。
@@ -928,6 +942,24 @@ function main(config) {
       'include-all-proxies': true,
       filter: RESIDENTIAL.nodePattern,
       'include-all': false, // 防止内核二次筛选，保持成员完全由 filter 决定
+    });
+  }
+
+  // 【新增】上游出口组：住宅节点 dialer-proxy 指向它，只收日本节点自动择优。
+  // REJECT 必须放在 proxies 里兜底，原因（实测）：
+  //   - url-test 有活节点时不会选 REJECT（REJECT 不参与延迟竞争）；
+  //   - 但 filter 一个都匹配不到时，组会变空，内核塞进 COMPATIBLE = 直连，
+  //     真实 IP 静默泄漏。加了 REJECT 后空组 → 阻断，fail-closed。
+  if (RESIDENTIAL.enabled && RESIDENTIAL.upstream && RESIDENTIAL.upstream.enabled) {
+    finalGroups.splice(2, 0, {
+      name: RESIDENTIAL.upstream.group,
+      type: 'url-test',
+      proxies: ['REJECT'],
+      'include-all-proxies': true,
+      filter: RESIDENTIAL.upstream.filter,
+      url: 'http://www.gstatic.com/generate_204',
+      interval: 300,
+      tolerance: 50,
     });
   }
 
