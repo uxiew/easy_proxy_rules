@@ -107,7 +107,8 @@ const directSSHIPs = [
 //
 // 覆写 YAML 里要写的东西（示例见仓库 residential.example.yaml）：
 //   proxies:
-//     - name: '🏠 住宅-US'          # 名字必须能命中下面的 nodePattern
+//     - name: '🏠 住宅-US'          # 名字必须带 🏠 前缀（命中 nodePattern），
+//                                   # 别用「住宅」二字做匹配词（机场自带住宅节点会混进来）
 //       type: socks5                 # 必须是 socks5，不要用 http（见 README「七宗罪」）
 //       server: x.x.x.x
 //       port: 12345
@@ -125,7 +126,10 @@ const directSSHIPs = [
 const RESIDENTIAL = {
   enabled: true, // 一键开关：false = 完全回到改造前的行为
   group: '住宅出口', // 组名，规则引用它；不要在覆写 YAML 里重复定义同名组，否则内核报重名
-  nodePattern: '住宅|WS-', // 节点名匹配（Go RE2 正则），覆写里的节点名必须能命中
+  nodePattern: '🏠|WS-', // 节点名匹配（Go RE2 正则），覆写里的节点名必须能命中
+  // ⚠️ 命名约定：自己加的住宅节点必须带 🏠 前缀（如 🏠 住宅-JP / 🏠 住宅-US）。
+  //   不能用「住宅」两个字做匹配——很多机场自带「家宽住宅」「住宅IP」节点，
+  //   会被误收进住宅出口（换订阅后实测踩坑：18 个机场住宅节点混了进来）。
 
   // 【方案 A｜当前采用】AI 服务商官方域名走住宅
   // ai-strict.list 里只放「有账号体系、会风控」的服务商（Claude / OpenAI / Grok / Perplexity …），
@@ -149,7 +153,7 @@ const RESIDENTIAL = {
   upstream: {
     enabled: true,
     group: '前置-日本', // 组名，覆写 YAML 的 dialer-proxy 引用它；别重复定义同名组
-    // 节点名匹配：留空 = 直接复用 smartGroups.JP 的 filter（JP|日|東|东|大阪|埼玉|🇯🇵|Japan），
+    // 节点名匹配：留空 = 直接复用 smartGroups.JP 的 filter（日本|JP|Japan|🇯🇵|东京|大阪|…），
     // 和地区组永远同步；要单独定制再填字符串。
     filter: '',
   },
@@ -167,6 +171,18 @@ const RESIDENTIAL = {
   //   ruleset/residential.list → 非 AI 的账号/支付/电商
   // 以后增删站点直接改那两个文件，不用碰脚本。
 };
+
+// ===========================
+// 【新增】机场占位/信息节点识别
+// ===========================
+// 机场常把「到期时间、剩余流量、官网、续费地址」等占位节点混在节点列表最前面，
+// 它们多数是能通的真代理（探测 204 会成功），于是：
+//   - url-test 组可能选中它们 → 所有走该组的流量出口变成未知服务器；
+//   - fallback 组第一个存活成员是它们 → 整组流量被抢占（换落云订阅后 AI 组实测踩坑）。
+// 所有带 filter 的组统一把这个正则并进 exclude-filter，把它们从自动收编里剔掉。
+// 手动 select 不受影响（想看剩余流量还能在面板里点）。
+const INFO_NODE_PATTERN =
+  '套餐|剩余|到期|已用|重置|流量|官网|续费|地址|更新订阅|过期|有效|客户|下载|不显示|电报|频道|工单|ㅤ';
 
 // ===========================
 // 【新增】省流量开关（国内直连）
@@ -256,7 +272,10 @@ const smartGroups = {
     icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/hk.svg`,
   },
   JP: {
-    filter: 'JP|日|東|东|大阪|埼玉|🇯🇵|Japan',
+    // ⚠️ 只用多字关键词，不要放单字「日」「東」「东」：
+    //   [东帝汶]（东）、[尼日利亚]（日）、🇦🇶[到期: 2027年xx月xx日]（日）都会被单字误收，
+    //   换订阅实测踩坑：前置-日本收进了东帝汶+尼日利亚+到期信息节点。
+    filter: '日本|JP|Japan|🇯🇵|東京|东京|大阪|埼玉|川崎|横浜|名古屋',
     icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/jp.svg`,
   },
   KR: {
@@ -821,7 +840,13 @@ function main(config) {
     //   2) 住宅节点自己带着 dialer-proxy: AUTO，若它又被塞进 AUTO，
     //      就形成 AUTO → 住宅 → AUTO 的调用环，内核会直接异常。
     // 把住宅节点的匹配规则并进 exclude-filter，一处改动覆盖所有带 filter 的组。
-    const excludePattern = [groupConfig['exclude-filter'], RESIDENTIAL.nodePattern]
+    // 同时并进占位/信息节点正则（到期、剩余流量、官网……），防止 url-test/fallback
+    // 选中占位节点（换订阅实测：AI 组第一个存活成员变成了「🇦🇶 [到期…]」）。
+    const excludePattern = [
+      groupConfig['exclude-filter'],
+      RESIDENTIAL.nodePattern,
+      INFO_NODE_PATTERN,
+    ]
       .filter(Boolean)
       .join('|');
     const excludeRegex = excludePattern ? new RegExp(excludePattern, 'i') : null;
@@ -986,9 +1011,15 @@ function main(config) {
       'include-all-proxies': true,
       // 复用地区组 JP 的 filter，两处永远同步；留空即跟随，也可单独定制
       filter: RESIDENTIAL.upstream.filter || smartGroups.JP.filter,
-      // 必须排除住宅节点本身：节点名里的「JP」（如 🏠 住宅-JP）同样命中上面的 filter，
-      // 不排除的话住宅节点会被收进自己的上游组，形成 dialer 环
-      'exclude-filter': RESIDENTIAL.nodePattern,
+      // 两个必须排除的对象：
+      //   1) 住宅节点本身：节点名里的「JP」（如 🏠 住宅-JP）同样命中 filter，
+      //      不排除的话住宅节点会被收进自己的上游组，形成 dialer 环；
+      //   2) 机场占位/信息节点（到期、剩余流量、官网……）：本组是内核级
+      //      include-all-proxies 收编，JS 侧的清洗管不到这里，必须显式排除，
+      //      否则 url-test 可能把「🇦🇶 [到期…]」之类占位节点当前置（实测踩坑）。
+      'exclude-filter': [RESIDENTIAL.nodePattern, INFO_NODE_PATTERN]
+        .filter(Boolean)
+        .join('|'),
       url: 'http://www.gstatic.com/generate_204',
       interval: 300,
       tolerance: 50,
