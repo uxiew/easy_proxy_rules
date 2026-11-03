@@ -67,7 +67,11 @@ function main(config) {
     type: 'url-test',
     proxies: ['REJECT'],
     'include-all-proxies': true,
-    filter: '日本',
+    // 与 smart.js 的 smartGroups.JP 保持同一套匹配词（JP|日|東|东|大阪|埼玉|🇯🇵|Japan），
+    // 机场改成 JP-01 / 东京 / Japan 之类都能命中；改完记得同步 smart.js
+    filter: 'JP|日|東|东|大阪|埼玉|🇯🇵|Japan',
+    // 必须排除住宅节点本身（名字里的 JP 会命中上面的 filter，形成 dialer 环）
+    'exclude-filter': '住宅|WS-',
     url: 'http://www.gstatic.com/generate_204',
     interval: 300,
     tolerance: 50,
