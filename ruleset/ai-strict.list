@@ -106,6 +106,27 @@ DOMAIN-SUFFIX,sora.com
 DOMAIN-SUFFIX,openai.azure.com
 
 
+
+# ------------------------------------------------------------
+# Meta / Facebook —— AI 助手、Llama、Muse 系列
+# ------------------------------------------------------------
+# Meta AI 助手（网页版；FB/IG/WhatsApp 应用内的 Meta AI 无法单独拆分，
+#   应用流量本身是社交大类，不在此规则范围内）
+DOMAIN-SUFFIX,meta.ai
+# AI 研究院与模型主页（ai.meta.com/zeppelin 等都在这个后缀下）
+DOMAIN-SUFFIX,ai.meta.com
+# Meta 企业域：Muse Spark / Muse Image / AI Studio（aisuite.meta.com）/
+#   账号登录（accounts.meta.com）都挂在这上面。
+#   ⚠️ 代价：www.meta.com 是 Quest 商店，也会跟着走住宅，流量不大可接受
+DOMAIN-SUFFIX,meta.com
+# Llama 系列官网与 Llama API（api.llama.com）
+DOMAIN-SUFFIX,llama.com
+# AudioCraft（MusicGen/AudioGen）、Seamless 翻译等 FAIR 演示站
+DOMAIN-SUFFIX,metademolab.com
+# Meta AI 登录态走 Facebook 账号体系，但 facebook.com 是社交大类不能整体走住宅；
+# 如果 Meta AI 网页登录频繁异常，考虑单独加：
+# DOMAIN,accounts.facebook.com
+
 # ------------------------------------------------------------
 # xAI / Grok
 # ------------------------------------------------------------
