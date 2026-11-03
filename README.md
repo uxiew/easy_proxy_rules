@@ -262,9 +262,15 @@ Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且�
    `duplicate group name` / `proxy xxx is the duplicate name` 都会让配置 failed。
    内核保留字只有 `DIRECT / REJECT / PASS / GLOBAL`，`AUTO`、`AI`、`CATCH` 都是普通名字，不冲突。
 
-4. **CDN 必须国内可达**
-   规则集在内核启动前拉取（那一刻没有代理可用）。jsDelivr 国内多数网络 TLS 失败（HTTP 000），
-   所以默认用 `cdn.jsdmirror.com`。
+4. **规则集分两类源：第三方走国内镜像，本仓库走 raw**
+   - 第三方上游（Loyalsoldier / ACL4SSR）→ `cdn.jsdmirror.com`。文件大、变动少，缓存延迟无所谓；
+     jsDelivr 官方在国内多数网络 TLS 失败（实测 HTTP 000）。
+   - 本仓库自己的规则集 → `raw.githubusercontent.com`。改得勤，镜像缓存会让人以为「改了没生效」：
+     实测推送后 jsdmirror 仍返回旧版（75 条，仓库已是 80 条），加 `?v=<时间戳>` 也绕不过；raw 立即拿到 80 条。
+   - 「内核启动前没有代理可用」这个担心是多余的：日志显示内核拉规则集走的是隧道
+     （`dial AUTO ... --> raw.githubusercontent.com:443`），`github` / `forGlobal` 一直走 raw，加载正常。
+   - 镜像缓存文件在 `work/ruleset/uxiew/`（属主 root），**用户态删不掉**；要立即刷新用
+     `PUT /providers/rules/<名字>`（走 socket API），或改 `path` 换新文件名。
 
 5. **mihomo 的 `http` 类型配 `dialer-proxy` 连不通**
    实测四种组合，只有 `type: socks5` + `dialer-proxy` 能通（`http` 无论跳板填组名还是具体节点都超时）。
@@ -292,6 +298,23 @@ curl -x socks5h://127.0.0.1:7865 https://claude.ai/cdn-cgi/trace | grep -E '^ip=
 ```
 
 > 别用 `api.ip.sb` 验证住宅出口——它走 `forGlobal → AUTO`，显示机场 IP 是正常的。
+
+最直接的证据是内核日志，它会打出命中的规则和最终出口：
+
+```bash
+SOCK=$(ls -t /tmp/mihomo-party-*.sock | head -1)
+curl -s --noproxy '*' --unix-socket "$SOCK" "http://localhost/logs?level=info" > /tmp/live.log &
+sleep 1 && curl -x http://127.0.0.1:7890 -o /dev/null https://claude.ai/
+# 输出形如：
+#   [TCP] ... --> claude.ai:443 match RuleSet(aiStrict) using 住宅出口[🏠 住宅-JP]
+```
+
+组内实际成员 / 当前选择也可以直接查：
+
+```bash
+curl -s --noproxy '*' --unix-socket "$SOCK" http://localhost/proxies \
+  | python3 -c "import sys,json;p=json.load(sys.stdin)['proxies'];print(p['住宅出口']['all'], p['住宅出口']['now'])"
+```
 
 ---
 
