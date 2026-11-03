@@ -55,7 +55,7 @@ mihomo 会同时开几个入口，**用途完全不同**，配错会绕过规则
 
 ```
 smart.js                  主脚本：建组 + 生成规则（只有逻辑，没有域名清单）
-flclash.override.js       FlClash（Android）专用自包含覆写脚本（见下文）
+flclash.js                FlClash（Android）专用自包含覆写脚本（见下文）
 ruleset/
 ├── ai-strict.list        AI 服务商精确域名 → 住宅出口（含 Turnstile/auth0/Persona/遥测）
 ├── ai.yaml               AI 相关但走机场的部分（宽泛匹配、Google 全量、中转站）
@@ -235,7 +235,7 @@ Claude 和 OpenAI 登录页**共用**的，一条规则只能指向一个出口�
 | 策略组 / rule-provider | ✅ | ❌ 没有这个概念 |
 | `dialer-proxy` 链式 | ✅ | 只能手写 Xray JSON 的 `sockopt.dialerProxy` |
 
-**FlClash（推荐）** 用 [`flclash.override.js`](flclash.override.js)：
+**FlClash（推荐）** 用 [`flclash.js`](flclash.js)：
 
 1. 配置 → 导入机场订阅
 2. 覆写 → 新建 → 类型「脚本」→ 粘贴脚本内容，填好顶部 4 个凭据值
