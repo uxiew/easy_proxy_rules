@@ -138,24 +138,6 @@ const RESIDENTIAL = {
     filter: '',
   },
 
-  // 【多出口】额外的住宅出口：每个出口 = 出口组 + 上游组 + 规则集 三件套。
-  // 场景：两个住宅 IP 同时在线，按服务商分流（如 Claude→日本、OpenAI→美国）。
-  // 节点命名仍必须命中 nodePattern（住宅|WS-），且命中该出口的 nodeFilter；
-  // 主出口（住宅出口）会自动排除这些节点，同一个节点不会进两个组、不会成环。
-  // 没配该出口的节点也可以开着：出口组兜底到 AI（机场），对应服务商走机场不断流。
-  extraExits: [
-    {
-      enabled: true,
-      group: '住宅-US', // 出口组名，规则引用它；别在覆写 YAML 里重复定义
-      // 收编哪些节点：名字含「住宅/WS-」且带美国标识（住宅-US、WS-US、住宅-美 …）
-      nodeFilter: '住宅.*(US|美)|WS.*(US|美)',
-      // 上游组：住宅节点的 dialer-proxy 指向它。region = 复用 smartGroups 的地区 filter
-      upstream: { group: '前置-美国', region: 'US' },
-      // 走本出口的规则集（在 ruleset/ 下，增删服务商改文件即可）
-      rules: [{ provider: 'aiStrictUS', file: 'ai-strict-us.list' }],
-    },
-  ],
-
   // 【方案 B｜已关闭】整个 RULE-SET,forAI 走住宅
   // 为什么关掉：ai.yaml 是个大杂烩，除了 AI 服务商还塞了 Apple 全家桶、
   // DOMAIN-KEYWORD,google、DOMAIN-REGEX,google.*、sentry/datadog/auth0 等通用服务商。
@@ -480,21 +462,13 @@ const ruleProviders = {
   // 格式：classical + text，每行 `DOMAIN-SUFFIX,xxx`（不带策略，策略由 RULE-SET 那一行决定）。
   // ⚠️ .list 文件里绝对不能写行尾注释：`DOMAIN-SUFFIX,a.com  # 注释` 会被整体当成域名，
   //    规则静默失效、永不匹配（mihomo v1.19 实测）。注释只能单独占一行。
-  // AI 服务商官方域名（Claude / Grok / Perplexity …，连人机验证和遥测一起，必须同 IP）
+  // AI 服务商官方域名（Claude / OpenAI / Grok …，连人机验证和遥测一起，必须同 IP）
   aiStrict: {
     ...ruleProviderCommon,
     behavior: 'classical',
     format: 'text',
     url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/ai-strict.list`,
     path: './ruleset/uxiew/ai-strict.yaml',
-  },
-  // OpenAI 全家 → 美国住宅出口（从 ai-strict.list 拆出，原因见该文件头注释）
-  aiStrictUS: {
-    ...ruleProviderCommon,
-    behavior: 'classical',
-    format: 'text',
-    url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/ai-strict-us.list`,
-    path: './ruleset/uxiew/ai-strict-us.yaml',
   },
   // 住宅出口域名（非 AI 的账号/支付/电商，怕共享 IP 风控的站点）
   residential: {
@@ -624,13 +598,6 @@ const getRules = ()=>{
     // 规则集内容见 ruleset/ai-strict.list（含 Claude 的 Turnstile、auth0、Persona、遥测）。
     ...(RESIDENTIAL.enabled && RESIDENTIAL.aiStrict
       ? [`RULE-SET,aiStrict, ${RESIDENTIAL.group}`]
-      : []),
-
-    // 额外住宅出口：紧跟主出口之后（仍排在 forAI 等大范围规则之前，不会被抢先）
-    ...(RESIDENTIAL.enabled
-      ? (RESIDENTIAL.extraExits || []).flatMap((exit) =>
-          exit.enabled ? exit.rules.map((r) => `RULE-SET,${r.provider}, ${exit.group}`) : []
-        )
       : []),
 
     // 住宅出口：非 AI 的账号/支付/电商，清单在 ruleset/residential.list
@@ -970,50 +937,13 @@ function main(config) {
   // 注意：不要把本组写进 smartGroups，否则会被上面的 filter 展开逻辑当成静态组处理，
   //       filter 被删掉后就收编不到任何节点了。
   if (RESIDENTIAL.enabled) {
-    // 额外出口的节点收编条件：主出口必须排除它们，同一个节点不能进两个组
-    const extraFilters = (RESIDENTIAL.extraExits || [])
-      .filter((e) => e.enabled)
-      .map((e) => e.nodeFilter);
     finalGroups.splice(1, 0, {
       name: RESIDENTIAL.group,
       type: 'select',
       proxies: ['AI'], // 兜底项，配好住宅节点后在 UI 里手动切过去（只需一次，会记忆）
       'include-all-proxies': true,
       filter: RESIDENTIAL.nodePattern,
-      ...(extraFilters.length ? { 'exclude-filter': extraFilters.join('|') } : {}),
       'include-all': false, // 防止内核二次筛选，保持成员完全由 filter 决定
-    });
-  }
-
-  // 【新增】额外住宅出口：上游组 + 出口组
-  for (const exit of RESIDENTIAL.extraExits || []) {
-    if (!RESIDENTIAL.enabled || !exit.enabled) continue;
-    // 上游组：region 指向 smartGroups 的地区 filter（留空 filter 字段即跟随）
-    const regionFilter =
-      exit.upstream.filter || (smartGroups[exit.upstream.region] || {}).filter || '';
-    if (!regionFilter) {
-      console.warn(`[smart.js] 出口 ${exit.group} 的上游 filter 为空，上游组收不到任何节点`);
-    }
-    finalGroups.push({
-      name: exit.upstream.group,
-      type: 'url-test',
-      proxies: ['REJECT'],
-      'include-all-proxies': true,
-      filter: regionFilter,
-      // 住宅节点不能当自己出口的地理上游（节点名里的 US/美 会命中 filter，成环）
-      'exclude-filter': RESIDENTIAL.nodePattern,
-      url: 'http://www.gstatic.com/generate_204',
-      interval: 300,
-      tolerance: 50,
-    });
-    // 出口组：select 单一来源，没配节点时兜底 AI（机场），对应服务商不断流
-    finalGroups.push({
-      name: exit.group,
-      type: 'select',
-      proxies: ['AI'],
-      'include-all-proxies': true,
-      filter: exit.nodeFilter,
-      'include-all': false,
     });
   }
 
