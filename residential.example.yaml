@@ -22,7 +22,7 @@
 
 +proxies:
   # ---------- 美国静态住宅（示例，把 4 个值换成 Webshare 后台的） ----------
-  - name: '🏠 住宅-US' # 名字里的「住宅」是关键，决定它会被收编进哪个组
+  - name: '🏠 住宅-JP' # 名字里的「住宅」+ 地区标识决定它会被收编进哪个出口组
     type: socks5 # ⚠️ 必须 socks5：mihomo 的 http 类型配 dialer-proxy 实测连不通（内核层面）
     server: 203.0.113.10 # ← 换成你的静态住宅 IP
     port: 12345 # ← 换成端口
@@ -34,6 +34,17 @@
     #    可选值：前置-日本（本脚本建的组：任意日本节点自动择优，全灭阻断，推荐）
 #            或 AUTO（全机场自动择优，中转会跳美/新/韩）/ 具体节点名（完全固定）
     dialer-proxy: 前置-日本
+
+
+  # ---------- 美国出口：OpenAI / sora 走这个（需两个住宅 IP 同时在线时用） ----------
+  # - name: '🏠 住宅-US'
+  #   type: socks5
+  #   server: 203.0.113.20
+  #   port: 12346
+  #   username: 'your-us-username'
+  #   password: 'your-us-password'
+  #   udp: false
+  #   dialer-proxy: 前置-美国   # smart.js 会自动建这个上游组（美国节点自动择优）
 
   # ---------- 备用写法：SOCKS5 + HTTPS 代理 ----------
   # - name: '🏠 住宅-UK'
