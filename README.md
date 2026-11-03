@@ -57,8 +57,7 @@ mihomo 会同时开几个入口，**用途完全不同**，配错会绕过规则
 smart.js                  主脚本：建组 + 生成规则（只有逻辑，没有域名清单）
 flclash.override.js       FlClash（Android）专用自包含覆写脚本（见下文）
 ruleset/
-├── ai-strict.list        AI 服务商精确域名 → 主出口 住宅出口（Claude/Grok/Perplexity…）
-├── ai-strict-us.list     OpenAI 全家 → 美国出口 住宅-US
+├── ai-strict.list        AI 服务商精确域名 → 住宅出口（含 Turnstile/auth0/Persona/遥测）
 ├── ai.yaml               AI 相关但走机场的部分（宽泛匹配、Google 全量、中转站）
 ├── residential.list      非 AI 的账号/支付/电商 → 住宅出口
 ├── direct-extra.list     补充直连域名
@@ -90,7 +89,6 @@ residential.example.yaml  住宅节点覆写模板（只放凭据，不提交）
 | `RESIDENTIAL.dedicatedPort` | `7865` | 住宅专用入口端口，`0` = 关闭 |
 | `RESIDENTIAL.upstream.enabled` | `true` | 建「前置-日本」组：住宅节点的 `dialer-proxy` 指向它 |
 | `RESIDENTIAL.upstream.filter` | 空（跟随 `smartGroups.JP`） | 上游节点名匹配词，默认 `JP\|日\|東\|东\|大阪\|埼玉\|🇯🇵\|Japan`，与地区组永远同步 |
-| `RESIDENTIAL.extraExits` | 一个美国出口 | 额外住宅出口数组（出口组+上游组+规则集），见「多住宅出口」 |
 | `TRAFFIC.domesticDirect` | `true` | 追加 `GEOSITE,cn → DIRECT`（`GEOIP,CN` 对 fake-ip 域名无效） |
 | `TRAFFIC.appleDirect` | `true` | Apple 全家桶直连（iCloud 同步/App Store 原来走机场，最费流量） |
 
@@ -107,50 +105,17 @@ residential.example.yaml  住宅节点覆写模板（只放凭据，不提交）
 > 实测关键点：`REJECT` 放进 `url-test` **不会被抢占**——有活节点时选活节点，
 > 只有全部失效才落到 REJECT。所以「自动择优」和「fail-closed」可以同时拿到。
 
-### 住宅出口分组：`住宅` 和 `WS-` 是什么
+### 加第二个住宅节点（切换式，0 行代码）
 
-节点命名规则 `nodePattern: '住宅|WS-'`——「住宅」是中文名，`WS-` 是 **Webshare 的缩写**，
-给英文命名习惯用的：`WS-JP` / `WS-US` 和 `住宅-JP` / `住宅-US` 效果一样。
+`住宅出口` 组靠 `filter: 住宅|WS-` 动态收编，新节点加进覆写就自动出现，UI 里手动切换：
 
-### 多住宅出口（同时在线分流）
+1. 本地覆写的 `+proxies` 列表里加一段节点，名字含「住宅」（如 `🏠 住宅-US`），`type: socks5`
+2. `dialer-proxy` 可以整行删掉（本机直连 Webshare，非日本节点建议直连，绕日本反而慢）
+3. UI 里把「住宅出口」切到新节点（`store-selected` 会记住）
 
-支持 N 个住宅 IP 同时在线、按服务商分流。每个出口 = 出口组 + 上游组 + 规则集 三件套，
-在 `RESIDENTIAL.extraExits` 里配置（内置了一个美国出口的完整示例）：
-
-| 出口 | 组名 | 收编节点 | 规则集 | 当前分工 |
-|---|---|---|---|---|
-| 主出口 | `住宅出口` | `住宅\|WS-` 且不带美国标识 | `ai-strict.list` | Claude / Grok / Perplexity / 通用风控基础设施 |
-| 美国出口 | `住宅-US` | `住宅.*(US\|美)\|WS.*(US\|美)` | `ai-strict-us.list` | OpenAI / sora / openai.azure.com |
-
-关键机制：
-
-- 主出口自动**排除**其它出口的节点（同一个节点只能属于一个出口组，否则成环）
-- 上游组 `前置-美国` 复用 `smartGroups.US` 的地区 filter，住宅节点被 `exclude-filter` 排除
-- 没配某出口的节点也可以开着：出口组兜底 AI（机场），对应服务商走机场不断流
-- 想把某个服务商挪到另一个出口：在 `ai-strict.list` 和 `ai-strict-us.list` 之间**搬域名行**即可
-
-⚠️ **共享域名只有一个家**：`challenges.cloudflare.com`（Turnstile）是 Claude 和 OpenAI
-登录页共用的，一条规则只能指向一个出口，现跟主出口（日本）。若 OpenAI 登录频繁被拦，
-把它搬进 `ai-strict-us.list`，代价是 Claude 侧可能出现「主站日本 IP、验证美国 IP」的割裂。
-
-节点侧只需在覆写 YAML 里加一段（见 [`residential.example.yaml`](residential.example.yaml)）：
-
-```yaml
-- name: '🏠 住宅-US'        # 含「住宅」+ 美国标识即可被收编
-  type: socks5
-  server: x.x.x.x
-  port: 12346
-  username: 'xxx'
-  password: 'xxx'
-  udp: false
-  dialer-proxy: 前置-美国    # 或删掉整行直连
-```
-
-### 只想切换、不想同时分流？
-
-什么都不用配：新节点加进覆写后，UI 里把「住宅出口」手动切到它即可——
-但注意 US 节点不会被收编进主出口组（多出口模式下主出口已排除美国标识），
-想让它可被切换，把它的名字改成不含 `US/美`（如 `🏠 住宅-2`）即可命中主出口 filter。
+不会泄漏到别处：`AUTO`/`AI`/`前置-日本` 的排除项都是 `住宅|WS-`。
+要**同时**用多个出口按服务商分流（Claude→日本、ChatGPT→美国），才需要重构
+smart.js 支持多住宅组——目前未做，有需要再说。
 
 > 新 IP 上线前先查一次欺诈评分（如 ip.net.coffee / scamalytics），脏 IP 别拿来登录账号。
 
