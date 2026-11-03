@@ -114,10 +114,48 @@ residential.example.yaml  住宅节点覆写模板（只放凭据，不提交）
 3. UI 里把「住宅出口」切到新节点（`store-selected` 会记住）
 
 不会泄漏到别处：`AUTO`/`AI`/`前置-日本` 的排除项都是 `住宅|WS-`。
-要**同时**用多个出口按服务商分流（Claude→日本、ChatGPT→美国），才需要重构
-smart.js 支持多住宅组——目前未做，有需要再说。
 
 > 新 IP 上线前先查一次欺诈评分（如 ip.net.coffee / scamalytics），脏 IP 别拿来登录账号。
+
+### 多出口同时分流（设计预案，**未实现**）
+
+上面的切换式是「同一时间只用一个出口」。如果想两个住宅 IP **同时在线**、按服务商分流
+（如 Claude→日本住宅、OpenAI→美国住宅），需要给 smart.js 加一套多出口机制。
+方案已经想清楚，记录在此，需要时照此落地（预计 50 行重构 + 一份规则清单 + FlClash 同步）：
+
+**1. 三件套结构**。每个出口 = 出口组（select）+ 上游组（url-test）+ 规则集（rule-provider）：
+
+```js
+RESIDENTIAL.extraExits = [
+  {
+    enabled: true,
+    group: '住宅-US',                              // 出口组，规则引用它
+    nodeFilter: '住宅.*(US|美)|WS.*(US|美)',        // 收编哪些节点
+    upstream: { group: '前置-美国', region: 'US' }, // region 复用 smartGroups 的地区 filter
+    rules: [{ provider: 'aiStrictUS', file: 'ai-strict-us.list' }],
+  },
+];
+```
+
+**2. 节点归属必须互斥**。主出口（住宅出口）要加 `exclude-filter` 排除其它出口的
+`nodeFilter`——`🏠 住宅-US` 同时含「住宅」和「US」，不排除的话它会进两个组，分流错乱。
+
+**3. 上游组必须排除住宅节点**。`前置-美国` 的 filter 含 `US`，会把 `🏠 住宅-US`
+自己收进去形成 dialer 环（实测复现过），`exclude-filter: 住宅|WS-` 必须带上。
+
+**4. 规则集按服务商拆文件**。`ai-strict.list` 保留主出口的服务商，新增
+`ai-strict-us.list` 放另一个出口的。想挪服务商 = 在两个文件之间搬域名行，不改代码。
+
+**5. 共享域名只能选一个家**。`challenges.cloudflare.com`（Turnstile 人机验证）是
+Claude 和 OpenAI 登录页**共用**的，一条规则只能指向一个出口。主站和验证不同出口
+会被风控判会话异常，所以它跟谁，另一家的登录验证就带着对方的出口 IP——这是
+双出口方案固有的缝隙，只能权衡（建议跟使用最频繁、风控最严的那家走）。
+
+**6. 没配节点要能兜底**。出口组里放一个 `AI` 作兜底成员：该出口的节点没配或挂掉时，
+对应服务商走机场，整体不断流。注意兜底成员引用的组必须真实存在。
+
+**7. FlClash 侧的差异**。手机脚本里出口组**不能**引用 `AI` 兜底——FlClash 常配精简
+订阅，没有叫 AI 的组，引用不存在的组整个配置校验失败（实测）。出口组只放节点自身。
 
 ---
 
