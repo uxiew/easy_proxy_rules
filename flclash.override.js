@@ -78,6 +78,10 @@ function main(config) {
   };
 
   // 住宅组：select 单成员，节点挂了就阻断，不会自动切到机场 IP
+  // 出口组：只有住宅节点本身，不放 AI 兜底。
+  // select 不会自动切换，但「选中的节点消失」时内核会回落到第一个成员；
+  // 第一个成员若是 AI，住宅节点一没就静默走机场（IP 变了都不知道）。
+  // 这里脚本一定会注入节点，所以单成员即可，节点挂了直接阻断（fail-closed）。
   const resGroup = {
     name: RES_GROUP,
     type: 'select',
