@@ -55,7 +55,10 @@ mihomo 会同时开几个入口，**用途完全不同**，配错会绕过规则
 
 ```
 smart.js                  主脚本：建组 + 生成规则（只有逻辑，没有域名清单）
-flclash.js                FlClash（Android）专用自包含覆写脚本（见下文）
+flclash.js                FlClash 单文件覆写（占位符版，由 build-flclash.js 生成，勿手改）
+build-flclash.js          生成器：凭据头 + smart.js 全文 → flclash.js / flclash-private.js
+flclash-credentials.json  私有凭据（.gitignore 排除，生成私有版用）
+flclash-private.js        生成的私有版（.gitignore 排除，粘贴到手机）
 ruleset/
 ├── ai-strict.list        AI 服务商精确域名 → 住宅出口（含 Turnstile/auth0/Persona/遥测）
 ├── ai.yaml               AI 相关但走机场的部分（宽泛匹配、Google 全量、中转站）
@@ -64,7 +67,7 @@ ruleset/
 ├── auto-extra.list       Google 通用资产 → AUTO
 ├── custom.list           自定义规则
 └── nsfw.list             NSFW 规则
-residential.example.yaml  住宅节点覆写模板（只放凭据，不提交）
+residential.example.yaml  住宅节点覆写模板（Clash Party 用，只放凭据，不提交）
 ```
 
 ### 两个 AI 清单为什么不能合并
@@ -236,27 +239,31 @@ Claude 和 OpenAI 登录页**共用**的，一条规则只能指向一个出口�
 | 策略组 / rule-provider | ✅ | ❌ 没有这个概念 |
 | `dialer-proxy` 链式 | ✅ | 只能手写 Xray JSON 的 `sockopt.dialerProxy` |
 
-**FlClash（推荐）** 用 [`flclash.js`](flclash.js)：
+**FlClash（推荐）** 用 [`flclash.js`](flclash.js) —— **与桌面端同一份 smart.js 全量逻辑**：
+FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本把「凭据头 + smart.js 全文」
+拼成单文件，组/规则和 Clash Party 完全一致（AUTO/AI/前置-日本/住宅出口/AI 走住宅/国内直连/占位节点清洗）。
 
-1. 配置 → 导入机场订阅
-2. 覆写 → 新建 → 类型「脚本」→ 粘贴脚本内容，填好顶部 4 个凭据值
-3. 对订阅启用该覆写 → 开 TUN
+生成与安装：
 
-脚本自包含，只做四件事：追加住宅节点、建「前置-日本」+「住宅出口」两个组、
-把 `RULE-SET,aiStrict,住宅出口` 插到规则链最前（再加 `GEOSITE,cn` 直连）、
-剔掉订阅组里的占位节点（到期/流量/官网——不剔的话，订阅自带的「自动选择」
-url-test 会选中占位节点，**所有境外流量全挂**，实测表现为「无法访问 google」）。
-**不改订阅自带的组和规则结构**，所以订阅更新不影响它。
-上游匹配词与 smart.js 的 JP 组一致（`日本|JP|Japan|🇯🇵|东京|大阪|…`，只用多字词，见坑 8）。
+1. 凭据写进 `flclash-credentials.json`（`.gitignore` 已排除），格式：
+   `{ "name": "🏠 住宅-JP", "server": "...", "port": 7012, "username": "...", "password": "..." }`
+2. `node build-flclash.js` → 得到 `flclash-private.js`
+3. 全文复制 → FlClash → 工具 → 覆写 → 新建 → 类型「脚本」→ 粘贴
+4. 对订阅启用该覆写 → 开 TUN
 
-> FlClash 上如果「国内能上、google 不行」：先看代理页的组选中了什么——
-> 多半是 url-test 选中了占位节点，或手动停在了 `🇦🇶` 开头的节点上，切到真实节点即可。
+**smart.js 改动后必须重新生成**（`node build-flclash.js`）并重新粘贴到手机，否则手机跑的还是旧逻辑。
+生成器头部注释有提醒；`flclash.js`（占位符版）也会一并重新生成提交，方便对照。
+
+> 为什么改成全量而非订阅自带规则：订阅的规则把 `github.com`/`x.com` 路由到它自己的
+> 「落云」组，该组的「自动选择」依赖订阅给的成员列表——订阅侧一坏（比如 url-test 选中
+> 占位节点）手机就跟着全挂。全量重建后这些域名走 `forGlobal/github → AUTO`（真节点，
+> 占位节点已剔），和电脑端行为一致。
 
 **v2rayNG** 只能做「订阅 + 域名/IP 分流 + 分应用」，做不到 AI 走住宅——
 Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且没有自动切换，不值得。
 
-> 手机上跑完整 smart.js 价值不大：桌面端的 7865 专用端口、listeners、全套 rule-provider
-> 都依赖 Clash Party 的覆写链。手机走简化版（订阅规则 + 住宅出口）即可。
+> 7865 专用端口（listeners）在手机上没有用途（没有 Proxifier/Claude Code），
+> 但保留无害；`RESIDENTIAL.dedicatedPort` 设 0 可关。
 
 ---
 
@@ -309,7 +316,7 @@ Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且�
    FlClash 上订阅自带的「自动选择」选中占位节点后**所有境外流量全挂**（表现为「无法访问 google」）。
    - `smart.js`：`INFO_NODE_PATTERN` 正则统一并进所有带 filter 组的排除逻辑（JS 侧）+ 前置组的
      `exclude-filter`（内核侧，两处都要，见 smart.js 注释）；
-   - `flclash.js`：额外会把占位节点从订阅自带的组里剔掉（只从组里删，节点保留，面板仍可查看）。
+   - FlClash 走同一份 smart.js（`flclash.js` = 构建脚本拼接的全量版），同一套清洗自动生效。
 
 10. **住宅节点的匹配词不能是「住宅」两个字**
     很多机场自带「家宽住宅」「住宅IP」节点。用 `住宅` 做 `nodePattern` 时，换订阅后
