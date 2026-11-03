@@ -44,14 +44,14 @@ DOMAIN,servd-anthropic-website.b-cdn.net
 # 官方博客（页面内嵌资源）
 DOMAIN,anthropic-com.ghost.io
 
-# --- Claude / OpenAI 的人机验证与登录（必须与主站同 IP）---
+# --- 人机验证与登录（必须与主站同 IP）---
+# ⚠️ challenges.cloudflare.com 是 Claude 和 OpenAI 共用的 Turnstile 入口，
+#    一条规则只能指向一个出口，现跟主出口（日本）——Claude 一致性优先。
 
 # Cloudflare Turnstile 人机验证。这条最关键：
 # 主站走住宅、验证走机场，风控立刻判会话异常，换了 IP 也照样被拦。
 DOMAIN-SUFFIX,challenges.cloudflare.com
-# Arkose Labs 验证码（OpenAI 注册/登录常用）
-DOMAIN-SUFFIX,arkoselabs.com
-DOMAIN-SUFFIX,client-api.arkoselabs.com
+# Arkose Labs 验证码 → 已迁到 ai-strict-us.list（OpenAI 专用；Claude 用 Turnstile）
 # Auth0 登录托管（anthropic.auth0.com 之外的其他入口）
 DOMAIN-SUFFIX,auth0.com
 
@@ -91,19 +91,8 @@ DOMAIN-SUFFIX,sentry.io
 
 
 # ------------------------------------------------------------
-# OpenAI / ChatGPT
+# OpenAI / ChatGPT → 已迁到 ai-strict-us.list（美国出口）
 # ------------------------------------------------------------
-DOMAIN-SUFFIX,openai.com
-DOMAIN-SUFFIX,chatgpt.com
-DOMAIN-SUFFIX,chatgptapi.com
-# 网页静态资源
-DOMAIN-SUFFIX,oaistatic.com
-# 上传/下载附件
-DOMAIN-SUFFIX,oaiusercontent.com
-DOMAIN-SUFFIX,openaiapi-site.azureedge.net
-DOMAIN-SUFFIX,openaicom.imgix.net
-DOMAIN-SUFFIX,sora.com
-DOMAIN-SUFFIX,openai.azure.com
 
 
 # ------------------------------------------------------------
