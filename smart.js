@@ -95,17 +95,18 @@ const directSSHIPs = [
 // 覆写 YAML 里要写的东西（示例见仓库 residential.example.yaml）：
 //   proxies:
 //     - name: '🏠 住宅-US'          # 名字必须能命中下面的 nodePattern
-//       type: http                   # 或 socks5，按 Webshare 后台给的协议
+//       type: socks5                 # 必须是 socks5，不要用 http（见 README「七宗罪」）
 //       server: x.x.x.x
 //       port: 12345
 //       username: 'xxx'
 //       password: 'xxx'
-//       dialer-proxy: AUTO           # 关键：用机场节点当跳板
+//       dialer-proxy: 前置-日本       # 关键：用日本机场节点当跳板
 //       udp: false                   # 住宅代理基本不支持 UDP
 //   proxy-groups 不需要你写，本脚本会建「住宅出口」组并自动收编上面这个节点。
 //
-// 组内默认选中 AI，所以：没配住宅节点时行为与改造前完全一致，不会把配置搞挂；
-// 配好之后在 Clash Party「代理」页把「住宅出口」切到 🏠 住宅-xxx 即生效（只需一次）。
+// 组内兜底是 REJECT（fail-closed）：没配住宅节点、或节点失效时该组直接阻断，
+// 不会静默回落到机场（出口 IP 悄悄变化比断网更危险）。所以配好节点后，
+// 要在 Clash Party「代理」页把「住宅出口」切到 🏠 住宅-xxx 一次（store-selected 会记住）。
 const RESIDENTIAL = {
   enabled: true, // 一键开关：false = 完全回到改造前的行为
   group: '住宅出口', // 组名，规则引用它；不要在覆写 YAML 里重复定义同名组，否则内核报重名
@@ -931,16 +932,24 @@ function main(config) {
   // 这里用 include-all-proxies + filter 做「动态收编」，而不是把节点名写死：
   //   - 节点由覆写 YAML 提供，本脚本在它之前运行，根本拿不到节点名；
   //   - include-all-proxies 的成员是内核在「所有覆写合并完之后」才计算的，
-  //     所以覆写 YAML 排在前面或后面都能被正确收编；
-  //   - proxies 里先放一个 AI 作为兜底：没配住宅节点时该组 = [AI]，
-  //     规则命中后走 AI，与改造前的分流结果一致，不会出现空组报错。
+  //     所以覆写 YAML 排在前面或后面都能被正确收编。
   // 注意：不要把本组写进 smartGroups，否则会被上面的 filter 展开逻辑当成静态组处理，
   //       filter 被删掉后就收编不到任何节点了。
+  //
+  // 【成员只有住宅节点 + REJECT，不放 AI】
+  //   - select 组本身不会自动切换，但「选中的节点消失」时内核会回落到第一个成员；
+  //     第一个成员如果是 AI，住宅节点一没就静默走机场（IP 变了都不知道）；
+  //   - 放 REJECT 则回落即阻断，保持 fail-closed，符合「住宅不可用就别用」的预期；
+  //   - 也不能不放兜底：filter 一个都没匹配到时会变成空组，内核塞 COMPATIBLE = 直连，
+  //     真实 IP 直接泄漏（比走机场更糟）。
+  //   - 代价：首次使用（还没有记忆的选择）默认是 REJECT，AI 类站点会打不开，
+  //     必须在面板里把本组切到住宅节点一次（store-selected 会记住）。
+  //     想要「住宅挂了就走机场」的旧行为，把 REJECT 换成 AI 即可。
   if (RESIDENTIAL.enabled) {
     finalGroups.splice(1, 0, {
       name: RESIDENTIAL.group,
       type: 'select',
-      proxies: ['AI'], // 兜底项，配好住宅节点后在 UI 里手动切过去（只需一次，会记忆）
+      proxies: ['REJECT'], // fail-closed 兜底：没配节点 / 节点消失 → 阻断，不静默走机场
       'include-all-proxies': true,
       filter: RESIDENTIAL.nodePattern,
       'include-all': false, // 防止内核二次筛选，保持成员完全由 filter 决定
