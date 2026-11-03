@@ -36,15 +36,28 @@
  */
 
 // CDN 配置（可切换）
-// ⚠️ 规则集是在「内核还没起来」时拉取的，那一刻没有代理可用，必须选国内直连能通的源。
-//    jsDelivr 官方 CDN 在国内多数网络下 TLS 直接失败（实测 HTTP 000，已存在的旧文件也 000），
-//    后果是 rule-provider 全部为空、所有流量掉进 MATCH → AUTO，国内站也绕道境外。
-//    jsdmirror 实测 200，覆盖本仓库和 Loyalsoldier / ACL4SSR 上游。
-const CDN_BASE_CN = 'https://cdn.jsdmirror.com/gh'; // 国内镜像（默认）
+// ⚠️ 分两类源，别混用：
+//
+// 1) 第三方上游（Loyalsoldier / ACL4SSR）→ 走国内镜像 CDN_BASE
+//    文件大、变动少，镜像的缓存延迟无所谓；jsDelivr 官方在国内多数网络 TLS 直接失败
+//    （实测 HTTP 000），jsdmirror 实测 200。
+//
+// 2) 本仓库自己的规则集（ai-strict / ai / residential / *-extra / telegram / nsfw）
+//    → 走 RAW_BASE（GitHub raw）
+//    这些文件改得勤（比如给 ai-strict 加 Meta 域名），镜像的缓存会让人以为改了没生效：
+//    实测 jsdmirror 在推送后仍返回旧版（75 条，而仓库已是 80 条），加 ?v=<时间戳> 也绕不过。
+//    raw 实测拿到最新（80 条）。另外本文件里的 github / forGlobal 两个 provider 一直就是
+//    走 raw 的，运行日志显示它们能正常加载（forGlobal 33k 条），说明内核拉取规则集是
+//    经过隧道（日志里是 `dial AUTO ... --> raw.githubusercontent.com:443`），不存在
+//    「内核没起来、没有代理可用」的问题。
+const CDN_BASE_CN = 'https://cdn.jsdmirror.com/gh'; // 第三方上游用国内镜像
 const CDN_BASE = CDN_BASE_CN;
 // const CDN_BASE = `https://cdn.jsdelivr.net/gh`; // 海外网络可切回 jsDelivr 官方
 // const CDN_BASE = "https://gcore.jsdelivr.net/gh";      // 备用：GCore CDN
 // const CDN_BASE = "https://testingcf.jsdelivr.net/gh";  // 备用：Cloudflare CDN
+
+// 本仓库规则集专用源：要即时生效，不能被 CDN 缓存拖住
+const RAW_BASE = 'https://raw.githubusercontent.com/uxiew/easy_proxy_rules/refs/heads/main/ruleset';
 
 // ===========================
 // 第一部分：自定义关键词和规则
@@ -381,13 +394,13 @@ const ruleProviders = {
     ...ruleProviderCommon,
     behavior: 'classical',
     type: 'http',
-    url: 'https://raw.githubusercontent.com/uxiew/easy_proxy_rules/refs/heads/main/ruleset/github.yaml',
+    url: `${RAW_BASE}/github.yaml`,
   },
   forGlobal: {
     ...ruleProviderCommon,
     behavior: 'classical',
     type: 'http',
-    url: 'https://raw.githubusercontent.com/uxiew/easy_proxy_rules/refs/heads/main/ruleset/global.yaml',
+    url: `${RAW_BASE}/global.yaml`,
   },
   // 国内直连
   ChinaMedia: {
@@ -414,7 +427,7 @@ const ruleProviders = {
   forAI: {
     ...ruleProviderCommon,
     behavior: 'classical',
-    url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/ai.yaml`,
+    url: `${RAW_BASE}/ai.yaml`,
     path: './ruleset/uxiew/ai.yaml',
   },
   cncidr: {
@@ -446,7 +459,7 @@ const ruleProviders = {
     ...ruleProviderCommon,
     behavior: 'classical',
     type: 'http',
-    url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/telegram.yaml`,
+    url: `${RAW_BASE}/telegram.yaml`,
     path: './ruleset/uxiew/telegram.yaml',
   },
   // 🔞 魅力艺术
@@ -454,7 +467,7 @@ const ruleProviders = {
     ...ruleProviderCommon,
     behavior: 'classical',
     format: 'text',
-    url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/nsfw.list`,
+    url: `${RAW_BASE}/nsfw.list`,
     path: './ruleset/uxiew/nsfw.yaml',
   },
 
@@ -468,7 +481,7 @@ const ruleProviders = {
     ...ruleProviderCommon,
     behavior: 'classical',
     format: 'text',
-    url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/ai-strict.list`,
+    url: `${RAW_BASE}/ai-strict.list`,
     path: './ruleset/uxiew/ai-strict.yaml',
   },
   // 住宅出口域名（非 AI 的账号/支付/电商，怕共享 IP 风控的站点）
@@ -476,7 +489,7 @@ const ruleProviders = {
     ...ruleProviderCommon,
     behavior: 'classical',
     format: 'text',
-    url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/residential.list`,
+    url: `${RAW_BASE}/residential.list`,
     path: './ruleset/uxiew/residential.yaml',
   },
   // 补充直连域名（原 directDomains + co.jp）
@@ -484,7 +497,7 @@ const ruleProviders = {
     ...ruleProviderCommon,
     behavior: 'classical',
     format: 'text',
-    url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/direct-extra.list`,
+    url: `${RAW_BASE}/direct-extra.list`,
     path: './ruleset/uxiew/direct-extra.yaml',
   },
   // Google 通用资产（原 customRules 里的 googleapis.cn / gstatic / googleplay 中文域名）
@@ -492,7 +505,7 @@ const ruleProviders = {
     ...ruleProviderCommon,
     behavior: 'classical',
     format: 'text',
-    url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/auto-extra.list`,
+    url: `${RAW_BASE}/auto-extra.list`,
     path: './ruleset/uxiew/auto-extra.yaml',
   },
 };
