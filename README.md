@@ -88,7 +88,7 @@ residential.example.yaml  住宅节点覆写模板（只放凭据，不提交）
 | `RESIDENTIAL.allAI` | `false` | 整个 `forAI` 走住宅——**别开**，`ai.yaml` 里有 `DOMAIN-REGEX,google.*`，会连 `googlevideo.com`（YouTube 视频流）一起烧住宅流量 |
 | `RESIDENTIAL.dedicatedPort` | `7865` | 住宅专用入口端口，`0` = 关闭 |
 | `RESIDENTIAL.upstream.enabled` | `true` | 建「前置-日本」组：住宅节点的 `dialer-proxy` 指向它 |
-| `RESIDENTIAL.upstream.filter` | `日本` | 上游节点名关键词。订阅改名后组变空 → REJECT 阻断，改这里恢复 |
+| `RESIDENTIAL.upstream.filter` | 空（跟随 `smartGroups.JP`） | 上游节点名匹配词，默认 `JP\|日\|東\|东\|大阪\|埼玉\|🇯🇵\|Japan`，与地区组永远同步 |
 | `TRAFFIC.domesticDirect` | `true` | 追加 `GEOSITE,cn → DIRECT`（`GEOIP,CN` 对 fake-ip 域名无效） |
 | `TRAFFIC.appleDirect` | `true` | Apple 全家桶直连（iCloud 同步/App Store 原来走机场，最费流量） |
 
@@ -154,7 +154,7 @@ residential.example.yaml  住宅节点覆写模板（只放凭据，不提交）
 脚本自包含，只做三件事：追加住宅节点、建「前置-日本」+「住宅出口」两个组、
 把 `RULE-SET,aiStrict,住宅出口` 插到规则链最前（再加 `GEOSITE,cn` 直连）。
 **不改订阅自带的组和规则**，所以订阅更新不影响它。
-注意 `filter: '日本'` 按节点名匹配，机场改名后要跟着改。
+上游匹配词与 smart.js 的 JP 组一致（`JP|日|東|东|大阪|埼玉|🇯🇵|Japan`），机场改名后要跟着改。
 
 **v2rayNG** 只能做「订阅 + 域名/IP 分流 + 分应用」，做不到 AI 走住宅——
 Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且没有自动切换，不值得。

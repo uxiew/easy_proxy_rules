@@ -133,7 +133,9 @@ const RESIDENTIAL = {
   upstream: {
     enabled: true,
     group: '前置-日本', // 组名，覆写 YAML 的 dialer-proxy 引用它；别重复定义同名组
-    filter: '日本', // 节点名匹配关键词（Go RE2 正则，不区分大小写）
+    // 节点名匹配：留空 = 直接复用 smartGroups.JP 的 filter（JP|日|東|东|大阪|埼玉|🇯🇵|Japan），
+    // 和地区组永远同步；要单独定制再填字符串。
+    filter: '',
   },
 
   // 【方案 B｜已关闭】整个 RULE-SET,forAI 走住宅
@@ -956,7 +958,11 @@ function main(config) {
       type: 'url-test',
       proxies: ['REJECT'],
       'include-all-proxies': true,
-      filter: RESIDENTIAL.upstream.filter,
+      // 复用地区组 JP 的 filter，两处永远同步；留空即跟随，也可单独定制
+      filter: RESIDENTIAL.upstream.filter || smartGroups.JP.filter,
+      // 必须排除住宅节点本身：节点名里的「JP」（如 🏠 住宅-JP）同样命中上面的 filter，
+      // 不排除的话住宅节点会被收进自己的上游组，形成 dialer 环
+      'exclude-filter': RESIDENTIAL.nodePattern,
       url: 'http://www.gstatic.com/generate_204',
       interval: 300,
       tolerance: 50,
