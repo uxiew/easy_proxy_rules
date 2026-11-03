@@ -713,6 +713,29 @@ function main(config) {
     throw new Error('配置对象为空');
   }
 
+  // ===== FlClash 钩子（桌面端不会走到这里）=====
+  // FlClash 没有覆写链，只能跑单个脚本：把 smart.js 全文拼在凭据头后面
+  // （构建脚本 build-flclash.js 自动生成），凭据头定义全局变量 FLCLASH_RESIDENTIAL。
+  // 桌面端（Clash Party）不定义它 → typeof 守卫跳过，节点仍由 YAML 覆写注入。
+  if (typeof FLCLASH_RESIDENTIAL !== 'undefined' && FLCLASH_RESIDENTIAL) {
+    const c = FLCLASH_RESIDENTIAL; // { name, server, port, username, password }
+    if (c && c.server && c.port) {
+      config.proxies = (config.proxies || []).filter((p) => p && p.name !== c.name);
+      config.proxies.push({
+        name: c.name, // 必须带 🏠 前缀（命中 nodePattern）
+        type: 'socks5', // http + dialer-proxy 连不通（见 README 坑 5）
+        server: c.server,
+        port: Number(c.port),
+        username: c.username,
+        password: c.password,
+        udp: false,
+        'skip-cert-verify': false,
+        'dialer-proxy': RESIDENTIAL.upstream.group,
+      });
+      console.log(`[FlClash] 已注入住宅节点 ${c.name}（dialer-proxy: ${RESIDENTIAL.upstream.group}）`);
+    }
+  }
+
   // 1. 严格关闭全局 IPv6 处理
   config['ipv6'] = false;
 
