@@ -117,9 +117,11 @@ const directSSHIPs = [
 //       udp: false                   # 住宅代理基本不支持 UDP
 //   proxy-groups 不需要你写，本脚本会建「住宅出口」组并自动收编上面这个节点。
 //
-// 组内兜底是 REJECT（fail-closed）：没配住宅节点、或节点失效时该组直接阻断，
-// 不会静默回落到机场（出口 IP 悄悄变化比断网更危险）。所以配好节点后，
-// 要在 Clash Party「代理」页把「住宅出口」切到 🏠 住宅-xxx 一次（store-selected 会记住）。
+// 组内兜底：`['REJECT', 'AI']` —— REJECT 排第一，所以没配住宅节点、或节点失效时
+// 该组回落到阻断，不会静默走机场（出口 IP 悄悄变化比断网更危险）。
+// AI 排第二只作手动逃生口：住宅线路彻底挂了，在面板里能切过去应急，不会被自动选中。
+// 所以配好节点后，要在 Clash Party「代理」页把「住宅出口」切到 🏠 住宅-xxx 一次
+// （store-selected 会记住）。
 const RESIDENTIAL = {
   enabled: true, // 一键开关：false = 完全回到改造前的行为
   group: '住宅出口', // 组名，规则引用它；不要在覆写 YAML 里重复定义同名组，否则内核报重名
@@ -949,20 +951,22 @@ function main(config) {
   // 注意：不要把本组写进 smartGroups，否则会被上面的 filter 展开逻辑当成静态组处理，
   //       filter 被删掉后就收编不到任何节点了。
   //
-  // 【成员只有住宅节点 + REJECT，不放 AI】
-  //   - select 组本身不会自动切换，但「选中的节点消失」时内核会回落到第一个成员；
-  //     第一个成员如果是 AI，住宅节点一没就静默走机场（IP 变了都不知道）；
-  //   - 放 REJECT 则回落即阻断，保持 fail-closed，符合「住宅不可用就别用」的预期；
+  // 【成员 = 住宅节点 + REJECT（第一位）+ AI（第二位，仅作手动逃生口）】
+  //   - select 组本身不会自动切换，但「选中的节点消失」时内核会回落到**第一个**成员；
+  //     所以第一位必须是 REJECT：住宅节点一没就阻断，不会静默走机场（IP 变了都不知道）；
+  //   - AI 放在第二位，只是为了留一个**手动**应急通道：住宅线路彻底挂了，
+  //     在面板里能切到 AI 临时用一下。它排在 REJECT 之后，不会被自动选中。
   //   - 也不能不放兜底：filter 一个都没匹配到时会变成空组，内核塞 COMPATIBLE = 直连，
   //     真实 IP 直接泄漏（比走机场更糟）。
   //   - 代价：首次使用（还没有记忆的选择）默认是 REJECT，AI 类站点会打不开，
   //     必须在面板里把本组切到住宅节点一次（store-selected 会记住）。
-  //     想要「住宅挂了就走机场」的旧行为，把 REJECT 换成 AI 即可。
+  //     想要「住宅挂了就自动走机场」，把 AI 挪到第一位即可（不推荐）。
   if (RESIDENTIAL.enabled) {
     finalGroups.splice(1, 0, {
       name: RESIDENTIAL.group,
       type: 'select',
-      proxies: ['REJECT'], // fail-closed 兜底：没配节点 / 节点消失 → 阻断，不静默走机场
+      // 顺序即优先级：REJECT 必须第一（fail-closed 回落点），AI 第二（手动逃生口）
+      proxies: ['REJECT', 'AI'],
       'include-all-proxies': true,
       filter: RESIDENTIAL.nodePattern,
       'include-all': false, // 防止内核二次筛选，保持成员完全由 filter 决定
