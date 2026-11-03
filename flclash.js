@@ -5,10 +5,11 @@
  * 适用：FlClash（Android / Windows / macOS / Linux）
  * 用法：FlClash → 配置 → 覆写 → 新建 → 类型选「脚本」→ 粘贴本文件
  *
- * 只做三件事，不重建订阅自带的组和规则：
+ * 只做四件事，不重建订阅自带的组和规则：
  *   1) 追加住宅节点（socks5，经任意日本节点中转）
  *   2) 追加「前置-日本」「住宅出口」两个组
  *   3) 把 ai-strict 规则集插到规则链最前，命中的域名走住宅
+ *   4) 剔掉订阅组里的占位节点（到期/流量/官网），防 url-test 选中它们
  *
  * ⚠️ 下面 RESIDENTIAL 里有账号密码，这份文件只放本机，不要提交到任何仓库。
  */
@@ -27,9 +28,18 @@ const RESIDENTIAL = {
 // 住宅组名（规则里引用它）
 const RES_GROUP = '住宅出口';
 
+// 机场占位/信息节点（到期、剩余流量、官网、续费地址……）。
+// 它们常是能通的真代理：url-test/fallback 会选中它们当出口（换订阅实测踩坑，
+// 「自动选择」选中占位节点后所有境外流量全挂——表现为「无法访问 google」）。
+// 下面会把这些节点从订阅自带的组里剔掉，只保留手动可见。
+const INFO_NODE_PATTERN =
+  '套餐|剩余|到期|已用|重置|流量|官网|续费|地址|更新订阅|过期|有效|客户|下载|不显示|电报|频道|工单|ㅤ';
+
 // AI 服务商精确域名清单（含 Turnstile / auth0 / Persona / 遥测）
+// ⚠️ 用 raw 直链而不是 jsdmirror：镜像对本仓库文件的缓存更新很慢
+//    （实测推送新规则后镜像仍返回旧版）；内核拉规则集走隧道，raw 可达。
 const AI_STRICT_URL =
-  'https://cdn.jsdmirror.com/gh/uxiew/easy_proxy_rules@main/ruleset/ai-strict.list';
+  'https://raw.githubusercontent.com/uxiew/easy_proxy_rules/refs/heads/main/ruleset/ai-strict.list';
 
 // 国内直连（省流量）。订阅自带规则够用的话可以改 false
 const CN_DIRECT = true;
@@ -67,11 +77,15 @@ function main(config) {
     type: 'url-test',
     proxies: ['REJECT'],
     'include-all-proxies': true,
-    // 与 smart.js 的 smartGroups.JP 保持同一套匹配词（JP|日|東|东|大阪|埼玉|🇯🇵|Japan），
-    // 机场改成 JP-01 / 东京 / Japan 之类都能命中；改完记得同步 smart.js
-    filter: 'JP|日|東|东|大阪|埼玉|🇯🇵|Japan',
-    // 必须排除住宅节点本身（名字里的 JP 会命中上面的 filter，形成 dialer 环）
-    'exclude-filter': '住宅|WS-',
+    // 与 smart.js 的 smartGroups.JP 保持同一套匹配词（日本|JP|Japan|🇯🇵|东京|大阪|…），
+    // 机场改成 JP-01 / 东京 / Japan 之类都能命中；改完记得同步 smart.js。
+    // ⚠️ 只用多字关键词，不要放单字「日」「東」「东」：
+    //   [东帝汶]（东）、[尼日利亚]（日）、🇦🇶[到期: 2027年xx月xx日]（日）会被单字误收
+    filter: '日本|JP|Japan|🇯🇵|東京|东京|大阪|埼玉|川崎|横浜|名古屋',
+    // 排除两类：
+    //   1) 住宅节点本身（名字里的 JP 会命中 filter，形成 dialer 环）
+    //   2) 机场占位/信息节点（能通但不是给流量用的，url-test 可能选中它们）
+    'exclude-filter': `住宅|WS-|${INFO_NODE_PATTERN}`,
     url: 'http://www.gstatic.com/generate_204',
     interval: 300,
     tolerance: 50,
@@ -89,6 +103,21 @@ function main(config) {
   };
 
   config['proxy-groups'].unshift(resGroup, upstream);
+
+  // ---- 2.5 清洗订阅自带组里的占位/信息节点 ----
+  // 订阅的「落云/自动选择/故障转移」等组把到期、剩余流量、官网等占位节点
+  // 排在成员列表最前面。url-test/fallback 组会把它们当真节点探测选中
+  // （实测：选中后所有境外流量全挂，表现为「无法访问 google」）。
+  // 只从组里剔掉，不删节点本身（面板手动点开仍能看到信息）。
+  const infoRe = new RegExp(INFO_NODE_PATTERN, 'i');
+  for (const g of config['proxy-groups']) {
+    if (Array.isArray(g.proxies) && g.proxies.length > 0) {
+      const cleaned = g.proxies.filter((p) => !infoRe.test(String(p)));
+      if (cleaned.length > 0 && cleaned.length !== g.proxies.length) {
+        g.proxies = cleaned;
+      }
+    }
+  }
 
   // ---- 3. 规则 ----
   config['rule-providers'].aiStrict = {
