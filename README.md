@@ -55,6 +55,7 @@ mihomo 会同时开几个入口，**用途完全不同**，配错会绕过规则
 
 ```
 smart.js                  主脚本：建组 + 生成规则（只有逻辑，没有域名清单）
+flclash.override.js       FlClash（Android）专用自包含覆写脚本（见下文）
 ruleset/
 ├── ai-strict.list        AI 服务商精确域名 → 住宅出口（含 Turnstile/auth0/Persona/遥测）
 ├── ai.yaml               AI 相关但走机场的部分（宽泛匹配、Google 全量、中转站）
@@ -86,8 +87,23 @@ residential.example.yaml  住宅节点覆写模板（只放凭据，不提交）
 | `RESIDENTIAL.aiStrict` | `true` | AI 服务商走住宅（推荐） |
 | `RESIDENTIAL.allAI` | `false` | 整个 `forAI` 走住宅——**别开**，`ai.yaml` 里有 `DOMAIN-REGEX,google.*`，会连 `googlevideo.com`（YouTube 视频流）一起烧住宅流量 |
 | `RESIDENTIAL.dedicatedPort` | `7865` | 住宅专用入口端口，`0` = 关闭 |
+| `RESIDENTIAL.upstream.enabled` | `true` | 建「前置-日本」组：住宅节点的 `dialer-proxy` 指向它 |
+| `RESIDENTIAL.upstream.filter` | `日本` | 上游节点名关键词。订阅改名后组变空 → REJECT 阻断，改这里恢复 |
 | `TRAFFIC.domesticDirect` | `true` | 追加 `GEOSITE,cn → DIRECT`（`GEOIP,CN` 对 fake-ip 域名无效） |
 | `TRAFFIC.appleDirect` | `true` | Apple 全家桶直连（iCloud 同步/App Store 原来走机场，最费流量） |
+
+### 住宅链路的上游怎么选（`dialer-proxy`）
+
+出口 IP 由住宅节点决定（恒定），但**中转路径**由上游决定，三种选法：
+
+| 方案 | 写法 | 特点 |
+|---|---|---|
+| **任意日本节点（推荐，默认）** | `dialer-proxy: 前置-日本` | `url-test` 只收名字含「日本」的节点自动择优；全灭时落 `REJECT` 阻断，不会跳到美/新/韩 |
+| 全机场自动 | `dialer-proxy: AUTO` | 最快，但中转会跳地区——出口 IP 没变，中转 ASN/延迟特征每次都变，对风控不友好 |
+| 固定单节点 | `dialer-proxy: 直连-日本3` | 最稳，但节点一挂全断；且订阅改名后配置直接校验失败（组引用了不存在的节点） |
+
+> 实测关键点：`REJECT` 放进 `url-test` **不会被抢占**——有活节点时选活节点，
+> 只有全部失效才落到 REJECT。所以「自动择优」和「fail-closed」可以同时拿到。
 
 ---
 
@@ -118,6 +134,34 @@ residential.example.yaml  住宅节点覆写模板（只放凭据，不提交）
 
 > ⚠️ Proxifier 与 Clash 的 **TUN 模式会冲突**（流量被两边重复拦截，容易成环）。开 TUN 时把 Proxifier 停掉。
 
+### Android：FlClash / v2rayNG
+
+两者内核完全不同，决定了一个能用、一个用不了：
+
+| | FlClash | v2rayNG |
+|---|---|---|
+| 内核 | **mihomo**（和 Clash Party 同款） | Xray / v2fly |
+| Clash YAML | ✅ 订阅、内置编辑器、覆写脚本 | ❌ 完全不认 |
+| 策略组 / rule-provider | ✅ | ❌ 没有这个概念 |
+| `dialer-proxy` 链式 | ✅ | 只能手写 Xray JSON 的 `sockopt.dialerProxy` |
+
+**FlClash（推荐）** 用 [`flclash.override.js`](flclash.override.js)：
+
+1. 配置 → 导入机场订阅
+2. 覆写 → 新建 → 类型「脚本」→ 粘贴脚本内容，填好顶部 4 个凭据值
+3. 对订阅启用该覆写 → 开 TUN
+
+脚本自包含，只做三件事：追加住宅节点、建「前置-日本」+「住宅出口」两个组、
+把 `RULE-SET,aiStrict,住宅出口` 插到规则链最前（再加 `GEOSITE,cn` 直连）。
+**不改订阅自带的组和规则**，所以订阅更新不影响它。
+注意 `filter: '日本'` 按节点名匹配，机场改名后要跟着改。
+
+**v2rayNG** 只能做「订阅 + 域名/IP 分流 + 分应用」，做不到 AI 走住宅——
+Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且没有自动切换，不值得。
+
+> 手机上跑完整 smart.js 价值不大：桌面端的 7865 专用端口、listeners、全套 rule-provider
+> 都依赖 Clash Party 的覆写链。手机走简化版（订阅规则 + 住宅出口）即可。
+
 ---
 
 ## 踩过的坑（改配置前必看）
@@ -140,6 +184,15 @@ residential.example.yaml  住宅节点覆写模板（只放凭据，不提交）
 5. **mihomo 的 `http` 类型配 `dialer-proxy` 连不通**
    实测四种组合，只有 `type: socks5` + `dialer-proxy` 能通（`http` 无论跳板填组名还是具体节点都超时）。
    住宅节点一律用 `socks5`。
+
+6. **策略组变空 ≠ 阻断，而是直连泄漏**
+   组没有任何可用成员时，内核塞 `COMPATIBLE` 占位符，等价直连——经它出去的 IP 和本机一致。
+   用 `filter` 动态收编节点的组，必须加 `proxies: ['REJECT']` 兜底：
+   节点全灭时阻断，而不是静默走真实 IP。
+
+7. **写死节点名 ≠ fail-closed，而是 fail-loud**
+   组里 `proxies: ['某节点']` 是强引用，订阅改名后 `'X' not found`，**整份配置校验失败、应用起不来**。
+   所以动态组用 `filter` + `REJECT` 兜底，而不是写死名字。
 
 ---
 
