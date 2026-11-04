@@ -96,6 +96,19 @@ residential.example.yaml  住宅节点覆写模板（Clash Party 用，只放凭
 | `TRAFFIC.domesticDirect` | `true` | 追加 `GEOSITE,cn → DIRECT`（`GEOIP,CN` 对 fake-ip 域名无效） |
 | `TRAFFIC.appleDirect` | `true` | Apple 全家桶直连（iCloud 同步/App Store 原来走机场，最费流量） |
 
+### DNS：一律用 IP 型 DoH，不要域名型
+
+`nameserver` / `proxy-server-nameserver` / `nameserver-policy` 里全部写成
+`https://1.12.12.12/dns-query` 这种**带 IP 的 DoH**，不写 `https://doh.pub/dns-query`。
+
+原因：域名型 DoH 必须先解析 `doh.pub` 才能建连，而这一步只能靠 `default-nameserver` 的明文 UDP 53。
+一旦网络把外部 UDP 53 掐掉（2026-11-04 实测本机正是如此），就会变成
+「解析 DoH 域名 → 超时 → 所有解析失败 → **连百度都打不开**」。
+IP 型 DoH 不需要任何引导，少一环就少一个死法（详见坑 15）。
+
+`default-nameserver` 只负责解析**节点域名**（`jp.jisu16.top` 这类），所以放路由器 DNS 优先、
+公网 IP 兜底即可。
+
 ### 住宅链路的上游怎么选（`dialer-proxy`）
 
 出口 IP 由住宅节点决定（恒定），但**中转路径**由上游决定，三种选法：
@@ -375,6 +388,46 @@ Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且�
 14. **手机上别用桌面那套 `dns`（尤其 `listen: 0.0.0.0:1053`）**
     FlClash 的 TUN 自己管 DNS，脚本再覆盖会抢端口/绕成环。手机端 DNS 交给 App 与订阅；
     真出问题时在 FlClash 设置里开「DNS 覆盖」，而不是改脚本。
+
+15. **网络阻断外部 UDP 53 时，域名型 DoH 会死在引导阶段（表现为「直连也超时」）**
+    2026-11-04 实测：`dig @223.5.5.5` / `@119.29.29.29` / `@8.8.8.8` 全部 `i/o timeout`
+    （连续 3 次都一样），但 `ping 223.5.5.5` 通、路由器 DNS `192.168.31.1` 能正常解析。
+    原来的 `default-nameserver: ['223.5.5.5', …]` 配上 `nameserver: ['https://doh.pub/dns-query', …]`
+    正好踩中死循环：**要解析 `doh.pub` 得先有 DNS，而唯一可用的入口是被阻断的 UDP 53**。
+    症状不是「代理连不上」，而是**所有直连域名解析失败**——内核日志刷
+    `dial DIRECT (match GeoSite/cn) … error: dns resolve failed: read udp …->223.5.5.5:53: i/o timeout`，
+    用户感知就是「直连也超时、百度都打不开」。
+
+    修法两条，缺一不可：
+    - DoH 一律写成 **IP 型**：`https://1.12.12.12/dns-query`（DNSPod）。
+      它不需要任何域名引导，加密查询也不存在明文污染——实测
+      `www.google.com` / `www.youtube.com` / `x.com` / `github.com` 全返回真实 IP，
+      `jp.jisu16.top → 140.238.53.202`（真实 Oracle 东京）。
+    - `default-nameserver` 把路由器 DNS 放第一位兜底（`192.168.31.1`），后面再挂公网 IP，
+      换到 UDP 53 正常的网络时仍然工作。
+
+    顺带把 `https://1.1.1.1` / `https://8.8.8.8` 从 `nameserver` / `fallback` 里拿掉了：
+    它们在本机直连是 `000`（5s 超时），只能经代理访问（3.2s，且 8.8.8.8 返回 400），
+    留在主链路上只会拖慢每一次解析。
+
+    排查命令：
+
+    ```bash
+    dig +time=2 +tries=1 @223.5.5.5 www.baidu.com        # 超时 → UDP 53 被阻断
+    dig +time=2 +tries=1 @192.168.31.1 www.baidu.com     # 有结果 → 路由器 DNS 可用
+    curl -s -H 'accept: application/dns-json' \
+      'https://1.12.12.12/dns-query?name=www.baidu.com&type=A'   # 200 → IP 型 DoH 可用
+    ```
+
+    修复前后对比（同一台机器，经 `7890` 访问）：
+
+    | 站点 | 修复前 | 修复后 |
+    | --- | --- | --- |
+    | `www.baidu.com` | 000（5.0s 超时） | **200（0.07s）** |
+    | `www.taobao.com` | 000 | **200（0.12s）** |
+    | `www.google.com` | 000 | **200（0.65s）** |
+    | `www.youtube.com` | 000 | **200（0.57s）** |
+    | `x.com` | 000 | **200（0.73s）** |
 
 ---
 
