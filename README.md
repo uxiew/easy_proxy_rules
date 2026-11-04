@@ -486,6 +486,53 @@ Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且�
 
     看日志 / 查分流时别把两者搞混——`forGlobal` 命中的流量和住宅出口毫无关系。
 
+18. **FlClash 的覆写「只追加规则、不替换规则」→ 换带规则的订阅必炸（`not found rule-set`）**
+
+    FlClash 合并配置的地方（`core/profile_base.go` 的 `mergeProfileBase`）是这样写的：
+
+    ```go
+    // 最终 rules = 覆写脚本返回的 rules + 订阅原有 rules（追加，不是替换）
+    rules, _ := appendRules(mappingValue(root, "rules"), mappingValue(profile, "rules"))
+    ```
+
+    而 `rule-providers` / `proxy-groups` 用的是**覆写结果**那一套。
+
+    后果：订阅自带的 42 条规则会跟在我们 38 条规则后面，它们引用的
+    `category-ads-all`、`awavenue-ads` 在我们的 provider 里根本不存在 →
+    内核直接 `rule set [xxx] not found` 启动失败；订阅规则指向自己的组
+    （`节点选择`、`🛑 广告拦截`…）时则是 `proxy [xxx] not found`。
+
+    为什么以前没事：之前的订阅都是**纯节点**（0 条 rules），追加 0 条自然无感。
+    138top 那种 594 条 DOMAIN 规则的订阅一样会炸，只是报的是 `proxy not found`。
+
+    现在 `smart.js` 的 `FLCLASH_MODE` 分支会自动兜底：
+
+    - 订阅 rules 引用到的规则集 → 有定义就沿用，没定义就指向 `ruleset/empty.list` 空集占位
+    - 订阅 rules 引用到的组名 → 补一个 `proxies: ['REJECT']` 的占位组
+
+    这些订阅规则永远不会命中（我们的 `MATCH, AUTO` 排在它们前面），所以手机上会多出
+    几个名字眼熟、但只有一个 REJECT 成员的组，属正常现象。
+
+19. **FlClash v0.9.1+ 会丢弃覆写生成的节点和分组**
+
+    同一个 `mergeProfileBase` 里还有这一段：
+
+    ```go
+    var profileBaseSections = []string{"proxies", "proxy-groups", "sub-rules"}
+    for _, key := range profileBaseSections {
+        setMappingValue(root, key, mappingValue(profile, key)) // 用订阅原文覆盖覆写结果
+    }
+    ```
+
+    也就是说 **v0.9.1 起，覆写脚本改不了节点和分组**，只能改 DNS / TUN / 其它配置，
+    以及往订阅规则前面插规则。这直接废掉了本项目 FlClash 端「注入住宅节点 + 重建分组」的核心。
+
+    `smart.js` 里加了骨架检测：脚本拿到的配置如果既没有节点也没有规则，说明走的是新路径，
+    此时**只修 DNS、不重建任何东西**（否则所有规则都会指向不存在的组，直接断网）。
+
+    想保留完整功能（住宅出口 / AI 分流），**FlClash 请留在 v0.8.98**；
+    升级到 v0.9.x 后手机端只能拿到订阅原本的能力 + DNS 修复。
+
 ---
 
 ## 验证分流是否生效
