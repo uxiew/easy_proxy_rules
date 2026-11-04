@@ -208,7 +208,7 @@ const RESIDENTIAL = {
 // 所有带 filter 的组统一把这个正则并进 exclude-filter，把它们从自动收编里剔掉。
 // 手动 select 不受影响（想看剩余流量还能在面板里点）。
 const INFO_NODE_PATTERN =
-  '套餐|剩余|到期|已用|重置|流量|官网|续费|地址|更新订阅|过期|有效|客户|下载|不显示|电报|频道|工单|ㅤ';
+  '套餐|剩余|到期|已用|重置|流量|官网|续费|地址|更新订阅|过期|有效|客户|下载|不显示|电报|频道|工单|建议|卡顿|试用|公告|维护|客服|网址|ㅤ';
 
 // ===========================
 // 【新增】省流量开关（国内直连）
@@ -568,9 +568,21 @@ const dnsConfig = {
   'respect-rules': true,         // 让 DNS 按照节点规则去解析，避免代理节点的 DNS 泄漏
   'cache-algorithm': 'arc',      // 缓存淘汰算法，arc 比 lru 性能更好
 
-  // 解析代理节点域名的 DNS（必须是直连、纯净且快速的 IP）
-  'default-nameserver': ['223.5.5.5', '119.29.29.29'],
-  'proxy-server-nameserver': ['223.5.5.5', '119.29.29.29', '114.114.114.114'],
+  // ⚠️ 2026-11-04 实测修复：本机网络对外部 UDP 53 全部阻断
+  //   dig @223.5.5.5 / @119.29.29.29 / @8.8.8.8 → 一律 i/o timeout（连续 3 次），
+  //   ping 那些 IP 却正常，只有路由器 DNS(192.168.31.1) 能出结果。
+  //   原来的「纯 IP 列表 + 域名型 DoH(https://doh.pub/dns-query)」会死在引导阶段：
+  //   要解析 doh.pub 得先有 DNS，而唯一的 DNS 入口是已被阻断的 UDP 53 → 死循环。
+  //   现象就是所有 DIRECT 域名解析失败，表现为「直连全部超时」。
+  //   引导这里放路由器优先（唯一可用），再挂公网 IP 兜底（换到 UDP 53 可用的网络仍能工作）
+  'default-nameserver': ['192.168.31.1', '223.5.5.5', '119.29.29.29'],
+
+  // 解析节点域名的 DNS：用 **IP 型 DoH**，既不走 UDP 53，也不需要用域名去引导
+  //   实测 jp.jisu16.top → 140.238.53.202（真实 Oracle 东京），未被污染
+  'proxy-server-nameserver': [
+    'https://1.12.12.12/dns-query',   // DNSPod（腾讯）IP 型 DoH
+    'https://120.53.53.53/dns-query', // DNSPod 备用 IP
+  ],
 
   // Fake-IP 模式配置（极大提升网页秒开速度）
   'enhanced-mode': 'fake-ip',
@@ -587,27 +599,29 @@ const dnsConfig = {
   // 指定特定域名的 DNS 解析策略 (命中即拦截，不往下走 fallback)
   'nameserver-policy': {
     // 国内域名用国内 DoH DNS，防劫持且速度快
+    // 一律写成 **IP 型**（https://1.12.12.12/dns-query）：
+    //   域名型（https://doh.pub/dns-query）需要先解析 doh.pub，
+    //   在 UDP 53 被阻断的网络里会直接卡死（实测 5s 超时 → 直连全挂）
     'geosite:cn': [
-      'https://doh.pub/dns-query',        // 腾讯
-      'https://dns.alidns.com/dns-query', // 阿里
+      'https://1.12.12.12/dns-query',   // DNSPod（腾讯）
+      'https://120.53.53.53/dns-query', // DNSPod 备用 IP
     ],
-    // 国外域名直接用国外 DoH DNS
+    // 国外域名同样用 IP 型 DoH：加密查询不存在明文污染，
+    // 实测 www.google.com / www.youtube.com / x.com / github.com 全部返回真实 IP
     'geosite:geolocation-!cn': [
-      'https://1.1.1.1/dns-query',        // Cloudflare
-      'https://8.8.8.8/dns-query',        // Google
+      'https://1.12.12.12/dns-query',
+      'https://120.53.53.53/dns-query',
     ],
   },
 
   // 兜底主 DNS（如果没有被上面的 nameserver-policy 命中，先向这里请求）
-  nameserver: ['https://doh.pub/dns-query', 'https://dns.alidns.com/dns-query'],
+  nameserver: ['https://1.12.12.12/dns-query', 'https://120.53.53.53/dns-query'],
 
   // 兜底备用 DNS（防污染安全网）
-  // 当主 DNS 解析出的 IP 是海外 IP 时，采纳 fallback DNS 的结果以防 DNS 污染
-  fallback: [
-    'https://1.1.1.1/dns-query', // Cloudflare DoH
-    'https://8.8.8.8/dns-query', // Google DoH
-    'tls://8.8.4.4:853',         // Google DoT 作为补充
-  ],
+  // ⚠️ 这里只留 Cloudflare，且它在本机只能经代理访问（直连 000，走代理 200/3.2s）。
+  //   8.8.8.8 的 DoH 与 tls://8.8.4.4:853 在本机实测不可用（400 / 超时），已移除。
+  //   平时几乎不会触发：fake-ip 模式下海外域名直接给 198.18.x 假 IP，真实解析在出口完成。
+  fallback: ['https://1.1.1.1/dns-query'],
 
   // 防污染判断条件
   'fallback-filter': {
