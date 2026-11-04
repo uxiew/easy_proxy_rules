@@ -300,6 +300,11 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
 > 占位节点）手机就跟着全挂。全量重建后这些域名走 `forGlobal/github → AUTO`（真节点，
 > 占位节点已剔），和电脑端行为一致。
 
+> **手机上代理页看不到「GLOBAL / 全局」组，是正常的。** `GLOBAL` 是内核自建的策略组，
+> 不是配置里的组；FlClash 把「全局」做成一个模式开关，规则模式下不渲染它。
+> 手机上看到的 `住宅出口 / 前置-日本 / AUTO / AI / …` 就是全部，不缺东西。
+> 另注意 `forGlobal` 是**规则集名**（走 `AUTO`），和 `GLOBAL` 组无关，见坑 17。
+
 **v2rayNG** 只能做「订阅 + 域名/IP 分流 + 分应用」，做不到 AI 走住宅——
 Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且没有自动切换，不值得。
 
@@ -428,6 +433,25 @@ Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且�
     | `www.google.com` | 000 | **200（0.65s）** |
     | `www.youtube.com` | 000 | **200（0.57s）** |
     | `x.com` | 000 | **200（0.73s）** |
+
+16. **`GLOBAL` 组的默认值不是「住宅出口」，而是 `DIRECT`（直连泄漏）**
+    `GLOBAL` 是**内核自建**的组，成员顺序固定是 `DIRECT`、`REJECT`、然后才是所有节点和组——
+    **配置里改不了这个顺序，override 也插不进去**。于是「`select` 默认 = 第一个成员」这条规律
+    在 GLOBAL 上就变成了：**新设备 / 清缓存 / 重装 App 之后，切到全局模式 = 所有流量直连**。
+
+    桌面端现在显示 `GLOBAL now=住宅出口`，那是 `profile.store-selected: true` 记住的**手动选择**，
+    不是配置给的默认值。把 `~/Library/Application Support/mihomo-party/work/cache.db` 删掉就原形毕露。
+
+    结论：**别依赖全局模式**。规则模式（默认）末尾有 `MATCH, AUTO` 兜底，行为等价且更细。
+    真要用全局模式，切过去先确认选中项是 `住宅出口`（链路：`住宅出口 → 🏠 住宅-JP → 前置-日本 → 日本节点`）。
+    注意全局模式下**所有**流量都烧住宅流量，机场订阅等于白买。
+
+17. **`forGlobal` 和 `GLOBAL` 没有任何关系，只是名字撞了**
+    - `forGlobal` 是**规则集**：`ruleset/global.yaml`（blackmatrix7 的 `Global.list`，33,214 行
+      国外域名大全），命中后走 `RULE-SET,forGlobal, AUTO` → **`AUTO` 组**
+    - `GLOBAL` 是**内核内置策略组**，配置里根本没有这个组，只在全局模式下生效
+
+    看日志 / 查分流时别把两者搞混——`forGlobal` 命中的流量和住宅出口毫无关系。
 
 ---
 
