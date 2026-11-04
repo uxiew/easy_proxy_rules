@@ -275,16 +275,39 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
 **smart.js 改动后必须重新生成**（`node build-flclash.js`）并重新粘贴到手机，否则手机跑的还是旧逻辑。
 生成器头部注释有提醒；`flclash.js`（占位符版）也会一并重新生成提交，方便对照。
 
-> **FlClash 模式只改路由，不动系统级配置**（`FLCLASH_MODE`）。
-> 手机上内核跑在 App 的 VPN 服务里，DNS / 监听端口 / IPv6 策略都由 App 统一管，
-> 脚本再覆盖就会打架。以下四项在手机端自动跳过：
+生成的文件**顶部自带构建元信息**，拿到任何一份 flclash 配置，看头部就知道它对应哪一版逻辑：
+
+```
+ * 构建时间    : 2026-11-04 15:09:27
+ * 源文件      : smart.js  sha256:651817c34211  1191 行 / 55351 字节
+ * 源码提交    : e4ad6dc
+ * 构建命令    : node build-flclash.js
+ * 住宅节点    : 🏠 住宅-JP  ->  61.***193:7012
+```
+
+同一份头部还会列出「手机端跳过了哪些桌面专属项」和「全局模式的坑」，
+所以不需要再回头翻 README 就能判断这份脚本是不是最新的。
+
+> **FlClash 模式只改路由 + DNS 上游，不动系统级配置**（`FLCLASH_MODE`）。
+> 手机上内核跑在 App 的 VPN 服务里，监听端口 / IPv6 策略都由 App 统一管，脚本再覆盖就会打架。
 >
 > | 项 | 桌面端 | 手机端 | 原因 |
 > |---|---|---|---|
-> | `dns`（含 `listen: 0.0.0.0:1053`） | 覆盖 | **跳过** | 会和 FlClash 自己的 DNS/TUN 抢端口 |
+> | `dns.listen`（`0.0.0.0:1053`） | 覆盖 | **跳过** | 会和 FlClash 自己的 DNS/TUN 抢端口 |
+> | `dns` 上游 | IP 型 DoH | **也换 IP 型 DoH** | 订阅自带的是明文 UDP 53，在阻断 UDP 53 的网络里会整体失效（见坑 15） |
 > | `listeners`（7865 专用口） | 开启 | **跳过** | 手机上没有 Proxifier/Claude Code，白多一个失败点 |
 > | `ipv6: false` / `domain-strategy` | 设置 | **跳过** | 交给 App，避免 IPv6-only 网络下出问题 |
 > | `IP-ASN` 规则 | 保留 | **跳过** | 需要 ASN 数据库，手机上没有会让内核启动卡 75 秒（见坑 13） |
+>
+> 手机端 DNS 只做三件事：`enhanced-mode` 保持 fake-ip、上游换成 IP 型 DoH、
+> 补上 `fake-ip-filter`（含 `geosite:cn`）。**绝不写 `listen`**。
+> 实测：节点域名 `hk02.poke-mon.xyz` / `ptxlv6-01.78778m.cn` 全部走
+> `https://1.12.12.12:443/dns-query` 解析，日志里零 `UDP 53`、零 `i/o timeout`。
+
+> **手机端「全局模式」是个陷阱**——它走内核自建的 `GLOBAL` 组，第一个成员固定是 `DIRECT`。
+> 实测新配置启动后 `GLOBAL.now = DIRECT`，也就是说**切全局 = 全部直连，真实 IP 直接暴露**。
+> 要用全局模式，先在代理页把 `GLOBAL` 手动选成「住宅出口」；更推荐直接用规则模式
+> （末尾 `MATCH, AUTO` 已经兜住所有流量）。详见坑 16。
 
 > **手机端 ChatGPT App 报「网络配置问题 / 非预期的 SSL 证书」**——先看「住宅出口」当前选中什么。
 > 如果显示 `REJECT`，说明默认选中项没生效（旧版脚本，或桌面端那种没有 `store-selected` 的客户端）。
@@ -441,6 +464,16 @@ Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且�
 
     桌面端现在显示 `GLOBAL now=住宅出口`，那是 `profile.store-selected: true` 记住的**手动选择**，
     不是配置给的默认值。把 `~/Library/Application Support/mihomo-party/work/cache.db` 删掉就原形毕露。
+
+    **手机端更直接**：用同一份 `flclash-private.js` 构建出的配置、`mode: global` 启动，实测
+
+    ```
+    GLOBAL type: Selector  now: DIRECT
+    成员前 6: ['DIRECT', 'REJECT', '剩余流量：58.86 GB', '距离下次重置剩余：9 天', …]
+    ```
+
+    也就是说 FlClash 切「全局模式」= 全部直连。这一条对手机比桌面更危险，
+    因为手机上没有任何缓存记住过你的手动选择。
 
     结论：**别依赖全局模式**。规则模式（默认）末尾有 `MATCH, AUTO` 兜底，行为等价且更细。
     真要用全局模式，切过去先确认选中项是 `住宅出口`（链路：`住宅出口 → 🏠 住宅-JP → 前置-日本 → 日本节点`）。
