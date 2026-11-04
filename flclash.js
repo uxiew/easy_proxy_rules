@@ -149,6 +149,9 @@ const directSSHIPs = [
 const RESIDENTIAL = {
   enabled: true, // 一键开关：false = 完全回到改造前的行为
   group: '住宅出口', // 组名，规则引用它；不要在覆写 YAML 里重复定义同名组，否则内核报重名
+  // 组内第一个成员（= select 的默认值）。留空 → 默认 REJECT（需手动选一次）。
+  // FlClash 构建时由钩子自动填成注入的节点名 → 手机开箱即用。
+  nodeName: '',
   nodePattern: '🏠|WS-', // 节点名匹配（Go RE2 正则），覆写里的节点名必须能命中
   // ⚠️ 命名约定：自己加的住宅节点必须带 🏠 前缀（如 🏠 住宅-JP / 🏠 住宅-US）。
   //   不能用「住宅」两个字做匹配——很多机场自带「家宽住宅」「住宅IP」节点，
@@ -756,6 +759,10 @@ function main(config) {
         'dialer-proxy': RESIDENTIAL.upstream.group,
       });
       console.log(`[FlClash] 已注入住宅节点 ${c.name}（dialer-proxy: ${RESIDENTIAL.upstream.group}）`);
+      // 关键：把「住宅出口」的默认选中项设成这个节点。
+      // 否则 select 组默认落在第一位（REJECT），手机上又没有 store-selected，
+      // 每次启动 AI 站点全被阻断（ChatGPT App 报「非预期的 SSL 证书」）。
+      RESIDENTIAL.nodeName = c.name;
     }
   }
 
@@ -1022,24 +1029,39 @@ function main(config) {
   // 注意：不要把本组写进 smartGroups，否则会被上面的 filter 展开逻辑当成静态组处理，
   //       filter 被删掉后就收编不到任何节点了。
   //
-  // 【成员 = 住宅节点 + REJECT（第一位）+ AI（第二位，仅作手动逃生口）】
-  //   - select 组本身不会自动切换，但「选中的节点消失」时内核会回落到**第一个**成员；
-  //     所以第一位必须是 REJECT：住宅节点一没就阻断，不会静默走机场（IP 变了都不知道）；
-  //   - AI 放在第二位，只是为了留一个**手动**应急通道：住宅线路彻底挂了，
-  //     在面板里能切到 AI 临时用一下。它排在 REJECT 之后，不会被自动选中。
-  //   - 也不能不放兜底：filter 一个都没匹配到时会变成空组，内核塞 COMPATIBLE = 直连，
-  //     真实 IP 直接泄漏（比走机场更糟）。
-  //   - 代价：首次使用（还没有记忆的选择）默认是 REJECT，AI 类站点会打不开，
-  //     必须在面板里把本组切到住宅节点一次（store-selected 会记住）。
-  //     想要「住宅挂了就自动走机场」，把 AI 挪到第一位即可（不推荐）。
+  // 【成员 = [住宅节点(可选)] + REJECT + AI】
+  //
+  // 为什么需要「第一个成员」可配置（RESIDENTIAL.nodeName）：
+  //   select 组的默认值 = 第一个成员。以前第一位固定是 REJECT（fail-closed 回落点），
+  //   于是「新设备 / 重装 App / 客户端没有 store-selected」启动后默认就是 REJECT，
+  //   AI 站点全部连不上。手机端实测复现：chatgpt.com 在 TLS 握手里被 10ms 掐断，
+  //   ChatGPT App 把它翻译成「非预期的 SSL 证书 / 网络配置问题」。
+  //   桌面端因为 profile.store-selected: true 记住了手动选择，所以一直没暴露。
+  //
+  //   也试过用内层 url-test 组做「自动择优」，但 url-test 的健康检查依赖
+  //   「前置-日本」已经选好节点，冷启动时两者并发 → 住宅节点被判失败，
+  //   要等 interval（300s）才重测，等于开机 5 分钟内 AI 全挂。所以不用自动组。
+  //
+  //   FlClash 构建时由钩子把 nodeName 填成实际注入的节点名（自己生成的节点，
+  //   必然存在）→ 开箱即用、无需健康检查。桌面端留空 → 默认 REJECT，
+  //   在面板里选一次（store-selected 记住）。
+  //
+  // 顺序语义：
+  //   - nodeName 在第一位 → 新配置默认就走住宅；
+  //   - REJECT 第二 → 手动选中某个住宅节点、该节点后来从订阅里消失时，内核回落到
+  //     第一个成员（nodeName）；nodeName 也消失时回落 REJECT = 阻断，
+  //     不会静默走机场（出口 IP 悄悄变化比断网更危险）；
+  //   - AI 第三，仅作手动应急通道：住宅线路彻底挂了能在面板切过去临时用。
+  //   - REJECT 必须始终在列：filter 一个都没匹配到时组会变空，内核塞 COMPATIBLE
+  //     = 直连，真实 IP 直接泄漏（比走机场更糟）。
   if (RESIDENTIAL.enabled) {
     finalGroups.splice(1, 0, {
       name: RESIDENTIAL.group,
       type: 'select',
-      // 顺序即优先级：REJECT 必须第一（fail-closed 回落点），AI 第二（手动逃生口）
-      proxies: ['REJECT', 'AI'],
+      proxies: [RESIDENTIAL.nodeName, 'REJECT', 'AI'].filter(Boolean),
       'include-all-proxies': true,
       filter: RESIDENTIAL.nodePattern,
+      'exclude-filter': INFO_NODE_PATTERN,
       'include-all': false, // 防止内核二次筛选，保持成员完全由 filter 决定
     });
   }
@@ -1050,7 +1072,9 @@ function main(config) {
   //   - 但 filter 一个都匹配不到时，组会变空，内核塞进 COMPATIBLE = 直连，
   //     真实 IP 静默泄漏。加了 REJECT 后空组 → 阻断，fail-closed。
   if (RESIDENTIAL.enabled && RESIDENTIAL.upstream && RESIDENTIAL.upstream.enabled) {
-    finalGroups.splice(2, 0, {
+    // 插到「住宅出口」后面，UI 里三个组挨在一起；用名字定位，避免硬编码下标
+    const exitIdx = finalGroups.findIndex((g) => g.name === RESIDENTIAL.group);
+    finalGroups.splice(exitIdx >= 0 ? exitIdx + 1 : 2, 0, {
       name: RESIDENTIAL.upstream.group,
       type: 'url-test',
       proxies: ['REJECT'],
