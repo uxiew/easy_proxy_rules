@@ -118,7 +118,7 @@ function header(cred, m) {
  *
  * !! 版本兼容性（很重要）!!
  *   FlClash 的覆写是「追加 rules、不替换 rules」，本脚本已自动补齐订阅规则
- *   引用的规则集与组名，所以换任何订阅都不会再报 `rule set / proxy not found`。
+ *   引用的规则集与组名，所以换任何订阅都不会再报 rule set / proxy not found。
  *   但 v0.9.1 起 FlClash 会用订阅原文覆盖覆写生成的 proxies / proxy-groups，
  *   等于废掉「注入住宅节点 + 重建分组」。检测到这种情况脚本会自动退化为
  *   「只修 DNS」，并在日志打印提示。
