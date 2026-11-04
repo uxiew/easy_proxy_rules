@@ -772,7 +772,8 @@ function main(config) {
   // 如果这里再覆盖 dns（桌面版写死了 listen: 0.0.0.0:1053 + respect-rules + fallback），
   // 会和 App 自己的 DNS 体系打架：内核解析全废 → 所有节点测速失败、全部「失效」。
   // 实测反馈：手机上应用全量脚本后「节点全部失效」，就是这个原因。
-  // 所以 FlClash 模式只保留「组 + 规则 + 节点注入」，DNS/ipv6/listeners 全部沿用订阅/App 的。
+  // 所以 FlClash 模式只保留「组 + 规则 + 节点注入」，ipv6/listeners 沿用订阅/App，
+  // DNS 只换上游（明文 UDP 53 → IP 型 DoH），绝不写 listen（见下方覆盖 DNS 段落）。
   if (!FLCLASH_MODE) {
     // 1. 严格关闭全局 IPv6 处理
     config['ipv6'] = false;
@@ -856,12 +857,46 @@ function main(config) {
   }
 
   // 覆盖DNS配置
-  // FlClash 模式**完全不碰 DNS**：桌面这套写死了 listen: 0.0.0.0:1053，会和
-  // FlClash 自己的 DNS/TUN 抢端口；而订阅自带的 DNS 在手机上本来是好的
-  // （TUN 会把 DoH 流量一起接管）。手机端 DNS 交给 App / 订阅决定，
-  // 需要时在 FlClash 设置里打开「DNS 覆盖」。
+  // ── 桌面端：全量覆盖（listen 1053 / respect-rules / arc 缓存 / IP 型 DoH）
+  // ── 手机端：**只补最小必要项，绝不碰 `listen`**
+  //   1) 为什么不能全量覆盖：桌面这套写死了 `listen: 0.0.0.0:1053`，会和 FlClash 自己的
+  //      DNS/TUN 抢端口 → 内核解析全废 → 所有节点「失效」（实测过，见 README 坑 14）。
+  //   2) 为什么不能完全不碰：订阅自带的 DNS 是明文 UDP 53
+  //      （223.5.5.5 / 119.29.29.29 / 114.114.114.114）。在「阻断海外 UDP 53」的网络里
+  //      （比如家里 Wi-Fi，桌面端就是这么挂的，见坑 15），节点域名解析不了 → 节点全挂，
+  //      国内域名也解析不了 → 直连也打不开。
+  //   3) 所以这里只做一件事：**把上游换成 IP 型 DoH（走 443，不受 UDP 53 影响）**，
+  //      其余（ipv6 / use-hosts / respect-rules）沿用订阅，端口完全不碰。
   if (!FLCLASH_MODE) {
     config.dns = dnsConfig;
+  } else {
+    const subDns = config.dns && typeof config.dns === 'object' ? config.dns : {};
+    config.dns = {
+      ...subDns, // 保留订阅的 ipv6 / use-hosts / respect-rules 等
+      'enhanced-mode': 'fake-ip', // 海外域名给假 IP → 出口侧解析，DNS 归属与出口一致
+      'fake-ip-range': '198.18.0.1/16',
+      'fake-ip-filter': [
+        '*.lan',
+        '*.local',
+        '*.msftconnecttest.com',
+        'localhost.ptlogin2.qq.com',
+        '+.stun.*',
+        'geosite:cn', // 国内域名拿真实 IP，否则直连时还要再解析一次
+      ],
+      // 只接受纯 IP，仅作兜底（IP 型 DoH 不需要它引导，正常情况下用不到）
+      'default-nameserver': ['223.5.5.5', '119.29.29.29'],
+      // 节点域名 + 普通域名全部走 IP 型 DoH，彻底摆脱 UDP 53
+      'proxy-server-nameserver': [
+        'https://1.12.12.12/dns-query',
+        'https://120.53.53.53/dns-query',
+      ],
+      nameserver: ['https://1.12.12.12/dns-query', 'https://120.53.53.53/dns-query'],
+      // 订阅里的 fallback 是明文 1.1.1.1 / 8.8.8.8，在本网络里只会拖慢解析
+      fallback: [],
+      'fallback-filter': { geoip: false, ipcidr: ['240.0.0.0/4', '0.0.0.0/8'] },
+    };
+    // 关键：绝不写 listen，交给 FlClash 自己绑定
+    delete config.dns.listen;
   }
 
   // 代理组通用配置
