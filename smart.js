@@ -739,6 +739,30 @@ function main(config) {
     throw new Error('配置对象为空');
   }
 
+  // ===== FlClash 新版安全网（v0.9.1+）=====
+  // v0.9.1 起 core/profile_base.go 的 mergeProfileBase 会做两件事：
+  //   1) 用订阅原文覆盖 proxies / proxy-groups / sub-rules
+  //      → 覆写脚本注入的节点和重建的分组**全部被丢弃**；
+  //   2) 把覆写结果的 rules 追加在订阅 rules 前面（appendRules）。
+  // 如果在这种版本上继续重建规则，规则会指向不存在的组，内核只能报错或全断网。
+  // 特征：core 传给 host 的是「骨架配置」——proxies 与 rules 都是空的。
+  const __isFlClash = typeof FLCLASH_RESIDENTIAL !== 'undefined' && FLCLASH_RESIDENTIAL;
+  const __skeleton =
+    __isFlClash &&
+    !(Array.isArray(config.proxies) && config.proxies.length > 0) &&
+    !(Array.isArray(config.rules) && config.rules.length > 0);
+  if (__skeleton) {
+    // 只保留 DNS 修复（dns 不在被覆盖的字段里），其余原样返回，避免把手机搞断网。
+    const d = Object.assign({}, dnsConfig);
+    delete d.listen; // 手机上绝不能绑 1053，会和 FlClash 自己的 DNS 抢端口
+    config.dns = d;
+    console.log(
+      '[FlClash] 检测到 v0.9.1+ 的骨架配置：该版本会丢弃覆写生成的节点与分组，' +
+        '已跳过节点/分组/规则重建（只修 DNS）。若要保留住宅出口与 AI 分流，请降级到 v0.8.98。',
+    );
+    return config;
+  }
+
   // ===== FlClash 钩子（桌面端不会走到这里）=====
   // FlClash 没有覆写链，只能跑单个脚本：把 smart.js 全文拼在凭据头后面
   // （构建脚本 build-flclash.js 自动生成），凭据头定义全局变量 FLCLASH_RESIDENTIAL。
@@ -871,26 +895,45 @@ function main(config) {
     config.dns = dnsConfig;
   } else {
     const subDns = config.dns && typeof config.dns === 'object' ? config.dns : {};
+    // 订阅里的 DoH 基本都是**域名型**（doh.pub / dns.alidns.com / dns.google…）。
+    // 要用它们必须先解析域名，而解析域名只能靠明文 UDP 53 —— 在阻断 UDP 53 的
+    // 网络里就是死循环（坑 15）。这里统一换成 IP 型 DoH：走 443，零引导。
+    // 注意 `rcode://success` 这类非 http 值要原样保留（订阅用它直接回空包拦广告）。
+    const DOH_IP = ['https://1.12.12.12/dns-query', 'https://120.53.53.53/dns-query'];
+    const isHostDoh = (s) =>
+      typeof s === 'string' &&
+      /^https?:\/\//i.test(s) &&
+      !/^https?:\/\/\d{1,3}(\.\d{1,3}){3}(?::|\/)/.test(s);
+    const fixDoh = (v) => {
+      if (isHostDoh(v)) return DOH_IP.slice();
+      if (Array.isArray(v)) {
+        const kept = v.filter((x) => !isHostDoh(x));
+        return kept.length ? kept.concat(DOH_IP) : DOH_IP.slice();
+      }
+      return v;
+    };
+    const subPolicy = subDns['nameserver-policy'] || {};
+    const policy = {};
+    Object.keys(subPolicy).forEach((k) => {
+      policy[k] = fixDoh(subPolicy[k]);
+    });
+
     config.dns = {
-      ...subDns, // 保留订阅的 ipv6 / use-hosts / respect-rules 等
+      ...subDns, // 保留订阅的 ipv6 / use-hosts / respect-rules / cache-algorithm 等
       'enhanced-mode': 'fake-ip', // 海外域名给假 IP → 出口侧解析，DNS 归属与出口一致
       'fake-ip-range': '198.18.0.1/16',
+      // 订阅的 fake-ip-filter 比我们全（NTP / captive portal / 游戏域名），合并而不是覆盖
       'fake-ip-filter': [
-        '*.lan',
-        '*.local',
-        '*.msftconnecttest.com',
-        'localhost.ptlogin2.qq.com',
-        '+.stun.*',
-        'geosite:cn', // 国内域名拿真实 IP，否则直连时还要再解析一次
+        ...new Set([...(subDns['fake-ip-filter'] || []), '*.lan', '*.local', '+.stun.*', 'geosite:cn']),
       ],
       // 只接受纯 IP，仅作兜底（IP 型 DoH 不需要它引导，正常情况下用不到）
       'default-nameserver': ['223.5.5.5', '119.29.29.29'],
-      // 节点域名 + 普通域名全部走 IP 型 DoH，彻底摆脱 UDP 53
-      'proxy-server-nameserver': [
-        'https://1.12.12.12/dns-query',
-        'https://120.53.53.53/dns-query',
-      ],
-      nameserver: ['https://1.12.12.12/dns-query', 'https://120.53.53.53/dns-query'],
+      // 节点域名 + 普通域名 + 直连域名，全部走 IP 型 DoH，彻底摆脱 UDP 53
+      'proxy-server-nameserver': DOH_IP,
+      'direct-nameserver': DOH_IP,
+      nameserver: DOH_IP,
+      // 订阅常把 geosite:cn / rule-set:cn 指到域名型 DoH，上面 fixDoh 已经换掉了
+      'nameserver-policy': policy,
       // 订阅里的 fallback 是明文 1.1.1.1 / 8.8.8.8，在本网络里只会拖慢解析
       fallback: [],
       'fallback-filter': { geoip: false, ipcidr: ['240.0.0.0/4', '0.0.0.0/8'] },
@@ -1151,8 +1194,91 @@ function main(config) {
   }
 
   // 覆盖规则配置
+  // ===== FlClash：补齐「订阅自带规则」引用的规则集与策略 =====
+  // FlClash 的覆写**不是替换 rules**：core/profile_base.go 的 mergeProfileBase →
+  // appendRules 会把覆写结果的 rules 追加在订阅原有 rules 的**前面**，
+  // 而 proxy-groups / rule-providers 用的却是覆写结果这一套。
+  // 于是订阅里的 `RULE-SET,category-ads-all,REJECT`（规则集缺失）和
+  // `RULE-SET,overseas-ai,节点选择`（组缺失）都会让内核启动失败
+  // （实测复现，见 README 坑 18）。之前用的订阅都是纯节点（0 条 rules），
+  // 所以从没触发；换成带规则的订阅就炸。
+  //
+  // 本脚本的 rules 末尾是 `MATCH, AUTO` 兜底，订阅规则永远不可达，
+  // 所以缺的规则集/策略只要「名字存在」即可，内容无关紧要。
+  const finalProviders = Object.assign({}, ruleProviders);
+  if (FLCLASH_MODE) {
+    const subRules = Array.isArray(config.rules) ? config.rules : [];
+    const subProviders = config['rule-providers'] || {};
+    const legacyNames = new Set();
+    subRules.forEach((r) => {
+      const parts = String(r).split(',');
+      if (parts[0].trim().toUpperCase() === 'RULE-SET' && parts[1] && parts[1].trim()) {
+        legacyNames.add(parts[1].trim());
+      }
+    });
+    // dns.nameserver-policy 里也可能写 `rule-set:xxx`，引用的规则集同样必须存在
+    Object.keys((config.dns && config.dns['nameserver-policy']) || {}).forEach((k) => {
+      if (String(k).indexOf('rule-set:') === 0) {
+        String(k)
+          .slice('rule-set:'.length)
+          .split(',')
+          .forEach((n) => n.trim() && legacyNames.add(n.trim()));
+      }
+    });
+
+    if (legacyNames.size > 0) {
+      // 订阅确实带规则集引用时才继承它的 provider 定义；纯节点订阅不额外下载。
+      // 同时这一步保证幂等：脚本被重复执行时，config 里已经是上次合并的结果。
+      Object.keys(subProviders).forEach((n) => legacyNames.add(n));
+      legacyNames.forEach((name) => {
+        if (finalProviders[name]) return;
+        if (subProviders[name]) {
+          // 订阅自己定义过：原样沿用，保证内容能加载
+          finalProviders[name] = subProviders[name];
+          console.log(`[FlClash] 保留订阅规则集「${name}」（订阅 rules 会被追加，缺 provider 内核起不来）`);
+        } else {
+          // 订阅只引用、没定义：给个空规则集占位，永不命中
+          finalProviders[name] = {
+            type: 'http',
+            behavior: 'classical',
+            format: 'text',
+            url: `${CDN_BASE}/uxiew/easy_proxy_rules@main/ruleset/empty.list`,
+            path: `./ruleset/legacy/${name.replace(/[^A-Za-z0-9_-]/g, '_')}.list`,
+            interval: 86400,
+          };
+          console.log(`[FlClash] 订阅引用了未定义的规则集「${name}」，用空规则集占位`);
+        }
+      });
+    }
+
+    if (subRules.length > 0) {
+      // 订阅规则的「目标」也必须存在：`RULE-SET,overseas-ai,节点选择` 里的
+      // 「节点选择」是订阅自己的组，已被本脚本的组列表替换掉 → proxy not found。
+      // 有些订阅（如 138top）压根不用 RULE-SET，只靠 594 条 DOMAIN 规则指向自己的组，
+      // 所以这段不能跟上面的 provider 分支绑在一起。
+      // 这些规则永不命中，补一个指向 REJECT 的占位组即可（万一命中也不泄漏真实 IP）。
+      const builtin = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'PASS', 'COMPATIBLE', 'GLOBAL']);
+      const known = new Set(builtin);
+      (config.proxies || []).forEach((p) => p && p.name && known.add(p.name));
+      finalGroups.forEach((g) => g && g.name && known.add(g.name));
+      subRules.forEach((r) => {
+        const parts = String(r).split(',').map((s) => s.trim());
+        let target = '';
+        for (let i = parts.length - 1; i >= 1; i--) {
+          if (parts[i] && parts[i].toLowerCase() !== 'no-resolve') {
+            target = parts[i];
+            break;
+          }
+        }
+        if (!target || known.has(target)) return;
+        known.add(target);
+        finalGroups.push({ name: target, type: 'select', proxies: ['REJECT'] });
+        console.log(`[FlClash] 订阅规则引用了不存在的策略「${target}」，已补 REJECT 占位组（永不命中）`);
+      });
+    }
+  }
   config['proxy-groups'] = finalGroups;
-  config['rule-providers'] = ruleProviders;
+  config['rule-providers'] = finalProviders;
   config.rules = rules;
 
   // ===== 住宅专用入口端口（给 Proxifier / 其他客户端「强制走住宅」用）=====
