@@ -624,7 +624,11 @@ const getRules = ()=>{
     // fake-ip 模式下域名请求不会命中 IP 规则，但 Claude 桌面端 / SDK 直连 IP 时会。
     ...(RESIDENTIAL.enabled && RESIDENTIAL.aiStrict
       ? [
-          `IP-ASN,399358,${RESIDENTIAL.group},no-resolve`,
+          // ⚠️ IP-ASN 需要 ASN 数据库（ASN.mmdb）。桌面端 Clash Party 自带这个文件，
+          //    手机 FlClash 不一定有；缺了它内核会在启动时尝试下载，下载失败则**整份配置
+          //    加载失败**（实测 `mihomo -t` 报 ASN 下载超时），表现就是「所有节点全部失效」。
+          //    所以 FlClash 模式跳过它，只保留不依赖数据库的 IP-CIDR。
+          ...(FLCLASH_MODE ? [] : [`IP-ASN,399358,${RESIDENTIAL.group},no-resolve`]),
           `IP-CIDR,160.79.104.0/21,${RESIDENTIAL.group},no-resolve`,
           `IP-CIDR6,2607:6bc0::/32,${RESIDENTIAL.group},no-resolve`,
         ]
@@ -709,6 +713,11 @@ const getRules = ()=>{
   return [...whiteListRules, ...aiFallbackRules, ...customRules, 'MATCH, AUTO'];
 }
 
+// FlClash（手机）模式：由下方钩子置 true。
+// 手机端只接管「组 + 规则 + 节点」，DNS / IPv6 / listeners 全部交给 App，
+// 否则会和 FlClash 自己的 DNS/TUN 打架，表现为「所有节点全部失效」。
+let FLCLASH_MODE = false;
+
 // 程序入口
 function main(config) {
   // 验证配置
@@ -721,6 +730,7 @@ function main(config) {
   // （构建脚本 build-flclash.js 自动生成），凭据头定义全局变量 FLCLASH_RESIDENTIAL。
   // 桌面端（Clash Party）不定义它 → typeof 守卫跳过，节点仍由 YAML 覆写注入。
   if (typeof FLCLASH_RESIDENTIAL !== 'undefined' && FLCLASH_RESIDENTIAL) {
+    FLCLASH_MODE = true;
     const c = FLCLASH_RESIDENTIAL; // { name, server, port, username, password }
     if (c && c.server && c.port) {
       config.proxies = (config.proxies || []).filter((p) => p && p.name !== c.name);
@@ -743,14 +753,22 @@ function main(config) {
     }
   }
 
-  // 1. 严格关闭全局 IPv6 处理
-  config['ipv6'] = false;
+  // 【FlClash（手机）只改路由，不动系统级配置】
+  // 手机上的内核跑在 FlClash 的 VPN 服务里，DNS / TUN / 监听端口都由 App 统一管理。
+  // 如果这里再覆盖 dns（桌面版写死了 listen: 0.0.0.0:1053 + respect-rules + fallback），
+  // 会和 App 自己的 DNS 体系打架：内核解析全废 → 所有节点测速失败、全部「失效」。
+  // 实测反馈：手机上应用全量脚本后「节点全部失效」，就是这个原因。
+  // 所以 FlClash 模式只保留「组 + 规则 + 节点注入」，DNS/ipv6/listeners 全部沿用订阅/App 的。
+  if (!FLCLASH_MODE) {
+    // 1. 严格关闭全局 IPv6 处理
+    config['ipv6'] = false;
 
-  // 2. 强制指定域名解析策略为仅用 IPv4 (适用于 Mihomo / Clash Meta 内核)
-  config['domain-strategy'] = 'UseIPv4';
+    // 2. 强制指定域名解析策略为仅用 IPv4 (适用于 Mihomo / Clash Meta 内核)
+    config['domain-strategy'] = 'UseIPv4';
 
-  //  确保开启了 UDP，因为 NTP (时间同步) 强制走 UDP 协议
-  config['udp'] = true;
+    //  确保开启了 UDP，因为 NTP (时间同步) 强制走 UDP 协议
+    config['udp'] = true;
+  }
 
   const proxyCount = config?.proxies?.length ?? 0;
   const proxyProviderCount = config?.['proxy-providers']
@@ -824,7 +842,13 @@ function main(config) {
   }
 
   // 覆盖DNS配置
-  config.dns = dnsConfig;
+  // FlClash 模式**完全不碰 DNS**：桌面这套写死了 listen: 0.0.0.0:1053，会和
+  // FlClash 自己的 DNS/TUN 抢端口；而订阅自带的 DNS 在手机上本来是好的
+  // （TUN 会把 DoH 流量一起接管）。手机端 DNS 交给 App / 订阅决定，
+  // 需要时在 FlClash 设置里打开「DNS 覆盖」。
+  if (!FLCLASH_MODE) {
+    config.dns = dnsConfig;
+  }
 
   // 代理组通用配置
   const groupBaseOption = {
@@ -1070,6 +1094,10 @@ function main(config) {
       url: 'http://www.gstatic.com/generate_204',
       interval: 300,
       tolerance: 50,
+      // 关掉 groupBaseOption 里的 lazy：lazy=true 表示「第一次被用到才测速」，
+      // 而本组第一个成员是 REJECT → 冷启动后第一次 AI 请求会直接打到 REJECT 上失败。
+      // 关掉后启动即测速，住宅链路（dialer-proxy 指向本组）才能真正可用。
+      lazy: false,
     });
   }
 
@@ -1084,7 +1112,9 @@ function main(config) {
   //      用 Proxifier 指向这个端口，就能让它们的所有流量强制从住宅 IP 出去，
   //      不必再为每个域名写规则。
   // 关闭方法：把 RESIDENTIAL.dedicatedPort 设为 0。
-  if (RESIDENTIAL.enabled && RESIDENTIAL.dedicatedPort) {
+  // FlClash 模式跳过：手机上没有人会去连 7865（没有 Proxifier/Claude Code），
+  // 多绑一个端口只是徒增失败面（Android 上端口被占用会让内核起不来）。
+  if (!FLCLASH_MODE && RESIDENTIAL.enabled && RESIDENTIAL.dedicatedPort) {
     const port = Number(RESIDENTIAL.dedicatedPort);
     const listeners = Array.isArray(config.listeners) ? config.listeners : [];
     // 避免重复注册（覆写可能被多次执行）
