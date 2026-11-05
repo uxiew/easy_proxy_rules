@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-05 17:22:50
- * 源文件      : smart.js  sha256:234e7c2e138c  1354 行 / 65128 字节
- * 源码提交    : 132c85c
+ * 构建时间    : 2026-11-05 18:09:49
+ * 源文件      : smart.js  sha256:8fa12fdd649c  1396 行 / 68148 字节
+ * 源码提交    : 9cce3ad
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -27,7 +27,8 @@
  *   全局模式走的是内核自建的 GLOBAL 组，它的第一个成员固定是 DIRECT，
  *   所以新装/清数据后切全局 = 全部直连（真实 IP 直接暴露）。
  *   要用全局模式，先在代理页把 GLOBAL 手动选成「住宅出口」，否则等于关掉代理。
- *   推荐直接用「规则模式」，末尾 MATCH,AUTO 已经兜住所有流量。
+ *   推荐直接用「规则模式」，末尾 MATCH,CATCH 已经兜住所有流量
+ *   （CATCH 默认成员是 AUTO，行为等价；需要全站直连/断网时切 CATCH 即可）。
  *
  * !! 版本兼容性（很重要）!!
  *   FlClash 的覆写是「追加 rules、不替换 rules」，本脚本已自动补齐订阅规则
@@ -287,19 +288,31 @@ const AI_STATIC_TO_AI = [
 // 【组名规则】回答"组名会不会和内置名冲突"：
 // 1. 内核内置策略只有 4 个：DIRECT / REJECT / PASS / GLOBAL（外加规则里的 MATCH 关键字）。
 //    这些名字**不能**拿来做自定义组名，否则会覆盖内置策略，规则行为直接乱掉。
-// 2. AUTO、CATCH、AI、SPEED、JP、US 这些都不在保留字里，和内核不冲突，可以放心用。
+// 2. AUTO、CATCH、AI、JP、US 这些都不在保留字里，和内核不冲突，可以放心用。
 // 3. 真正的雷是「重名」：同一份配置里出现两个同名组，内核直接校验失败
 //       ProxyGroup xxx: duplicate group name
 //    所以覆写 YAML 里**不要**再定义 住宅出口 / AUTO / AI 这类本脚本已经建好的组。
-// 4. 顺带说明：CATCH 组目前没有被任何规则引用（纯兜底展示），保留是为了手动切流量时方便。
+// 4. 2026-11-05 起的组职责划分：
+//      AUTO        —— 全量节点的 url-test，自动选最快（MATCH 之外的绝大多数规则都指向它）
+//      CATCH       —— MATCH 兜底 + 手动总闸（AUTO / DIRECT / REJECT 三选一）
+//      ADS_FILTER  —— 广告域名开关（REJECT / DIRECT 二选一）
+//      AI          —— 机场 AI 组，按延迟选最快
+//      住宅出口    —— 不在本对象里，由下方 include-all-proxies 动态生成
+//    SPEED 已删除（与 AUTO 完全等价，纯重复测速）。
 
 const smartGroups = {
   // --------------- 以下为静态代理组 ---------------
   AUTO: {
-    proxies: ['US', 'JP', 'HK', 'SPEED'],   // , 'DIRECT'
-    // 根据 interval: 300（每 5 分钟），拿测试网址（代码里写的是 Apple 的测试页）去挨个测试组里的节点。
-    // 在浏览器输入网址时，Clash 会自动选择当前测速结果最快、且能连通的节点。
-    interval: 300, // 每 5 分钟
+    // 【2026-11-05 改】原来写的是 proxies: ['US','JP','HK','SPEED']，
+    // 而 SPEED 的 filter 是 '.*' —— 展开后 AUTO = US∪JP∪HK∪全部节点 = 全部节点。
+    // 于是 AUTO 和 SPEED 成了成员完全相同的两个 url-test 组，
+    // 同一批节点被两套健康检查各测一遍（浪费一倍探测开销），
+    // 且 SPEED 没有任何规则引用，纯占面板。现在合并成一个：AUTO 直接吃全量。
+    filter: '.*',
+    'exclude-filter': '套餐|剩余|到期|流量|官网', // 住宅节点/占位节点由 getFilterMatchedNodes 统一追加排除
+    // interval: 300（每 5 分钟）测一轮，直接取最快且可用的节点。
+    interval: 300,
+    tolerance: 50,
     type: 'url-test',
     icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/adjust.svg`,
   },
@@ -322,7 +335,14 @@ const smartGroups = {
     icon: 'https://github.com/DustinWin/ruleset_geodata/releases/download/icons/ai.png',
   },
   ADS_FILTER: {
-    proxies: ['REJECT', 'AUTO'], // 默认拦截，留备选项用于除错
+    // 【2026-11-05 改】原来写 proxies: ['REJECT','AUTO']，但 expandGroup 会把 AUTO
+    // 摊平成 100+ 个机场节点，这个组就变成了「REJECT + 107 个节点」的下拉框。
+    // 语义上「广告域名走代理」毫无意义，除错时唯一有用的动作是「放行直连」，
+    // 所以固定两个成员、不再展开：
+    //   REJECT（默认，拦截广告/统计域名） / DIRECT（怀疑误杀时手动切过去放行）
+    keepRefs: true,
+    type: 'select',
+    proxies: ['REJECT', 'DIRECT'],
     icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/bug.svg`,
   },
   // _DIRECT: {
@@ -334,17 +354,23 @@ const smartGroups = {
   //   icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/block.svg`,
   // },
   CATCH: {
-    proxies: ['AUTO'], // 未知流量优先走代理，以防外网连不上
+    // 【2026-11-05 改】原来是「没有任何规则引用的死组」，成员还被展开成全量节点。
+    // 现在让它当总闸：MATCH 的兜底目标从 AUTO 改成 CATCH，
+    //   AUTO（默认，保持原有行为：未命中的流量走机场）
+    //   DIRECT（怀疑某个站是代理导致打不开时，面板一键切直连排查，不用改配置重载）
+    //   REJECT（断网模式，全部未知流量丢弃）
+    // keepRefs 让 expandGroup 不要把它摊平成节点列表，否则「切到 DIRECT」这个能力就没了。
+    keepRefs: true,
+    type: 'select',
+    proxies: ['AUTO', 'DIRECT', 'REJECT'],
     icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/fish.svg`,
   },
   // --------------- 以下为静态代理组 ---------------
-  SPEED: {
-    tolerance: 50,
-    type: 'url-test',
-    filter: '.*', // 匹配所有节点
-    'exclude-filter': '套餐|剩余|到期|流量|官网', // 使用原生的排除字段
-    icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/speed.svg`,
-  },
+  // 【2026-11-05 删除 SPEED】
+  // 它原本是 filter: '.*' 的 url-test 组，但没有任何规则引用，
+  // 只作为 AUTO 的成员被引用 —— 展开后 AUTO 与它成员完全相同，
+  // 等于同一批节点被两套健康检查重复测速。合并进 AUTO 后删除。
+  // 需要「手动挑一个最快的」时用「🚀 全部节点」，需要「自动挑」时用 AUTO。
   NSFW: {
     type: 'fallback',
     interval: 200,
@@ -815,8 +841,10 @@ const getRules = ()=>{
     `GEOSITE,anthropic, ${aiStrictPolicy}`,
   ];
 
-  // ⚠️ 修复：将截断后续匹配的 'MATCH, AUTO' 放在最后执行
-  return [...whiteListRules, ...aiFallbackRules, ...customRules, 'MATCH, AUTO'];
+  // ⚠️ 兜底必须放最后：它的前面任何一条规则都会被它截断。
+  // 兜底目标从 AUTO 改成 CATCH，CATCH 默认成员就是 AUTO，行为不变；
+  // 但需要临时「全站直连 / 全站断网」时，面板切一下 CATCH 即可，不用改配置重载。
+  return [...whiteListRules, ...aiFallbackRules, ...customRules, 'MATCH, CATCH'];
 }
 
 // FlClash（手机）模式：由下方钩子置 true。
@@ -1071,9 +1099,9 @@ function main(config) {
     if (!groupConfig.filter) return [];
 
     const filterRegex = new RegExp(groupConfig.filter, 'i');
-    // ⚠️ 新增：住宅落地节点永远不参与地区组 / SPEED 的自动筛选。
+    // ⚠️ 新增：住宅落地节点永远不参与地区组 / AUTO 的自动筛选。
     // 原因有两个，任一踩中都是灾难：
-    //   1) SPEED 的 filter 是 '.*'，US/JP 等地区组也会按名字命中（如「🏠 住宅-US」含 US），
+    //   1) AUTO 的 filter 是 '.*'，US/JP 等地区组也会按名字命中（如「🏠 住宅-US」含 US），
     //      节点一旦被 AUTO 选为普通出口，住宅流量按 GB 计费会被瞬间烧光；
     //   2) 住宅节点自己带着 dialer-proxy: AUTO，若它又被塞进 AUTO，
     //      就形成 AUTO → 住宅 → AUTO 的调用环，内核会直接异常。
@@ -1108,6 +1136,19 @@ function main(config) {
     const groupConfig = smartGroups[groupName];
     if (!groupConfig) {
       return [];
+    }
+
+    // 【2026-11-05】keepRefs 组（CATCH / ADS_FILTER）不做递归展开：
+    // 它们的成员是「组引用 + 内置策略」，本意就是让用户在面板里切换上游语义
+    // （CATCH 切 AUTO / DIRECT / REJECT，ADS_FILTER 切 REJECT / DIRECT）。
+    // 一旦被摊平成节点列表，这个能力就被抹掉了 —— 这正是之前 ADS_FILTER
+    // 变成「REJECT + 107 个节点」下拉框的原因。
+    if (groupConfig.keepRefs) {
+      const refs = (groupConfig.proxies || []).filter(
+        (p) => allProxyNames.includes(p) || BUILTIN_PROXIES.includes(p) || smartGroups[p],
+      );
+      expandCache.set(groupName, refs);
+      return refs;
     }
 
     // 防止循环引用：A -> B -> A
@@ -1191,6 +1232,8 @@ function main(config) {
     // 关键：禁止 Clash 内核再次二次 filter
     delete clashGroup.filter;
     delete clashGroup['exclude-filter'];
+    // keepRefs 是本脚本内部标记，不是 mihomo 的合法字段，漏出去会导致配置校验失败
+    delete clashGroup.keepRefs;
 
     finalGroups.push(clashGroup);
   });
@@ -1295,7 +1338,7 @@ function main(config) {
   // （实测复现，见 README 坑 18）。之前用的订阅都是纯节点（0 条 rules），
   // 所以从没触发；换成带规则的订阅就炸。
   //
-  // 本脚本的 rules 末尾是 `MATCH, AUTO` 兜底，订阅规则永远不可达，
+  // 本脚本的 rules 末尾是 `MATCH, CATCH` 兜底，订阅规则永远不可达，
   // 所以缺的规则集/策略只要「名字存在」即可，内容无关紧要。
   const finalProviders = Object.assign({}, ruleProviders);
   if (FLCLASH_MODE) {
