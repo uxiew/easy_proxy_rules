@@ -134,8 +134,15 @@ DOMAIN-SUFFIX,metademolab.com
 DOMAIN-SUFFIX,grok.com
 DOMAIN-SUFFIX,grokipedia.com
 DOMAIN-SUFFIX,x.ai
-# Grok 登录态挂在 X 账号上
-DOMAIN-SUFFIX,x.com
+# Grok 登录态挂在 X 账号上 —— 2026-11-05 摘除 DOMAIN-SUFFIX,x.com，三个原因：
+#   1) 后缀匹配范围过大：x.com / api.x.com / chat-ws.x.com / jf.x.com 全被拽进住宅，
+#      等于把「浏览器刷 X」和「Claude 会话」挤在同一个出口 IP 上；
+#   2) 只搬一半更糟：媒体域名 pbs/video/abs.twimg.com 不在本表（走 forGlobal → 机场），
+#      实际效果是「页面壳在住宅、图片视频在机场」——对 X 自己的风控比全走机场更不自然；
+#   3) X 是社交平台，不属于本表「有账号体系、会风控的 AI 服务商」的定位。
+# 现在 x.com 整体回落 AUTO（机场日本），与 Gemini 同等待遇。
+# 若某天在 Grok 里用 X 账号登录被判环境异常，只放开这一条（精确到登录子域）：
+# DOMAIN,accounts.x.com
 
 
 # ------------------------------------------------------------
