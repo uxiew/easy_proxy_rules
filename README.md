@@ -51,6 +51,38 @@ mihomo 会同时开几个入口，**用途完全不同**，配错会绕过规则
 
 ---
 
+## 代理分组
+
+`smart.js` 只生成下面这些组，名字固定、不要在其他覆写里重复定义（重名会让内核直接启动失败）。
+
+| 组 | 类型 | 成员 | 干嘛的 |
+|---|---|---|---|
+| `🚀 全部节点` | select | `DIRECT` + 全部节点 | 手动挑单个节点，绕开所有自动逻辑 |
+| `住宅出口` | select | `🏠 住宅-JP` / `REJECT` / `AI` | **AI 风控面专用出口**，`include-all-proxies` + `filter: 🏠\|WS-` 动态收编住宅节点 |
+| `前置-日本` | url-test | 日本机场节点 | 住宅节点的 `dialer-proxy`，只负责「本机 → 机场日本 → 住宅」这一跳 |
+| `AUTO` | url-test | 全量节点 | 默认出口，`filter: '.*'` 吃全量，按延迟自动选最快 |
+| `AI` | url-test | `JP/SG/US/DE/KR` | 机场 AI 组（Gemini、Google、中转站），**不含住宅节点** |
+| `CATCH` | select | `AUTO` / `DIRECT` / `REJECT` | `MATCH` 兜底 + **手动总闸** |
+| `ADS_FILTER` | select | `REJECT` / `DIRECT` | 广告/统计域名开关 |
+| `NSFW` | fallback | `JP/TW/KR/US/DE` | NSFW 规则出口 |
+| `TW/HK/JP/KR/SG/US/UK/FR/DE/CA/EU` | url-test | 对应地区节点 | 地区组，按延迟自动选；节点数为 0 的组会被自动剔除 |
+
+**几个容易踩的点：**
+
+- **`AUTO` 已经没有 `SPEED` 这个成员了。** 早期版本里 `SPEED` 是 `filter: '.*'` 的独立组，
+  展开后成员与 `AUTO` 完全相同（都是全量），等于同一批节点被两套健康检查重复测速，且没有任何
+  规则引用它 —— 2026-11-05 合并进 `AUTO` 后删除。要手动挑最快用「🚀 全部节点」。
+- **`CATCH` 是总闸，不是死组。** 末尾规则是 `MATCH, CATCH`，而 `CATCH` 默认成员就是 `AUTO`，
+  所以行为与旧的 `MATCH, AUTO` 完全一致。区别在于：某个站打不开、怀疑是代理导致的，
+  在面板里把 `CATCH` 切成 `DIRECT` 就整站直连，切 `REJECT` 就整站断网，**不用改配置重载**。
+- **`ADS_FILTER` 只有两个成员。** 早期写的是 `[REJECT, AUTO]`，被展开逻辑摊平成
+  「REJECT + 100 多个机场节点」的下拉框 —— 「广告域名走代理」本身没有语义，除错时唯一有用的
+  动作是「放行直连」，所以现在是 `REJECT`（默认拦截）/ `DIRECT`（怀疑误杀时放行）。
+- **`CATCH` / `ADS_FILTER` 用 `keepRefs: true` 标记跳过节点展开**（`expandGroup()` 里提前返回），
+  否则成员会被摊平成节点列表，切换能力就没了。这个标记在输出前会被删除，不会漏进 mihomo 配置。
+
+---
+
 ## 文件结构
 
 ```
@@ -241,6 +273,39 @@ Claude 和 OpenAI 登录页**共用**的，一条规则只能指向一个出口�
 > 但用专用端口更稳——即使某天规则集加载失败，API 请求也不会掉到机场 IP 上。
 > 副作用：住宅节点挂掉时 Claude Code 会完全不可用，临时改回 `7890` 即可。
 
+**这个配置本身是 fail-closed 的**：`HTTPS_PROXY` 是「显式指定代理」，不是系统代理。
+Clash Party 退出后端口消失，客户端拿到的是 `ECONNREFUSED`，**不会**像系统代理那样静默回落直连。
+（实测：`curl -x http://127.0.0.1:59999 https://api.anthropic.com/` → `Failed to connect`，没有直连重试路径。）
+
+真正会漏的是两种情况，都不在 Claude Code 里：
+
+1. **不读 `settings.json` 的进程** —— 脚本里的 `curl`、Python 的 anthropic SDK、Cursor、IDE 插件只认
+   shell 环境变量，Clash Party 挂掉时它们会静默直连。要兜住就在 `~/.zshrc` 里加个启动前闸门：
+   ```zsh
+   claude() {
+     local port=7865
+     local cfg="$HOME/Library/Application Support/mihomo-party/work/config.yaml"
+     if ! nc -z -G 1 -w 1 127.0.0.1 $port >/dev/null 2>&1; then
+       echo "[claude 守卫] 127.0.0.1:$port 没有监听 —— 已阻止启动（无代理时直连会暴露真实 IP）" >&2
+       return 1
+     fi
+     local expect ip
+     expect=$(awk '/name: .*住宅-JP/{f=1} f && /server:/{gsub(/.*server: */,""); gsub(/"/,""); print; exit}' "$cfg" 2>/dev/null)
+     ip=$(curl -s --max-time 6 -x "http://127.0.0.1:$port" https://api.ipify.org)
+     if [ -z "$ip" ] || { [ -n "$expect" ] && [ "$ip" != "$expect" ] && [ "$CLAUDE_SKIP_IP_CHECK" != "1" ]; }; then
+       echo "[claude 守卫] 出口 IP=${ip:-取不到}，住宅节点=$expect —— 已阻止启动" >&2
+       echo "  确认无碍再绕过：CLAUDE_SKIP_IP_CHECK=1 claude ..." >&2
+       return 1
+     fi
+     HTTP_PROXY="http://127.0.0.1:$port" HTTPS_PROXY="http://127.0.0.1:$port" \
+       ALL_PROXY="http://127.0.0.1:$port" NO_PROXY="localhost,127.0.0.1" command claude "$@"
+   }
+   ```
+2. **代理活着但出口被切走** —— 「住宅出口」被点成 `AI`，端口是通的但用的是机场 IP，
+   比断网更危险（同账号 IP 跳变）。上面守卫的第二个闸门就是拦这个。
+
+> ⚠️ `NO_PROXY` 只写 `localhost,127.0.0.1`，**不要**把 `anthropic.com` 加进去 —— 加一条就让所有代理努力归零。
+
 ### Proxifier
 
 1. `Profile → Proxy Servers → Add`：`127.0.0.1:7865`，协议 **SOCKS5**
@@ -307,7 +372,7 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
 > **手机端「全局模式」是个陷阱**——它走内核自建的 `GLOBAL` 组，第一个成员固定是 `DIRECT`。
 > 实测新配置启动后 `GLOBAL.now = DIRECT`，也就是说**切全局 = 全部直连，真实 IP 直接暴露**。
 > 要用全局模式，先在代理页把 `GLOBAL` 手动选成「住宅出口」；更推荐直接用规则模式
-> （末尾 `MATCH, AUTO` 已经兜住所有流量）。详见坑 16。
+> （末尾 `MATCH, CATCH` 已经兜住所有流量，`CATCH` 默认成员是 `AUTO`）。详见坑 16。
 
 > **手机端 ChatGPT App 报「网络配置问题 / 非预期的 SSL 证书」**——先看「住宅出口」当前选中什么。
 > 如果显示 `REJECT`，说明默认选中项没生效（旧版脚本，或桌面端那种没有 `store-selected` 的客户端）。
@@ -475,7 +540,7 @@ Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且�
     也就是说 FlClash 切「全局模式」= 全部直连。这一条对手机比桌面更危险，
     因为手机上没有任何缓存记住过你的手动选择。
 
-    结论：**别依赖全局模式**。规则模式（默认）末尾有 `MATCH, AUTO` 兜底，行为等价且更细。
+    结论：**别依赖全局模式**。规则模式（默认）末尾有 `MATCH, CATCH` 兜底，行为等价且更细。
     真要用全局模式，切过去先确认选中项是 `住宅出口`（链路：`住宅出口 → 🏠 住宅-JP → 前置-日本 → 日本节点`）。
     注意全局模式下**所有**流量都烧住宅流量，机场订阅等于白买。
 
@@ -510,7 +575,7 @@ Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且�
     - 订阅 rules 引用到的规则集 → 有定义就沿用，没定义就指向 `ruleset/empty.list` 空集占位
     - 订阅 rules 引用到的组名 → 补一个 `proxies: ['REJECT']` 的占位组
 
-    这些订阅规则永远不会命中（我们的 `MATCH, AUTO` 排在它们前面），所以手机上会多出
+    这些订阅规则永远不会命中（我们的 `MATCH, CATCH` 排在它们前面），所以手机上会多出
     几个名字眼熟、但只有一个 REJECT 成员的组，属正常现象。
 
 19. **FlClash v0.9.1+ 会丢弃覆写生成的节点和分组**
