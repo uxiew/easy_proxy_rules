@@ -15,6 +15,7 @@ mihomo 会同时开几个入口，**用途完全不同**，配错会绕过规则
 | 7891 | SOCKS5 | ✅ 按规则匹配 | 同上 | 只支持 SOCKS5 的程序 |
 | 7892 | HTTP | ✅ 按规则匹配 | 同上 | 只支持 HTTP 代理的程序 |
 | **7865** | mixed（HTTP + SOCKS5） | ❌ **不走规则** | **强制「住宅出口」组**（静态住宅 IP） | Proxifier、Claude Code、不走系统代理的程序 |
+| 7866+ | mixed | ❌ 不走规则 | 由 `APP_PROXY.ports` 指定 | 自建，见「应用级分流」 |
 | ~~9090~~ | HTTP | — | 控制 API（`external-controller`，默认留空关闭） | 调试 / 面板 |
 
 ### 7865 和 7890 的区别（最容易搞混）
@@ -31,8 +32,99 @@ mihomo 会同时开几个入口，**用途完全不同**，配错会绕过规则
 - **7865**：不管访问什么域名，全部从静态住宅 IP 出去。给那些「不走系统代理」的程序用
   （Electron 应用、游戏客户端、终端工具、Claude Code），配合 Proxifier 指向 `127.0.0.1:7865` 即可。
 
-> 端口由 `smart.js` 的 `RESIDENTIAL.dedicatedPort` 控制，设为 `0` 即关闭。
-> 主入口端口（7890/7891/7892）由 Clash Party 的 `mihomo.yaml` 控制，本脚本不改。
+> 端口由 `smart.js` 顶部的 `APP_PROXY.ports` 控制（默认只有 7865 → 住宅出口），
+> 删掉/注释那一条即关闭。主入口端口（7890/7891/7892）由 Clash Party 的 `mihomo.yaml` 控制，本脚本不改。
+> 旧的 `RESIDENTIAL.dedicatedPort` 仍兼容，但只作为「补一条 residential-in」的兜底。
+
+---
+
+## 应用级分流（指定应用走指定组）
+
+把「某个程序」直接按到「某个组 / 节点」，不依赖域名规则。**配置只有一处**：`smart.js` 顶部的 `APP_PROXY`。
+
+```js
+const APP_PROXY = {
+  // 方式一：专用端口（仅桌面端）
+  ports: [
+    { name: 'residential-in', port: 7865, proxy: '住宅出口' },   // 默认启用
+    // { name: 'ai-in', port: 7866, proxy: 'AI' },
+    // { name: 'us-in', port: 7867, proxy: 'US' },
+  ],
+  // 方式二：进程名 / 包名 / UID（桌面 + Android 通用）
+  processes: [
+    // { value: 'Telegram', proxy: 'US' },
+    // { value: '/Applications/Cursor.app/Contents/MacOS/Cursor', type: 'path', proxy: 'AI' },
+    // { value: 'org.telegram.messenger', proxy: 'US' },   // Android 包名
+  ],
+};
+```
+
+### 方式一：专用端口（桌面端）
+
+| 字段 | 说明 |
+|---|---|
+| `name` | 监听名，**不能重复**（重复 = 配置加载失败） |
+| `port` | 本机端口，监听在 `127.0.0.1`，**不能重复** |
+| `proxy` | 目标组名或节点名。写**组名**更稳——订阅更新后节点名会变 |
+
+应用里把代理设为 `127.0.0.1:<port>` 即可，流量**完全跳过规则匹配**，整体从该组出去。
+端口类型是 `mixed`，HTTP 和 SOCKS5 都支持（Telegram 这类只认 SOCKS5 的客户端也能用）。
+
+⚠️ **只在桌面端生效**。FlClash（Android）会跳过 `listeners`：手机应用基本没有「自填代理端口」
+这个入口（都走 VpnService），而且 Android 上多绑端口一旦被占用，内核会直接起不来。
+
+### 方式二：进程 / 包名规则
+
+生成的规则插在 `rules` **最前面**（`PROCESS-NAME` / `PROCESS-PATH` / `UID`），先于任何域名规则。
+顺序不能挪——放在 `DOMAIN-*` 之后会被直接截胡，等于没写。
+
+**桌面端**：写进程名，或可执行文件绝对路径（`type: 'path'`）。
+
+```bash
+ps -Ao comm= | sed 's|.*/||' | sort -u    # 列出所有进程名
+```
+
+Electron 应用（Cursor / Slack / Notion）会派生多个 `xxx Helper` 子进程，`PROCESS-NAME` 只命中主二进制，
+Helper 的流量仍走默认规则——这种场景用专用端口（方式一）更彻底。
+
+**Android**：进程名就是**包名**。
+
+```bash
+adb shell pm list packages | grep -i telegram    # → package:org.telegram.messenger
+```
+
+```js
+{ value: 'org.telegram.messenger', proxy: 'US' },
+{ value: 'com.android.chrome',     proxy: 'AUTO' },
+{ value: 'com.tencent.mm',         proxy: 'DIRECT' },   // 微信直连，避免出口 IP 变化触发风控
+```
+
+Android 上是**三层**机制，别混：
+
+| 层 | 在哪配 | 决定什么 |
+|---|---|---|
+| ① 哪些 App 进 VPN | FlClash → 应用 页 | 没选中的 App 直接走物理网络，连内核都不进 |
+| ② 进内核后走哪个组 | `APP_PROXY.processes`（包名） | 同一个 VPN 内，Telegram 走 US、Chrome 走 AUTO |
+| ③ 同一 App 内按域名细分 | `rules` | 例如 Chrome 里 claude.ai 走住宅、其余走 AUTO |
+
+**验证包名规则是否真的命中**：看 FlClash 日志里连接后面的括号
+
+```
+[TCP] 192.168.1.5:51234(org.telegram.messenger) --> ...
+```
+
+有括号 = 内核拿到了包名，规则生效；**没有括号** = 内核拿不到进程信息，退回 UID：
+
+```js
+{ value: '10234', type: 'uid', proxy: 'US' },   // 生成 UID,10234,US
+```
+
+```bash
+adb shell dumpsys package org.telegram.messenger | grep userId
+```
+
+⚠️ 包名 / 进程名写错**不会报错**，规则只是永不命中，表现是「配了但没效果」——所以务必先核对再重载。
+包名写的是**已安装应用**，改名/卸载后规则就失效了。
 
 ---
 
@@ -126,10 +218,12 @@ residential.example.yaml  住宅节点覆写模板（Clash Party 用，只放凭
 | `RESIDENTIAL.enabled` | `true` | 住宅出口总开关 |
 | `RESIDENTIAL.aiStrict` | `true` | AI 服务商走住宅（推荐） |
 | `RESIDENTIAL.allAI` | `false` | 整个 `forAI` 走住宅——**别开**，`ai.yaml` 里有 `DOMAIN-REGEX,google.*`，会连 `googlevideo.com`（YouTube 视频流）一起烧住宅流量 |
-| `RESIDENTIAL.dedicatedPort` | `7865` | 住宅专用入口端口，`0` = 关闭 |
+| `APP_PROXY.ports` | `[7865 → 住宅出口]` | 专用端口列表：端口整体绑到指定组/节点，跳过规则。见「应用级分流」 |
+| `APP_PROXY.processes` | `[]`（全注释） | 进程/包名规则，插在 `rules` 最前。桌面写进程名，Android 写包名 |
+| `RESIDENTIAL.dedicatedPort` | `0`（已迁移） | **旧字段**，仅兼容用：填非 0 值且 `APP_PROXY.ports` 里没有 `residential-in` 时自动补一条 |
 | `RESIDENTIAL.upstream.enabled` | `true` | 建「前置-亚洲」组：住宅节点的 `dialer-proxy` 指向它 |
 | `RESIDENTIAL.nodePattern` | `🏠\|WS-` | 住宅节点名匹配。**自己加的节点必须带 🏠 前缀**，别用「住宅」二字匹配（机场自带住宅节点会混进来，见坑 9） |
-| `RESIDENTIAL.upstream.filter` | 空（跟随 `smartGroups.JP`） | 上游节点名匹配词，默认 `日本\|JP\|Japan\|🇯🇵\|东京\|大阪\|…`（多字词，见坑 8），与地区组永远同步 |
+| `RESIDENTIAL.upstream.filter` | 显式亚洲关键词 | 跳板池节点名匹配：日/港/台/韩/新/越/马/泰/菲（多字词，见坑 8）。**已与 `smartGroups.JP` 解耦**，改地区组不会连带改跳板池 |
 | `TRAFFIC.domesticDirect` | `true` | 追加 `GEOSITE,cn → DIRECT`（`GEOIP,CN` 对 fake-ip 域名无效） |
 | `TRAFFIC.appleDirect` | `true` | Apple 全家桶直连（iCloud 同步/App Store 原来走机场，最费流量） |
 
@@ -344,6 +438,10 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
 
 **smart.js 改动后必须重新生成**（`node build-flclash.js`）并重新粘贴到手机，否则手机跑的还是旧逻辑。
 生成器头部注释有提醒；`flclash.js`（占位符版）也会一并重新生成提交，方便对照。
+
+> **手机上「指定某个 App 走某个组」**：`listeners` 在 FlClash 模式会被跳过（手机没有自填代理端口这条路），
+> 用 `APP_PROXY.processes` 写**包名**，例如 `{ value: 'org.telegram.messenger', proxy: 'US' }`。
+> 详见 [应用级分流](#应用级分流指定应用走指定组)。最外层「哪些 App 进 VPN」由 FlClash 的「应用」页控制。
 
 生成的文件**顶部自带构建元信息**，拿到任何一份 flclash 配置，看头部就知道它对应哪一版逻辑：
 

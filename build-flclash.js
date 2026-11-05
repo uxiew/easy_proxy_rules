@@ -97,7 +97,7 @@ function header(cred, m) {
  * ${credLine}
  *
  * 本文件 = 凭据头 + smart.js 全文，与桌面端 Clash Party 同源同逻辑
- * （重建组/规则 + AI 走住宅 + 前置亚洲跳板 + 国内直连 + 占位节点清洗）。
+ * （重建组/规则 + AI 走住宅 + 前置亚洲跳板 + 国内直连 + 占位节点清洗 + 应用级分流）。
  *
  * FlClash 模式自动跳过的桌面专属项（写了会和 App 打架）：
  *   dns.listen 0.0.0.0:1053    -> 跳过，端口交给 FlClash 绑定
