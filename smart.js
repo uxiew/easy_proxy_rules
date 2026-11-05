@@ -201,6 +201,30 @@ const TRAFFIC = {
   appleDirect: true,
 };
 
+// ===========================
+// 【新增】AI 静态资源 / 安装包 → 机场 AI 组（不占住宅带宽）
+// ===========================
+// 起因：ai-strict.list 是按「服务商后缀」整块收编的，`claude.ai` 这条后缀会顺带把
+// `downloads.claude.ai`（桌面端安装包）一起拖进住宅出口。2026-11-04 实测一天住宅跑了
+// 17.4 GB，其中纯下载/静态就占了一半：
+//     persistent.oaistatic.com   4.3 GB（ChatGPT 前端资源）
+//     downloads.claude.ai        2.8 GB（Claude 桌面端安装包）
+//     downloads.cursor.com       1.4 GB（Cursor 安装包）
+// 这些请求不带 Cookie、不带登录态、不参与 IP 画像 —— 风控看的是会话面，不是 CDN。
+// 所以把它们挪到机场，住宅只留「真正会被判定地区/会话一致性」的域名。
+//
+// ⚠️ 三条边界，别越线：
+//   1. 只挪「静态 + 安装包 + 图片 CDN」，主站（claude.ai / chatgpt.com）一个都不能动；
+//   2. 不挪 *usercontent.com（附件下载的签名 URL 有极小概率绑 IP，挪了可能 404）；
+//   3. 不挪 challenges.cloudflare.com / withpersona.com（人机验证与 KYC 必须和主站同 IP）。
+// 这些规则由 getRules() 插在 RULE-SET,aiStrict 之前，先命中即生效，与规则集内容无关。
+const AI_STATIC_TO_AI = [
+  'DOMAIN-SUFFIX,oaistatic.com', // ChatGPT JS/CSS/字体/更新包
+  'DOMAIN-SUFFIX,downloads.claude.ai', // Claude 桌面端安装包
+  'DOMAIN-SUFFIX,downloads.cursor.com', // Cursor 安装包
+  'DOMAIN-SUFFIX,openaicom.imgix.net', // OpenAI 图片 CDN
+];
+
 // ===========自动识别并分配 策略组=========
 // ===========自动识别并分配 策略组=========
 // ⚠️ 修复：移除了不兼容 Go 正则引擎的 or() 和 nor() 预查函数
@@ -225,14 +249,21 @@ const smartGroups = {
     icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/adjust.svg`,
   },
   AI: {
-    // 关键修改：将类型改为 fallback
-    type: 'fallback',
-    // 建议缩短 interval，比如 200 秒探测一次，确保切换及时
+    // 【2026-11-05 改】fallback → url-test：按实测延迟取最快，而不是「按书写顺序取第一个活的」。
+    // 原来的 fallback 只看顺序（JP 通就永远用 JP），JP 里挑到的是烂节点也只能忍着；
+    // 现在每 200s 实测一轮，谁快用谁。
+    type: 'url-test',
     interval: 200,
-    // 对于 fallback，这个值代表判定失败的容差
-    tolerance: 50,
-    // 顺序很重要：流量会从左往右按顺序探测，第一个（小日子）不通才跳下一个
-    proxies: [ 'JP', 'SG', 'US', 'DE', 'KR'],
+    // tolerance 的作用是「防抖」，不是「失败容差」：
+    // 只有新节点的延迟比当前节点好 tolerance 毫秒以上才切，避免两个节点延迟接近时来回跳。
+    // 设 200（而不是 50）是刻意的：AI 组跨国家，跳一次国家就可能触发 Google 的
+    // 「异常活动」验证，宁可慢 200ms 也别频繁换出口。
+    tolerance: 200,
+    // ⚠️ 副作用：url-test 不像 fallback 那样保证「总是 JP 优先」。
+    //    订阅里有 SG/US/DE/KR 节点时，可能出现「今天日本、明天新加坡」的国家跳变。
+    //    在意账号地域稳定性的话，把上面 type 改回 'fallback' 即可（顺序即优先级）。
+    //    当前订阅只剩日本节点，所以实际等价于「日本节点里挑最快」。
+    proxies: ['JP', 'SG', 'US', 'DE', 'KR'],
     icon: 'https://github.com/DustinWin/ruleset_geodata/releases/download/icons/ai.png',
   },
   ADS_FILTER: {
@@ -647,6 +678,12 @@ const getRules = ()=>{
           `IP-CIDR6,2607:6bc0::/32,${RESIDENTIAL.group},no-resolve`,
         ]
       : []),
+
+    // ===== AI 静态资源 / 安装包 → 机场 AI 组 =====
+    // 必须排在 RULE-SET,aiStrict 之前：这个规则集是按后缀收编的，`claude.ai` 会把
+    // downloads.claude.ai 一起卷进住宅。这里先命中，等于从住宅里把它摘出来。
+    // 清单与理由见文件顶部 AI_STATIC_TO_AI。
+    ...AI_STATIC_TO_AI.map((rule) => `${rule}, AI`),
 
     // ===== AI 服务商 → 住宅出口（最高优先级）=====
     // 必须排在 RULE-SET,forAI 之前：ai.yaml 里就有 DOMAIN-SUFFIX,anthropic.com，
