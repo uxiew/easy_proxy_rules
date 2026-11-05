@@ -32,9 +32,10 @@
     udp: false # 住宅代理基本不支持 UDP，保持 false（QUIC 会自动回落 TCP）
     # ⚠️ 链式代理的核心：先经机场节点出去，再由住宅 IP 落地。
     #    删掉这一行 = 本机直连住宅 IP（国内通常又慢又抖，不建议）。
-    #    可选值：前置-日本（本脚本建的组：任意日本节点自动择优，全灭阻断，推荐）
-#            或 AUTO（全机场自动择优，中转会跳美/新/韩）/ 具体节点名（完全固定）
-    dialer-proxy: 前置-日本
+    #    可选值：前置-亚洲（本脚本建的组：任意亚洲节点自动择优——日本为主，
+    #            HK/TW/KR/SG/越南/马来/泰/菲 一起备选，全灭则阻断，推荐）
+#            或 AUTO（全机场自动择优，中转会跳美/欧）/ 具体节点名（完全固定）
+    dialer-proxy: 前置-亚洲
 
   # ---------- 备用写法：SOCKS5 + HTTPS 代理 ----------
   # - name: '🏠 住宅-UK'
@@ -44,7 +45,7 @@
   #   username: 'your-username'
   #   password: 'your-password'
   #   udp: false
-  #   dialer-proxy: 前置-日本
+  #   dialer-proxy: 前置-亚洲
   #
   # - name: '🏠 住宅-DE'      # 如果 Webshare 给的是 https:// 代理
   #   type: http
@@ -53,7 +54,7 @@
   #   port: 443
   #   username: 'your-username'
   #   password: 'your-password'
-  #   dialer-proxy: 前置-日本
+  #   dialer-proxy: 前置-亚洲
 
 # ------------------------------------------------------------
 # 可选：临时给某些域名补规则（不改 smart.js 也能加）
