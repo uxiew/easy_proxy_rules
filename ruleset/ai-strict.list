@@ -97,6 +97,9 @@ DOMAIN-SUFFIX,openai.com
 DOMAIN-SUFFIX,chatgpt.com
 DOMAIN-SUFFIX,chatgptapi.com
 # 网页静态资源
+# ⚠️ oaistatic.com / openaicom.imgix.net 实际走的是机场 AI 组，不是住宅：
+#    smart.js 的 AI_STATIC_TO_AI 排在 RULE-SET,aiStrict 之前，已经把它们抢先摘走。
+#    这里保留条目只是为了「脚本规则被回退时」它们还能落到 AI 面，而不是掉进 AUTO。
 DOMAIN-SUFFIX,oaistatic.com
 # 上传/下载附件
 DOMAIN-SUFFIX,oaiusercontent.com
@@ -104,8 +107,6 @@ DOMAIN-SUFFIX,openaiapi-site.azureedge.net
 DOMAIN-SUFFIX,openaicom.imgix.net
 DOMAIN-SUFFIX,sora.com
 DOMAIN-SUFFIX,openai.azure.com
-
-
 
 # ------------------------------------------------------------
 # Meta / Facebook —— AI 助手、Llama、Muse 系列
