@@ -1256,7 +1256,8 @@ function main(config) {
     });
   }
 
-  // 【新增】上游出口组：住宅节点 dialer-proxy 指向它，只收日本节点自动择优。
+  // 【新增】上游出口组：住宅节点 dialer-proxy 指向它，只收亚洲节点自动择优
+  // （日本为主，港台韩新/东南亚备选；日本全挂时链路不断）。
   // REJECT 必须放在 proxies 里兜底，原因（实测）：
   //   - url-test 有活节点时不会选 REJECT（REJECT 不参与延迟竞争）；
   //   - 但 filter 一个都匹配不到时，组会变空，内核塞进 COMPATIBLE = 直连，
