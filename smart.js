@@ -140,10 +140,10 @@ const RESIDENTIAL = {
   // 中转站、镜像站、API 代理不在这个文件里，继续走普通 AI 组（机场），不浪费住宅带宽。
   aiStrict: true,
 
-  // 住宅专用入口端口：mihomo 的 listeners 会把这个端口整体绑到「住宅出口」组，
-  // 进来的流量不再经过规则匹配。给 Proxifier / 不走系统代理的程序用（0 = 关闭）。
-  // 用法：Proxifier 里添加 SOCKS5 代理 127.0.0.1:7865，规则里指定要强制走住宅的程序。
-  dedicatedPort: 7865,
+  // 住宅专用入口端口 ——【已迁移】统一由文件顶部的 APP_PROXY.ports 管理，这里留 0。
+  // 兼容：若这里填了非 0 值、且 APP_PROXY.ports 里没有 residential-in，脚本会自动补一条。
+  // 想彻底关掉 7865：把 APP_PROXY.ports 里那条注释掉即可。
+  dedicatedPort: 0,
 
   // 【上游出口】住宅节点 dialer-proxy 指向的组：任意亚洲节点自动择优，全灭则阻断。
   // 为什么只收「亚洲」而不是全机场 AUTO：
@@ -191,6 +191,64 @@ const RESIDENTIAL = {
   //   ruleset/ai-strict.list   → AI 服务商及其验证/遥测依赖
   //   ruleset/residential.list → 非 AI 的账号/支付/电商
   // 以后增删站点直接改那两个文件，不用碰脚本。
+};
+
+// ============================================================
+// 【可配置】应用级分流 —— 指定「某个应用」走「某个组 / 节点」
+// ============================================================
+// 目标：不依赖域名规则，直接把某个程序的流量按到指定出口。
+// 两种手段，按「应用能不能自己填代理」来选：
+//
+//   方式一 ports（专用端口）—— 桌面端首选
+//     mihomo 的 listeners 把某个端口整体绑到一个组/节点，进这个端口的流量
+//     **完全跳过 rules 匹配**。应用里把代理填成 127.0.0.1:<端口> 就行。
+//     优点：确定、可预测、零规则；缺点：应用得支持自定义代理（Telegram / Slack /
+//     终端工具 / Proxifier 都支持）。
+//     ⚠️ 仅桌面端生效。FlClash（Android）会跳过 listeners，两个原因：
+//        1) 手机应用基本不提供「自定义代理」入口，都是走 VpnService；
+//        2) Android 上多绑一个端口，一旦被占用内核会直接起不来，手机上排查成本极高。
+//
+//   方式二 processes（进程 / 包名）—— 桌面 + Android 通用
+//     生成 PROCESS-NAME / PROCESS-PATH / UID 规则，插在 rules 最前面（先于任何域名规则）。
+//     桌面端：进程名（Telegram、Discord）或可执行文件绝对路径（Electron 多进程用 path 更准）。
+//     Android：进程名就是**包名**，例如 org.telegram.messenger、com.android.chrome。
+//     前提：内核能拿到进程信息 —— 桌面端靠 find-process-mode（mihomo.yaml 已设 strict）
+//           + 应用走系统代理；Android 靠内核的 UID→包名映射。
+//
+// 【怎么改】只改下面这个对象，不用碰规则和分组逻辑：
+//   1. 加端口：往 ports 里加一条（name 不能重复、port 不能重复，否则内核起不来）
+//   2. 加应用：往 processes 里加一条，proxy 填**组名**（JP/HK/US/AI/AUTO/住宅出口…）
+//      或节点名；填组名更稳，因为订阅更新后节点会改名。
+//   3. 不想用某种方式：把对应数组清空（[]）即可。
+const APP_PROXY = {
+  // ---------- 方式一：专用端口（仅桌面端）----------
+  // proxy 可以写组名，也可以写节点名；写节点名时注意换订阅会失效。
+  ports: [
+    // 默认启用：住宅专用入口。Claude Code / Proxifier 指向 127.0.0.1:7865 即整体走住宅。
+    { name: 'residential-in', port: 7865, proxy: '住宅出口' },
+
+    // 以下为模板，取消注释即生效（改完要重载配置）：
+    // { name: 'ai-in', port: 7866, proxy: 'AI' }, // 固定走机场 AI 组（不烧住宅带宽）
+    // { name: 'us-in', port: 7867, proxy: 'US' }, // 固定走美国组里最快的节点
+    // { name: 'node-in', port: 7868, proxy: '[日本]₇' }, // 固定单个节点（换订阅易失效）
+  ],
+
+  // ---------- 方式二：进程 / 包名 / UID ----------
+  // type 省略 = PROCESS-NAME；type: 'path' = PROCESS-PATH；type: 'uid' = UID（Android 用）
+  // ⚠️ 写错的后果是「规则永不命中」，内核**不会报错**，所以务必先核对名字/包名。
+  processes: [
+    // --- 桌面端：进程名 ---
+    // { value: 'Telegram', proxy: 'US' },
+    // { value: 'Discord', proxy: 'AUTO' },
+    // --- 桌面端：Electron 多进程，用绝对路径更准 ---
+    // { value: '/Applications/Cursor.app/Contents/MacOS/Cursor', type: 'path', proxy: 'AI' },
+    // --- Android：包名（进程名就是包名）---
+    // { value: 'org.telegram.messenger', proxy: 'US' },
+    // { value: 'com.android.chrome', proxy: 'AUTO' },
+    // { value: 'com.tencent.mm', proxy: 'DIRECT' }, // 微信直连，避免出口 IP 变化触发风控
+    // --- Android：内核拿不到包名时，退回 UID ---
+    // { value: '10234', type: 'uid', proxy: 'US' },
+  ],
 };
 
 // ===========================
@@ -700,6 +758,15 @@ const getRules = ()=>{
   const applePolicy = TRAFFIC.appleDirect ? 'DIRECT' : 'AI';
 
   const  whiteListRules= [
+    // ===== 应用级分流：进程 / 包名 / UID（必须排在规则最前面）=====
+    // 进程规则一旦命中就直接决定出口；排在任何 DOMAIN 规则之后都会被截胡。
+    // 配置见文件顶部 APP_PROXY.processes。数组为空时不产生任何规则，等于没改。
+    // 注意：值里不能带逗号，否则会被当成策略名截断。
+    ...APP_PROXY.processes.map(({ value, proxy, type }) => {
+      const kind = type === 'path' ? 'PROCESS-PATH' : type === 'uid' ? 'UID' : 'PROCESS-NAME';
+      return `${kind},${value},${proxy}`;
+    }),
+
     // 局域网与私有地址
     'GEOIP,LAN, DIRECT, no-resolve',
     'RULE-SET,private, DIRECT',
@@ -1379,29 +1446,48 @@ function main(config) {
   config['rule-providers'] = finalProviders;
   config.rules = rules;
 
-  // ===== 住宅专用入口端口（给 Proxifier / 其他客户端「强制走住宅」用）=====
-  // mihomo 的 listeners 可以把某个端口整体绑定到一个策略组，不再经过规则匹配。
-  // 用途：某些程序（Electron 应用、游戏、终端工具）不走系统代理，
-  //      用 Proxifier 指向这个端口，就能让它们的所有流量强制从住宅 IP 出去，
-  //      不必再为每个域名写规则。
-  // 关闭方法：把 RESIDENTIAL.dedicatedPort 设为 0。
-  // FlClash 模式跳过：手机上没有人会去连 7865（没有 Proxifier/Claude Code），
-  // 多绑一个端口只是徒增失败面（Android 上端口被占用会让内核起不来）。
-  if (!FLCLASH_MODE && RESIDENTIAL.enabled && RESIDENTIAL.dedicatedPort) {
-    const port = Number(RESIDENTIAL.dedicatedPort);
+  // ===== 应用级分流：本地专用端口（listeners）=====
+  // 每个端口是一个独立入口，进来就绑死到指定组/节点，完全跳过 rules 匹配。
+  // 配置在文件顶部 APP_PROXY.ports，默认只有 7865（住宅出口）。
+  //
+  // FlClash 模式跳过：Android 应用基本没有「自己填代理端口」这条路（都走 VpnService），
+  // 而且多绑一个端口一旦被占用，内核会直接起不来，手机上排查成本极高。
+  // 手机端要用「指定应用」，走 APP_PROXY.processes 写包名，或用 FlClash 自带的应用分流。
+  if (!FLCLASH_MODE) {
     const listeners = Array.isArray(config.listeners) ? config.listeners : [];
-    // 避免重复注册（覆写可能被多次执行）
-    const exists = listeners.some((l) => l && l.name === 'residential-in');
-    if (!exists) {
-      listeners.push({
+    const wanted = [...APP_PROXY.ports];
+
+    // 兼容旧开关：RESIDENTIAL.dedicatedPort 非 0、且 ports 里没有同名条目时补一条。
+    // （老配置里 dedicatedPort: 7865 仍然有效，不会因为这次重构把 7865 弄丢）
+    if (
+      RESIDENTIAL.enabled &&
+      Number(RESIDENTIAL.dedicatedPort) &&
+      !wanted.some((p) => p.name === 'residential-in')
+    ) {
+      wanted.unshift({
         name: 'residential-in',
-        type: 'mixed',
-        port,
-        listen: '127.0.0.1',
+        port: Number(RESIDENTIAL.dedicatedPort),
         proxy: RESIDENTIAL.group,
       });
     }
-    config.listeners = listeners;
+
+    for (const item of wanted) {
+      const port = Number(item && item.port);
+      if (!port) continue;
+      // 住宅出口整体关掉时，指向它的端口会让内核校验失败（proxy not found），直接跳过
+      if (item.proxy === RESIDENTIAL.group && !RESIDENTIAL.enabled) continue;
+      // 名字或端口重复都会让内核起不来：先到先得，后面重复的静默丢弃
+      if (listeners.some((l) => l && (l.name === item.name || Number(l.port) === port))) continue;
+      listeners.push({
+        name: item.name,
+        type: 'mixed', // mixed = HTTP + SOCKS5，通吃只支持其中一种的客户端
+        port,
+        listen: '127.0.0.1', // 只监听本机，不暴露到局域网
+        proxy: item.proxy,
+      });
+    }
+
+    if (listeners.length) config.listeners = listeners;
   }
 
   // 返回修改后的配置
