@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-05 22:20:49
- * 源文件      : smart.js  sha256:77de97434c02  1501 行 / 74657 字节
- * 源码提交    : f4ec9f9
+ * 构建时间    : 2026-11-05 23:24:08
+ * 源文件      : smart.js  sha256:6fa74f49fb13  1514 行 / 75992 字节
+ * 源码提交    : ac660f7
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -89,71 +89,81 @@ const FLCLASH_RESIDENTIAL = {
  * rule-providers 会被本脚本整段丢掉（只有 proxies 能活下来，因为脚本不重建节点列表）。
  * 结论：所有 YAML 覆写都必须排在 smart.js **后面**，多写几个文件也不会互相覆盖，
  *       只要每个文件都用 `+` 前缀（`+proxies` / `+rules` / `+proxy-groups`）。
+ *
+ * 【想改配置？】不用翻文件：紧跟着的「第 0 部分：用户配置区」就是全部可调项，
+ * 四个对象从上到下，每个都自带注释和模板，取消注释即生效：
+ *   ① APP_PROXY        应用级分流：专用端口 / 进程名 / Android 包名   ← 最常改
+ *   ② RESIDENTIAL      住宅出口：总开关、组名、跳板组、专用端口
+ *   ③ TRAFFIC          省流量：国内直连、Apple 直连
+ *   ④ AI_STATIC_TO_AI  AI 静态资源 / 安装包 → 机场 AI 组（不烧住宅流量）
+ * 再往下才是 CDN 源、节点清洗、分组、规则生成 —— 日常不用看。
  */
 
-// CDN 配置（可切换）
-// ⚠️ 分两类源，别混用：
+// ============================================================
+// 第 0 部分：用户配置区（日常只改这里，往下全是逻辑）
+// ============================================================
+
+// ------------------------------------------------------------
+// ① APP_PROXY —— 应用级分流（最常用：指定某个 App 走哪个组/节点）
+// ------------------------------------------------------------
+// 目标：不依赖域名规则，直接把某个程序的流量按到指定出口。
+// 两种手段，按「应用能不能自己填代理」来选：
 //
-// 1) 第三方上游（Loyalsoldier / ACL4SSR）→ 走国内镜像 CDN_BASE
-//    文件大、变动少，镜像的缓存延迟无所谓；jsDelivr 官方在国内多数网络 TLS 直接失败
-//    （实测 HTTP 000），jsdmirror 实测 200。
+//   方式一 ports（专用端口）—— 桌面端首选
+//     mihomo 的 listeners 把某个端口整体绑到一个组/节点，进这个端口的流量
+//     **完全跳过 rules 匹配**。应用里把代理填成 127.0.0.1:<端口> 就行。
+//     优点：确定、可预测、零规则；缺点：应用得支持自定义代理（Telegram / Slack /
+//     终端工具 / Proxifier 都支持）。
+//     ⚠️ 仅桌面端生效。FlClash（Android）会跳过 listeners，两个原因：
+//        1) 手机应用基本不提供「自定义代理」入口，都是走 VpnService；
+//        2) Android 上多绑一个端口，一旦被占用内核会直接起不来，手机上排查成本极高。
 //
-// 2) 本仓库自己的规则集（ai-strict / ai / residential / *-extra / telegram / nsfw）
-//    → 走 RAW_BASE（GitHub raw）
-//    这些文件改得勤（比如给 ai-strict 加 Meta 域名），镜像的缓存会让人以为改了没生效：
-//    实测 jsdmirror 在推送后仍返回旧版（75 条，而仓库已是 80 条），加 ?v=<时间戳> 也绕不过。
-//    raw 实测拿到最新（80 条）。另外本文件里的 github / forGlobal 两个 provider 一直就是
-//    走 raw 的，运行日志显示它们能正常加载（forGlobal 33k 条），说明内核拉取规则集是
-//    经过隧道（日志里是 `dial AUTO ... --> raw.githubusercontent.com:443`），不存在
-//    「内核没起来、没有代理可用」的问题。
-const CDN_BASE_CN = 'https://cdn.jsdmirror.com/gh'; // 第三方上游用国内镜像
-const CDN_BASE = CDN_BASE_CN;
-// const CDN_BASE = `https://cdn.jsdelivr.net/gh`; // 海外网络可切回 jsDelivr 官方
-// const CDN_BASE = "https://gcore.jsdelivr.net/gh";      // 备用：GCore CDN
-// const CDN_BASE = "https://testingcf.jsdelivr.net/gh";  // 备用：Cloudflare CDN
+//   方式二 processes（进程 / 包名）—— 桌面 + Android 通用
+//     生成 PROCESS-NAME / PROCESS-PATH / UID 规则，插在 rules 最前面（先于任何域名规则）。
+//     桌面端：进程名（Telegram、Discord）或可执行文件绝对路径（Electron 多进程用 path 更准）。
+//     Android：进程名就是**包名**，例如 org.telegram.messenger、com.android.chrome。
+//     前提：内核能拿到进程信息 —— 桌面端靠 find-process-mode（mihomo.yaml 已设 strict）
+//           + 应用走系统代理；Android 靠内核的 UID→包名映射。
+//
+// 【怎么改】只改下面这个对象，不用碰规则和分组逻辑：
+//   1. 加端口：往 ports 里加一条（name 不能重复、port 不能重复，否则内核起不来）
+//   2. 加应用：往 processes 里加一条，proxy 填**组名**（JP/HK/US/AI/AUTO/住宅出口…）
+//      或节点名；填组名更稳，因为订阅更新后节点会改名。
+//   3. 不想用某种方式：把对应数组清空（[]）即可。
+const APP_PROXY = {
+  // ---------- 方式一：专用端口（仅桌面端）----------
+  // proxy 可以写组名，也可以写节点名；写节点名时注意换订阅会失效。
+  ports: [
+    // 默认启用：住宅专用入口。Claude Code / Proxifier 指向 127.0.0.1:7865 即整体走住宅。
+    { name: 'residential-in', port: 7865, proxy: '住宅出口' },
 
-// 本仓库规则集专用源：要即时生效，不能被 CDN 缓存拖住
-const RAW_BASE = 'https://raw.githubusercontent.com/uxiew/easy_proxy_rules/refs/heads/main/ruleset';
+    // 以下为模板，取消注释即生效（改完要重载配置）：
+    // { name: 'ai-in', port: 7866, proxy: 'AI' }, // 固定走机场 AI 组（不烧住宅带宽）
+    // { name: 'us-in', port: 7867, proxy: 'US' }, // 固定走美国组里最快的节点
+    // { name: 'node-in', port: 7868, proxy: '[日本]₇' }, // 固定单个节点（换订阅易失效）
+  ],
 
-// ===========================
-// 第一部分：自定义关键词和规则
-// ======= 自定义关键词 =======
-// 代理关键词
-const proxyKeywords = [
-  // "example", 示例，可以添加需要代理的关键词
-];
+  // ---------- 方式二：进程 / 包名 / UID ----------
+  // type 省略 = PROCESS-NAME；type: 'path' = PROCESS-PATH；type: 'uid' = UID（Android 用）
+  // ⚠️ 写错的后果是「规则永不命中」，内核**不会报错**，所以务必先核对名字/包名。
+  processes: [
+    // --- 桌面端：进程名 ---
+    // { value: 'Telegram', proxy: 'US' },
+    // { value: 'Discord', proxy: 'AUTO' },
+    // --- 桌面端：Electron 多进程，用绝对路径更准 ---
+    // { value: '/Applications/Cursor.app/Contents/MacOS/Cursor', type: 'path', proxy: 'AI' },
+    // --- Android：包名（进程名就是包名）---
+    // { value: 'org.telegram.messenger', proxy: 'US' },
+    // { value: 'com.android.chrome', proxy: 'AUTO' },
+    // { value: 'com.tencent.mm', proxy: 'DIRECT' }, // 微信直连，避免出口 IP 变化触发风控
+    // --- Android：内核拿不到包名时，退回 UID ---
+    // { value: '10234', type: 'uid', proxy: 'US' },
+  ],
+};
 
-// 直连关键词
-const directKeywords = [
-  //"example",  示例，可以添加需要直连的关键词
-];
-
-// 【说明】原来这里的 directDomains 数组（baidu/qq/163/taobao/jd/cn/apple.com.cn）
-// 已迁移到 ruleset/direct-extra.list。那 7 条其实全被 GEOSITE,cn 覆盖，属于冗余，
-// 统一放文件里：以后加直连域名只改文件，不用动脚本，smart.js 也不会越写越长。
-
-// 拦截关键词
-const rejectKeywords = [
-  //"example",  示例，可以添加需要拦截的关键词
-  'adobe.io', //屏蔽Adobe正版检测可能违反软件许可协议
-];
-
-// 【直连端口】
-// 作用：列表内的端口，强制不走代理，直接连接。
-// 理由：解决TUN模式下特定端口流量被代理的问题(如SSH 22端口)。
-const directPorts = [22];
-
-// 【直连IP/网段】
-// 作用：列表内的IP或CIDR网段，强制不走代理，直接连接。
-// 理由：解决TUN模式下SSH服务器IP直连失效问题。
-const directSSHIPs = [
-  // "192.168.1.100",   // 单个IP地址
-  // "10.0.0.0/8",      // CIDR网段格式
-];
-
-// ===========================
-// 【新增】静态住宅 IP 出口（链式代理）
-// ===========================
+// ------------------------------------------------------------
+// ② RESIDENTIAL —— 住宅出口（本机 → 机场亚洲节点 → 住宅 IP）
+// ------------------------------------------------------------
 // 为什么这么拆：住宅代理的账号密码属于敏感信息，不能进会公开的 smart.js。
 // 所以这里只做「建组 + 写规则」，连接信息全部由覆写 YAML 提供。
 //
@@ -249,79 +259,9 @@ const RESIDENTIAL = {
   // 以后增删站点直接改那两个文件，不用碰脚本。
 };
 
-// ============================================================
-// 【可配置】应用级分流 —— 指定「某个应用」走「某个组 / 节点」
-// ============================================================
-// 目标：不依赖域名规则，直接把某个程序的流量按到指定出口。
-// 两种手段，按「应用能不能自己填代理」来选：
-//
-//   方式一 ports（专用端口）—— 桌面端首选
-//     mihomo 的 listeners 把某个端口整体绑到一个组/节点，进这个端口的流量
-//     **完全跳过 rules 匹配**。应用里把代理填成 127.0.0.1:<端口> 就行。
-//     优点：确定、可预测、零规则；缺点：应用得支持自定义代理（Telegram / Slack /
-//     终端工具 / Proxifier 都支持）。
-//     ⚠️ 仅桌面端生效。FlClash（Android）会跳过 listeners，两个原因：
-//        1) 手机应用基本不提供「自定义代理」入口，都是走 VpnService；
-//        2) Android 上多绑一个端口，一旦被占用内核会直接起不来，手机上排查成本极高。
-//
-//   方式二 processes（进程 / 包名）—— 桌面 + Android 通用
-//     生成 PROCESS-NAME / PROCESS-PATH / UID 规则，插在 rules 最前面（先于任何域名规则）。
-//     桌面端：进程名（Telegram、Discord）或可执行文件绝对路径（Electron 多进程用 path 更准）。
-//     Android：进程名就是**包名**，例如 org.telegram.messenger、com.android.chrome。
-//     前提：内核能拿到进程信息 —— 桌面端靠 find-process-mode（mihomo.yaml 已设 strict）
-//           + 应用走系统代理；Android 靠内核的 UID→包名映射。
-//
-// 【怎么改】只改下面这个对象，不用碰规则和分组逻辑：
-//   1. 加端口：往 ports 里加一条（name 不能重复、port 不能重复，否则内核起不来）
-//   2. 加应用：往 processes 里加一条，proxy 填**组名**（JP/HK/US/AI/AUTO/住宅出口…）
-//      或节点名；填组名更稳，因为订阅更新后节点会改名。
-//   3. 不想用某种方式：把对应数组清空（[]）即可。
-const APP_PROXY = {
-  // ---------- 方式一：专用端口（仅桌面端）----------
-  // proxy 可以写组名，也可以写节点名；写节点名时注意换订阅会失效。
-  ports: [
-    // 默认启用：住宅专用入口。Claude Code / Proxifier 指向 127.0.0.1:7865 即整体走住宅。
-    { name: 'residential-in', port: 7865, proxy: '住宅出口' },
-
-    // 以下为模板，取消注释即生效（改完要重载配置）：
-    // { name: 'ai-in', port: 7866, proxy: 'AI' }, // 固定走机场 AI 组（不烧住宅带宽）
-    // { name: 'us-in', port: 7867, proxy: 'US' }, // 固定走美国组里最快的节点
-    // { name: 'node-in', port: 7868, proxy: '[日本]₇' }, // 固定单个节点（换订阅易失效）
-  ],
-
-  // ---------- 方式二：进程 / 包名 / UID ----------
-  // type 省略 = PROCESS-NAME；type: 'path' = PROCESS-PATH；type: 'uid' = UID（Android 用）
-  // ⚠️ 写错的后果是「规则永不命中」，内核**不会报错**，所以务必先核对名字/包名。
-  processes: [
-    // --- 桌面端：进程名 ---
-    // { value: 'Telegram', proxy: 'US' },
-    // { value: 'Discord', proxy: 'AUTO' },
-    // --- 桌面端：Electron 多进程，用绝对路径更准 ---
-    // { value: '/Applications/Cursor.app/Contents/MacOS/Cursor', type: 'path', proxy: 'AI' },
-    // --- Android：包名（进程名就是包名）---
-    // { value: 'org.telegram.messenger', proxy: 'US' },
-    // { value: 'com.android.chrome', proxy: 'AUTO' },
-    // { value: 'com.tencent.mm', proxy: 'DIRECT' }, // 微信直连，避免出口 IP 变化触发风控
-    // --- Android：内核拿不到包名时，退回 UID ---
-    // { value: '10234', type: 'uid', proxy: 'US' },
-  ],
-};
-
-// ===========================
-// 【新增】机场占位/信息节点识别
-// ===========================
-// 机场常把「到期时间、剩余流量、官网、续费地址」等占位节点混在节点列表最前面，
-// 它们多数是能通的真代理（探测 204 会成功），于是：
-//   - url-test 组可能选中它们 → 所有走该组的流量出口变成未知服务器；
-//   - fallback 组第一个存活成员是它们 → 整组流量被抢占（换落云订阅后 AI 组实测踩坑）。
-// 所有带 filter 的组统一把这个正则并进 exclude-filter，把它们从自动收编里剔掉。
-// 手动 select 不受影响（想看剩余流量还能在面板里点）。
-const INFO_NODE_PATTERN =
-  '套餐|剩余|到期|已用|重置|流量|官网|续费|地址|更新订阅|过期|有效|客户|下载|不显示|电报|频道|工单|建议|卡顿|试用|公告|维护|客服|网址|ㅤ';
-
-// ===========================
-// 【新增】省流量开关（国内直连）
-// ===========================
+// ------------------------------------------------------------
+// ③ TRAFFIC —— 省流量开关（国内直连 / Apple 直连）
+// ------------------------------------------------------------
 // 机场流量是按 GB 算的，下面两类规则会把大量本该直连的流量送进代理，这里统一收口。
 const TRAFFIC = {
   // GEOSITE,cn → DIRECT。原来只靠 RULE-SET,ChinaDomain/direct + GEOIP,CN 兜底，
@@ -333,9 +273,9 @@ const TRAFFIC = {
   appleDirect: true,
 };
 
-// ===========================
-// 【新增】AI 静态资源 / 安装包 → 机场 AI 组（不占住宅带宽）
-// ===========================
+// ------------------------------------------------------------
+// ④ AI_STATIC_TO_AI —— AI 静态资源/安装包走机场（不烧住宅流量）
+// ------------------------------------------------------------
 // 起因：ai-strict.list 是按「服务商后缀」整块收编的，`claude.ai` 这条后缀会顺带把
 // `downloads.claude.ai`（桌面端安装包）一起拖进住宅出口。2026-11-04 实测一天住宅跑了
 // 17.4 GB，其中纯下载/静态就占了一半：
@@ -357,6 +297,79 @@ const AI_STATIC_TO_AI = [
   'DOMAIN-SUFFIX,openaicom.imgix.net', // OpenAI 图片 CDN
 ];
 
+// ============================================================
+// 以下为内部实现：CDN 源、自定义关键词、节点清洗、分组、规则生成
+// ============================================================
+
+// CDN 配置（可切换）
+// ⚠️ 分两类源，别混用：
+//
+// 1) 第三方上游（Loyalsoldier / ACL4SSR）→ 走国内镜像 CDN_BASE
+//    文件大、变动少，镜像的缓存延迟无所谓；jsDelivr 官方在国内多数网络 TLS 直接失败
+//    （实测 HTTP 000），jsdmirror 实测 200。
+//
+// 2) 本仓库自己的规则集（ai-strict / ai / residential / *-extra / telegram / nsfw）
+//    → 走 RAW_BASE（GitHub raw）
+//    这些文件改得勤（比如给 ai-strict 加 Meta 域名），镜像的缓存会让人以为改了没生效：
+//    实测 jsdmirror 在推送后仍返回旧版（75 条，而仓库已是 80 条），加 ?v=<时间戳> 也绕不过。
+//    raw 实测拿到最新（80 条）。另外本文件里的 github / forGlobal 两个 provider 一直就是
+//    走 raw 的，运行日志显示它们能正常加载（forGlobal 33k 条），说明内核拉取规则集是
+//    经过隧道（日志里是 `dial AUTO ... --> raw.githubusercontent.com:443`），不存在
+//    「内核没起来、没有代理可用」的问题。
+const CDN_BASE_CN = 'https://cdn.jsdmirror.com/gh'; // 第三方上游用国内镜像
+const CDN_BASE = CDN_BASE_CN;
+// const CDN_BASE = `https://cdn.jsdelivr.net/gh`; // 海外网络可切回 jsDelivr 官方
+// const CDN_BASE = "https://gcore.jsdelivr.net/gh";      // 备用：GCore CDN
+// const CDN_BASE = "https://testingcf.jsdelivr.net/gh";  // 备用：Cloudflare CDN
+
+// 本仓库规则集专用源：要即时生效，不能被 CDN 缓存拖住
+const RAW_BASE = 'https://raw.githubusercontent.com/uxiew/easy_proxy_rules/refs/heads/main/ruleset';
+// ===========================
+// 第一部分：自定义关键词和规则
+// ======= 自定义关键词 =======
+// 代理关键词
+const proxyKeywords = [
+  // "example", 示例，可以添加需要代理的关键词
+];
+
+// 直连关键词
+const directKeywords = [
+  //"example",  示例，可以添加需要直连的关键词
+];
+
+// 【说明】原来这里的 directDomains 数组（baidu/qq/163/taobao/jd/cn/apple.com.cn）
+// 已迁移到 ruleset/direct-extra.list。那 7 条其实全被 GEOSITE,cn 覆盖，属于冗余，
+// 统一放文件里：以后加直连域名只改文件，不用动脚本，smart.js 也不会越写越长。
+
+// 拦截关键词
+const rejectKeywords = [
+  //"example",  示例，可以添加需要拦截的关键词
+  'adobe.io', //屏蔽Adobe正版检测可能违反软件许可协议
+];
+
+// 【直连端口】
+// 作用：列表内的端口，强制不走代理，直接连接。
+// 理由：解决TUN模式下特定端口流量被代理的问题(如SSH 22端口)。
+const directPorts = [22];
+
+// 【直连IP/网段】
+// 作用：列表内的IP或CIDR网段，强制不走代理，直接连接。
+// 理由：解决TUN模式下SSH服务器IP直连失效问题。
+const directSSHIPs = [
+  // "192.168.1.100",   // 单个IP地址
+  // "10.0.0.0/8",      // CIDR网段格式
+];
+// ===========================
+// 【新增】机场占位/信息节点识别
+// ===========================
+// 机场常把「到期时间、剩余流量、官网、续费地址」等占位节点混在节点列表最前面，
+// 它们多数是能通的真代理（探测 204 会成功），于是：
+//   - url-test 组可能选中它们 → 所有走该组的流量出口变成未知服务器；
+//   - fallback 组第一个存活成员是它们 → 整组流量被抢占（换落云订阅后 AI 组实测踩坑）。
+// 所有带 filter 的组统一把这个正则并进 exclude-filter，把它们从自动收编里剔掉。
+// 手动 select 不受影响（想看剩余流量还能在面板里点）。
+const INFO_NODE_PATTERN =
+  '套餐|剩余|到期|已用|重置|流量|官网|续费|地址|更新订阅|过期|有效|客户|下载|不显示|电报|频道|工单|建议|卡顿|试用|公告|维护|客服|网址|ㅤ';
 // ===========自动识别并分配 策略组=========
 // ===========自动识别并分配 策略组=========
 // ⚠️ 修复：移除了不兼容 Go 正则引擎的 or() 和 nor() 预查函数
