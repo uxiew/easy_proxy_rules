@@ -203,7 +203,64 @@ TCP [2409:...]:56056->[2001:4860:4845:400::]:443       (SYN_SENT)   ← Google I
 
 一直 `SYN_SENT` 不 `ESTABLISHED` = 连不上，界面就是「加载中」。
 
-**结论：Antigravity 只有 TUN 或 Proxifier 两条路。** 如果就是不想开 TUN，那 Proxifier 此时已不再与 TUN 冲突，让它只代理 `language_server` 一个进程（路径规则），其余全部放行即可 —— 这比整机 TUN 更轻。
+**结论：`language_server` 只认 IP 层拦截。** 三条路选一条：
+
+| 方案 | 影响面 | 适用 |
+| -- | -- | -- |
+| 全量 TUN | 整机流量进内核 | 已经在用 TUN，无所谓 |
+| **窄 TUN**（推荐） | **只接管 Google 网段**，默认路由不变 | 不想全量 TUN，又不想装 Proxifier |
+| Proxifier | 只代理指定进程 | 不想动 TUN |
+
+#### 路线 C：窄 TUN（只把 Google 段塞进内核）
+
+思路很简单：TUN 不接管 `0.0.0.0/1`，只接管 `language_server` 实际会连的那几个 Google 段。
+局域网、Tailscale、内网服务、国内站点**完全不经过内核**，默认路由仍是路由器。
+
+脚本里已经内置，改 `smart.js` 第 0 部分的 ⑤ `NARROW_TUN` 即可：
+
+```js
+const NARROW_TUN = {
+  enabled: true,                 // false = 恢复「面板说了算」
+  routeAddress: [
+    '142.250.0.0/15', '172.217.0.0/16', '172.253.0.0/16',
+    '216.58.0.0/16', '74.125.0.0/16', '108.177.0.0/17',
+    '64.233.160.0/19', '72.14.192.0/18', '173.194.0.0/16',
+    '209.85.128.0/17',
+    '2001:4860::/32', '2404:6800::/32', '2607:f8b0::/32',
+  ],
+  stack: 'Mixed',
+};
+```
+
+生效后 `netstat` 里只会多出这些路由，默认路由纹丝不动：
+
+```
+$ netstat -rn -f inet | grep utun1500
+142.250/15      198.18.0.1   UGSc   utun1500
+172.217         198.18.0.1   UGSc   utun1500
+...
+$ netstat -rn -f inet | grep ^default
+default         192.168.31.1 UGScg  en0        ← 没被夺走
+```
+
+判定 `language_server` 真的活了：源地址变成 `198.18.0.1` 且 `ESTABLISHED`
+
+```bash
+lsof -nP -a -p $(pgrep -f "Resources/bin/language_server" | head -1) -iTCP | grep -v LISTEN
+# TCP 198.18.0.1:65183->172.253.120.126:443 (ESTABLISHED)   ← 对了
+# TCP 192.168.31.228:65100->172.253.120.126:443 (SYN_SENT)  ← 还在直连，段漏了
+```
+
+进内核后仍然按进程规则分流，连接页里能看到 `🏠 住宅出口`：
+
+```
+172.253.120.126 | 🏠 住宅-JP<住宅出口 | ProcessPathRegex
+172.217.118.4   | 🏠 住宅-JP<住宅出口 | ProcessPathRegex
+```
+
+> ⚠️ 段要维护。这是「实测见过的 Google 段」的并集，不是官方完整列表：
+> `172.253.0.0/16` 就是补出来的 —— 少了它会看到 `172.253.120.x` 一直 `SYN_SENT`。
+> 某天 Antigravity 换后端、又卡住，用上面的 `lsof` 看它连哪个段再补。
 
 #### 路线 A（TUN）还要处理 DNS
 
