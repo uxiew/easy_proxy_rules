@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-05 23:24:08
- * 源文件      : smart.js  sha256:6fa74f49fb13  1514 行 / 75992 字节
- * 源码提交    : ac660f7
+ * 构建时间    : 2026-11-06 10:42:58
+ * 源文件      : smart.js  sha256:670018adc965  1551 行 / 78910 字节
+ * 源码提交    : dde6226
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -156,10 +156,47 @@ const APP_PROXY = {
     // { value: 'org.telegram.messenger', proxy: 'US' },
     // { value: 'com.android.chrome', proxy: 'AUTO' },
     // { value: 'com.tencent.mm', proxy: 'DIRECT' }, // 微信直连，避免出口 IP 变化触发风控
+
+    // --- 示例：WhatsApp（自带 DNS、媒体走 UDP 的典型，照这个抄就行）---
+    // 桌面端进程名就叫 WhatsApp；Android 是包名，商务版为 com.whatsapp.w4b。
+    // ⚠️ 指定到这里只**管得住 TCP**（信令 443/5222）：语音/视频是 UDP，
+    //    住宅节点 udp:false 过不去，会落到 MATCH → CATCH → AUTO（见下方【常见坑】）。
+    //    所以语音类 App 若把 proxy 填「住宅出口」，实际是「信令住宅 + 媒体机场」的混线。
+    // { value: 'WhatsApp', proxy: 'US' },        // macOS 桌面端
+    // { value: 'com.whatsapp', proxy: 'US' },    // Android
+    // { value: 'com.whatsapp.w4b', proxy: 'US' },// WhatsApp Business
+
     // --- Android：内核拿不到包名时，退回 UID ---
     // { value: '10234', type: 'uid', proxy: 'US' },
   ],
 };
+
+// ------------------------------------------------------------
+// 【常见坑】App 自己解析域名 / 直接连 IP —— 为什么规则对它不生效
+// ------------------------------------------------------------
+// 现场（2026-11-05 Talkatone 实测，FlClash 连接详情）：
+//   进程 com.talkatone.android(10410) / 规则 `Match` / 目标 `8.8.8.8:53`
+//   代理链 CATCH → AUTO → 机场节点。App 其它流量都走住宅，唯独这条不走。
+//
+// 三个原因叠在一起，缺一个都不会出现这个现象：
+//   1) App 内部硬编码了 DNS（Talkatone 查 8.8.8.8；不少游戏、银行、VoIP App 同款），
+//      系统的 DNS 劫持接不住它，于是拿到的是**真实 IP**而不是 fake-ip；
+//   2) 之后它连的是 IP，连接里没有域名 → 所有 DOMAIN-* 规则天然失配（面板显示 `Match`）；
+//   3) 那条裸 DNS 是 UDP:53，而住宅节点 `udp: false`（socks5 住宅基本不支持 UDP），
+//      注定只能落到 CATCH → AUTO，跟「有没有给它指定住宅」无关。
+//
+// 以后再遇到同类 App，按这个顺序处理（WhatsApp / Telegram / Discord 都一样）：
+//   ① 出口只能靠 processes 指定 —— 域名规则救不了纯 IP 连接（示例见上面 WhatsApp 段）；
+//   ② DNS 交给内核：FlClash 开「DNS 劫持 / Fake-IP」，裸 53 会被接管并返回 fake-ip，
+//      连接重新带上域名，规则恢复可用，`8.8.8.8` 那条连接也会消失；
+//      开不了劫持就退一步，加一条 `DST-PORT,53,<同国组>`（仍走机场，但解析地区与出口对齐）；
+//   ③ 语音/视频媒体是 UDP，住宅永远接不住。二选一：接受「信令住宅 + 媒体机场」，
+//      或让整个 App 走机场；**不要**为了统一去开住宅节点的 `udp: true`
+//      （多数住宅商不支持 UDP，开了直接连不上，还得回滚）。
+//
+// 怎么确认已经生效 —— 看连接详情的「规则」一栏：
+//   PROCESS-NAME / PROCESS-PATH / UID → processes 生效，按你指定的出口走
+//   Match                             → 没命中任何规则，正在走 CATCH（多数是纯 IP 连接）
 
 // ------------------------------------------------------------
 // ② RESIDENTIAL —— 住宅出口（本机 → 机场亚洲节点 → 住宅 IP）
