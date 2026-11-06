@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-06 19:08:51
- * 源文件      : smart.js  sha256:05cd61e088bb  1614 行 / 83726 字节
- * 源码提交    : 0a3b92f
+ * 构建时间    : 2026-11-06 19:23:12
+ * 源文件      : smart.js  sha256:93d5b7d4d413  1628 行 / 84838 字节
+ * 源码提交    : 54226ea
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -174,6 +174,20 @@ const APP_PROXY = {
     //    要保持「语音走机场」就得对 UDP 单独放行，当前不这么做（见下方【常见坑】③）。
     { value: '^/Applications/Claude\\.app/', type: 'path-regex', proxy: '住宅出口' },  // Claude 桌面端
     { value: '^/Applications/ChatGPT\\.app/', type: 'path-regex', proxy: '住宅出口' }, // ChatGPT 桌面端
+
+    // ----- Google Antigravity（AI IDE）+ 配套 CLI → 住宅出口 -----
+    // 原来靠 Proxifier 规则「Antigravity / Antigravity Helper* / language_server* / agy / agentapi」
+    // 走 Chain Clash-Static，现在等价迁到这里，Proxifier 可以退出。
+    // Antigravity.app 也是 Electron：主进程 Antigravity + Antigravity Helper*，
+    // 外加它自带的 language_server（在 Contents/Resources/bin/ 里，属于 App 包内），
+    // 一条路径正则全部覆盖。
+    // agy 是独立的 Homebrew 命令行工具（177MB 单文件），不在 App 包内，单独一条。
+    { value: '^/Applications/Antigravity\\.app/', type: 'path-regex', proxy: '住宅出口' },
+    { value: '/opt/homebrew/bin/agy', type: 'path', proxy: '住宅出口' },
+    // 未安装 / 不在 PATH，先留模板；装上后取消注释即可：
+    // { value: '^/Applications/Gemini\\.app/', type: 'path-regex', proxy: '住宅出口' },
+    // { value: '^/Applications/Antigravity IDE\\.app/', type: 'path-regex', proxy: '住宅出口' },
+    // { value: 'agentapi', proxy: '住宅出口' },
 
     // --- 桌面端：进程名 ---
     // { value: 'Telegram', proxy: 'US' },
