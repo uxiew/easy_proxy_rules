@@ -126,6 +126,39 @@ adb shell dumpsys package org.telegram.messenger | grep userId
 ⚠️ 包名 / 进程名写错**不会报错**，规则只是永不命中，表现是「配了但没效果」——所以务必先核对再重载。
 包名写的是**已安装应用**，改名/卸载后规则就失效了。
 
+### App 自己解析 DNS / 直连 IP（WhatsApp、Talkatone 这类）
+
+有些 App 不走系统 DNS：内部硬编码 `8.8.8.8:53`，拿到真实 IP 再去连。于是会看到三个连锁现象：
+
+- 连接里只有 IP、没有域名 → 所有 `DOMAIN-*` 规则天然失配，连接详情里「规则」显示 **`Match`**；
+- 它那条裸 DNS 是 **UDP:53**，住宅节点 `udp: false` 过不去 → 掉进 `CATCH → AUTO`（机场）；
+- 语音/视频的媒体流也是 UDP，同样进不了住宅 → 形成「信令走住宅、**媒体走机场**」的混线，
+  可能出现单通、无声、偶发重连。
+
+Talkatone 实测现场：`进程 com.talkatone.android(10410)` / `规则 Match` / `目标 8.8.8.8:53` / `代理链 CATCH → AUTO → 机场`。
+
+**处理顺序（照这套走，其它 App 一样）**
+
+| 步骤 | 做什么 | 作用 |
+|---|---|---|
+| ① | `APP_PROXY.processes` 写包名 / 进程名 | 唯一能按住「纯 IP 连接」的手段，域名规则救不了 |
+| ② | FlClash 开「DNS 劫持 / Fake-IP」 | 裸 53 被内核接管 → 返回 fake-ip → 连接重新带上域名，规则恢复可用 |
+| ②′ | 开不了劫持：加 `DST-PORT,53,US` | 仍走机场，但解析地区与出口对齐，避免拿到亚洲边缘 |
+| ③ | 语音类别指望住宅 | 住宅 socks5 不支持 UDP，**别**去开 `udp: true`，多数住宅商开了直接连不上 |
+
+```js
+// WhatsApp：桌面进程名 / Android 包名（商务版 com.whatsapp.w4b）
+{ value: 'WhatsApp', proxy: 'US' },
+{ value: 'com.whatsapp', proxy: 'US' },
+{ value: 'com.whatsapp.w4b', proxy: 'US' },
+```
+
+判断是否生效：看连接详情的「规则」——`PROCESS-NAME` / `PROCESS-PATH` / `UID` 说明 processes 生效；
+`Match` 说明没命中任何规则，正在走 `CATCH`（纯 IP 连接的典型表现）。
+
+> 同类清单（都自带 DNS 或大量 IP 直连）：Talkatone、WhatsApp、Telegram 语音、Discord 语音、
+> 部分手游与银行 App。它们的共同点：**规则看不到域名，UDP 也进不了住宅**。
+
 ---
 
 ## 使用
