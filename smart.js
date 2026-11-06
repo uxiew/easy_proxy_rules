@@ -91,6 +91,16 @@ const APP_PROXY = {
   // type 省略 = PROCESS-NAME；type: 'path' = PROCESS-PATH；type: 'uid' = UID（Android 用）
   // ⚠️ 写错的后果是「规则永不命中」，内核**不会报错**，所以务必先核对名字/包名。
   processes: [
+    // ===== 已启用（改完需在 Clash Party / FlClash 里重载）=====
+    // Android 包名：内核看到的进程名就是包名。桌面端同名应用请看下面用 PROCESS-NAME / PROCESS-PATH。
+    // ⚠️ 这几条只**管得住 TCP**：WhatsApp / ChatGPT 的语音视频是 UDP，住宅节点 udp:false
+    //    过不去，会落到 MATCH → CATCH → AUTO（见下方【常见坑】），属预期。
+    { value: 'com.whatsapp', proxy: 'US' },               // WhatsApp：信令走美国组
+    { value: 'com.talkatone.android', proxy: '住宅出口' }, // Talkatone：整体住宅；它自带 DNS，纯 IP 连接只能靠这条兜
+    { value: 'com.openai.chatgpt', proxy: '住宅出口' },    // ChatGPT：AI 风控面，出口用住宅 IP
+    { value: 'com.anthropic.claude', proxy: '住宅出口' },  // Claude：同上
+    // { value: 'com.whatsapp.w4b', proxy: 'US' },         // WhatsApp Business，需要时打开
+
     // --- 桌面端：进程名 ---
     // { value: 'Telegram', proxy: 'US' },
     // { value: 'Discord', proxy: 'AUTO' },
