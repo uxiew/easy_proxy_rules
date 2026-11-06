@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-06 17:53:53
- * 源文件      : smart.js  sha256:3ffbb4628eb5  1570 行 / 80580 字节
- * 源码提交    : 4b934b4
+ * 构建时间    : 2026-11-06 17:56:40
+ * 源文件      : smart.js  sha256:3dc881a53bd1  1570 行 / 80673 字节
+ * 源码提交    : f52cea9
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -151,11 +151,11 @@ const APP_PROXY = {
     // Android 包名：内核看到的进程名就是包名。桌面端同名应用请看下面用 PROCESS-NAME / PROCESS-PATH。
     // ⚠️ 这几条只**管得住 TCP**：WhatsApp / ChatGPT 的语音视频是 UDP，住宅节点 udp:false
     //    过不去，会落到 MATCH → CATCH → AUTO（见下方【常见坑】），属预期。
-    { value: 'com.whatsapp', proxy: 'US' },               // WhatsApp：信令走美国组
+    { value: 'com.whatsapp', proxy: '住宅出口' },          // WhatsApp：信令走住宅（媒体仍走机场，见下）
     { value: 'com.talkatone.android', proxy: '住宅出口' }, // Talkatone：整体住宅；它自带 DNS，纯 IP 连接只能靠这条兜
     { value: 'com.openai.chatgpt', proxy: '住宅出口' },    // ChatGPT：AI 风控面，出口用住宅 IP
     { value: 'com.anthropic.claude', proxy: '住宅出口' },  // Claude：同上
-    // { value: 'com.whatsapp.w4b', proxy: 'US' },         // WhatsApp Business，需要时打开
+    // { value: 'com.whatsapp.w4b', proxy: '住宅出口' },   // WhatsApp Business，需要时打开
 
     // --- 桌面端：进程名 ---
     // { value: 'Telegram', proxy: 'US' },
@@ -172,9 +172,9 @@ const APP_PROXY = {
     // ⚠️ 指定到这里只**管得住 TCP**（信令 443/5222）：语音/视频是 UDP，
     //    住宅节点 udp:false 过不去，会落到 MATCH → CATCH → AUTO（见下方【常见坑】）。
     //    所以语音类 App 若把 proxy 填「住宅出口」，实际是「信令住宅 + 媒体机场」的混线。
-    // { value: 'WhatsApp', proxy: 'US' },        // macOS 桌面端
-    // { value: 'com.whatsapp', proxy: 'US' },    // Android
-    // { value: 'com.whatsapp.w4b', proxy: 'US' },// WhatsApp Business
+    // { value: 'WhatsApp', proxy: '住宅出口' },        // macOS 桌面端
+    // { value: 'com.whatsapp', proxy: '住宅出口' },    // Android（已在上面启用）
+    // { value: 'com.whatsapp.w4b', proxy: '住宅出口' },// WhatsApp Business
 
     // --- Android：内核拿不到包名时，退回 UID ---
     // { value: '10234', type: 'uid', proxy: 'US' },

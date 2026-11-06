@@ -108,7 +108,7 @@ Android 上是**三层**机制，别混：
 | ③ 同一 App 内按域名细分 | `rules`                   | 例如 Chrome 里 claude.ai 走住宅、其余走 AUTO    |
 
 > **仓库默认已启用 4 条**（见 `smart.js` 的 `APP_PROXY.processes`）：
-> `com.whatsapp → US`，`com.talkatone.android` / `com.openai.chatgpt` / `com.anthropic.claude → 住宅出口`。
+> `com.whatsapp` / `com.talkatone.android` / `com.openai.chatgpt` / `com.anthropic.claude → 住宅出口`。
 > 它们只对 **Android** 生效（桌面端进程名不是包名），且只覆盖 TCP；语音/视频仍走机场。
 
 **验证包名规则是否真的命中**：看 FlClash 日志里连接后面的括号
@@ -152,9 +152,9 @@ Talkatone 实测现场：`进程 com.talkatone.android(10410)` / `规则 Match` 
 
 ```js
 // WhatsApp：桌面进程名 / Android 包名（商务版 com.whatsapp.w4b）
-{ value: 'WhatsApp', proxy: 'US' },
-{ value: 'com.whatsapp', proxy: 'US' },
-{ value: 'com.whatsapp.w4b', proxy: 'US' },
+{ value: 'WhatsApp', proxy: '住宅出口' },
+{ value: 'com.whatsapp', proxy: '住宅出口' },
+{ value: 'com.whatsapp.w4b', proxy: '住宅出口' },
 ```
 
 判断是否生效：看连接详情的「规则」——`PROCESS-NAME` / `PROCESS-PATH` / `UID` 说明 processes 生效；  
