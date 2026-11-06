@@ -960,6 +960,16 @@ const getRules = ()=>{
     // 住宅出口：非 AI 的账号/支付/电商，清单在 ruleset/residential.list
     ...(RESIDENTIAL.enabled ? [`RULE-SET,residential, ${RESIDENTIAL.group}`] : []),
 
+    // ===== Google 日本域名：必须抢在 directExtra 之前 =====
+    // ruleset/direct-extra.list 里有 `DOMAIN-SUFFIX,co.jp`（日本站点直连），它会把
+    // google.co.jp / accounts.google.co.jp 一起判成 DIRECT。而 Google 的日本站在
+    // 国内网络下直连必然失败：DNS 拿到的是污染地址（阿里云 / Facebook 段），
+    // TCP 也过不去，症状就是「google.com 正常、google.co.jp 打不开」。
+    // 2026-11-06 实测日志：`dial DIRECT (match RuleSet/directExtra) --> accounts.google.co.jp:443
+    // error: dial tcp 47.88.58.234:443: connect: connection refused`。
+    // 目标组与下面的 `RULE-SET,google, AI` 一致，账号登录在 .com / .co.jp 之间跳转时不换出口 IP。
+    'DOMAIN-SUFFIX,google.co.jp, AI',
+
     // 国内直连（GEOSITE,cn 是新增的兜底：GEOIP,CN 对 fake-ip 域名无效，
     // 漏网的国内站会掉进 tld-not-cn → AUTO 白烧机场流量）
     ...(TRAFFIC.domesticDirect ? ['GEOSITE,cn, DIRECT'] : []),
