@@ -190,6 +190,9 @@ curl -s -x http://127.0.0.1:7890 https://chatgpt.com/cdn-cgi/trace | grep -E "^i
 | 系统代理（HTTP / HTTPS 全开） | 忽略，直接连物理网卡 |
 | VS Code 的 `http.proxy` / `http.proxySupport` 设置 | 只对 Electron 主进程和扩展生效 |
 | `open -a Antigravity --args --proxy-server=http://127.0.0.1:7890` | 只影响 Chromium 主进程，不影响它 fork 出来的子进程 |
+| `HTTPS_PROXY=... /Applications/Antigravity.app/Contents/MacOS/Antigravity` | **无效**。它与后端走 gRPC，而 grpc-go 不做 env proxy 解析（`net/http.ProxyFromEnvironment` 只是被静态链接进来的死代码） |
+
+> 别被 `strings language_server | grep HTTPS_PROXY` 骗到：二进制里确实有这些键名，那是 Go 静态链接把整个 `net/http` 拖进来的结果，不代表 gRPC 链路会用它。
 
 卡住时的现场（`lsof -nP -a -p <lsp-pid> -iTCP`）：
 
