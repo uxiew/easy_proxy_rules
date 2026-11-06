@@ -262,6 +262,28 @@ lsof -nP -a -p $(pgrep -f "Resources/bin/language_server" | head -1) -iTCP | gre
 > `172.253.0.0/16` 就是补出来的 —— 少了它会看到 `172.253.120.x` 一直 `SYN_SENT`。
 > 某天 Antigravity 换后端、又卡住，用上面的 `lsof` 看它连哪个段再补。
 
+##### 报错先分「链路」还是「服务端」
+
+界面上看到的报错一律不可信，去翻语言服务器自己的日志，它会写清是 `dial tcp ... i/o timeout`
+（链路问题，段漏了）还是 `code 503: No capacity available for model ...`（Google 侧容量问题，跟代理无关）：
+
+```bash
+tail -40 ~/Library/Logs/Antigravity/language_server.log
+```
+
+典型两类：
+
+```
+E1106 22:23:19  .../ListTriggers (unknown): dial tcp 172.253.120.126:443: i/o timeout
+  → 这个段没进 TUN，补 routeAddress
+I1106 22:49:06  run.go:307] Run: attempt 2 failed (UNAVAILABLE (code 503):
+                 No capacity available for model gemini-4-argon-high on the server)
+  → 链路已通，是模型没容量：换模型或等一会儿，别去改代理
+```
+
+另一种常见现象是 UI 显示 `Model unavailable, retrying in 6s (attempt 2/9)` —— 那就是上面这条 503 的前端措辞。
+判断依据始终是日志里的 `dial tcp` / `code 503` 两个关键词。
+
 #### 路线 A（TUN）还要处理 DNS
 
 **根因：DNS 被污染。** 就算 TUN 接管了流量，App 仍然自己做 DNS。系统 DNS 若指向路由器（`192.168.31.1`）或 Tailscale MagicDNS（`100.100.100.100`），这些地址走 LAN / Tailscale 路由，**不进 TUN**，`dns-hijack: any:53` 劫持不到，解析结果就是被污染的假 IP。实测 `chatgpt.com` 被解析成 `114.43.24.59`，`codex` 反复拨这个死 IP、16 秒超时，界面永远转圈。
