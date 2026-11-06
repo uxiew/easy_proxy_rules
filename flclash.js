@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-06 19:41:20
- * 源文件      : smart.js  sha256:682a47a99799  1632 行 / 85278 字节
- * 源码提交    : 56a2305
+ * 构建时间    : 2026-11-06 23:05:21
+ * 源文件      : smart.js  sha256:2d475680e4e1  1702 行 / 89348 字节
+ * 源码提交    : 6bcbfd8
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -385,6 +385,48 @@ const AI_STATIC_TO_AI = [
   'DOMAIN-SUFFIX,downloads.cursor.com', // Cursor 安装包
   'DOMAIN-SUFFIX,openaicom.imgix.net', // OpenAI 图片 CDN
 ];
+
+// ------------------------------------------------------------
+// ⑤ NARROW_TUN —— 窄 TUN：只把 Google 网段塞进内核
+// ------------------------------------------------------------
+// 为什么需要它：Antigravity 的 language_server（Go + gRPC）不读系统代理，
+//   也不吃 HTTPS_PROXY（grpc-go 不做 env proxy 解析），没有 TUN 时它直连
+//   172.217.x / 142.251.x，状态永远是 SYN_SENT，界面「一直加载中」。
+// 全量 TUN 能解决，但会把整机流量都塞进内核。这里只挂 Google 的段：
+//   其余流量（包括默认路由）完全不进内核，对局域网 / Tailscale / 内网服务零影响。
+//
+// 判定成功的标志：
+//   netstat -rn -f inet | grep utun1500     → 只列出下面这些段，没有 0.0.0.0/1
+//   lsof -nP -a -p $(pgrep -f language_server) -iTCP | grep -v LISTEN
+//                                           → 源地址是 198.18.0.1、状态 ESTABLISHED
+//   Clash 连接页里该进程的链路 → 🏠 住宅出口
+//
+// ⚠️ 段要维护：它是「实测见过的 Google 段」的并集，不是官方完整列表。
+//    某天 Antigravity 换了后端、连接卡在 SYN_SENT，就用 lsof 看它连到哪个段再补。
+// ⚠️ 与「全量 TUN」互斥：如果你在 Clash Party 里手动开了全量 TUN，
+//    这里设 true 只是把路由范围缩小，不会叠加出两套。
+const NARROW_TUN = {
+  // 只接管下面这些网段。false = 完全不动 tun 配置（保持 Clash Party 面板的开关说了算）。
+  enabled: true,
+  // 想恢复整机 TUN：把 routeAddress 整个删掉（或改成 ['0.0.0.0/0'] 由面板控制）。
+  routeAddress: [
+    '142.250.0.0/15', // Google 主力段（142.250–142.251），language_server 最常连这里
+    '172.217.0.0/16', // Google 前端 / gstatic
+    '172.253.0.0/16', // googleapis 的 VIP 段（实测 172.253.120.x 会漏，必须单列）
+    '216.58.0.0/16', // www.google.com
+    '74.125.0.0/16', // Gmail / googleapis
+    '108.177.0.0/17', // Google 账号体系
+    '64.233.160.0/19', // Google 后端
+    '72.14.192.0/18', // Google 后端
+    '173.194.0.0/16', // Google 后端
+    '209.85.128.0/17', // Google 后端
+    '2001:4860::/32', // Google IPv6
+    '2404:6800::/32', // Google IPv6（亚洲）
+    '2607:f8b0::/32', // Google IPv6
+  ],
+  // macOS 上 Mixed 实测可用；启动异常时依次试 System → gVisor
+  stack: 'Mixed',
+};
 
 // ============================================================
 // 以下为内部实现：CDN 源、自定义关键词、节点清洗、分组、规则生成
@@ -974,6 +1016,16 @@ const getRules = ()=>{
     // 住宅出口：非 AI 的账号/支付/电商，清单在 ruleset/residential.list
     ...(RESIDENTIAL.enabled ? [`RULE-SET,residential, ${RESIDENTIAL.group}`] : []),
 
+    // ===== Google 日本域名：必须抢在 directExtra 之前 =====
+    // ruleset/direct-extra.list 里有 `DOMAIN-SUFFIX,co.jp`（日本站点直连），它会把
+    // google.co.jp / accounts.google.co.jp 一起判成 DIRECT。而 Google 的日本站在
+    // 国内网络下直连必然失败：DNS 拿到的是污染地址（阿里云 / Facebook 段），
+    // TCP 也过不去，症状就是「google.com 正常、google.co.jp 打不开」。
+    // 2026-11-06 实测日志：`dial DIRECT (match RuleSet/directExtra) --> accounts.google.co.jp:443
+    // error: dial tcp 47.88.58.234:443: connect: connection refused`。
+    // 目标组与下面的 `RULE-SET,google, AI` 一致，账号登录在 .com / .co.jp 之间跳转时不换出口 IP。
+    'DOMAIN-SUFFIX,google.co.jp, AI',
+
     // 国内直连（GEOSITE,cn 是新增的兜底：GEOIP,CN 对 fake-ip 域名无效，
     // 漏网的国内站会掉进 tld-not-cn → AUTO 白烧机场流量）
     ...(TRAFFIC.domesticDirect ? ['GEOSITE,cn, DIRECT'] : []),
@@ -1124,6 +1176,24 @@ function main(config) {
 
     //  确保开启了 UDP，因为 NTP (时间同步) 强制走 UDP 协议
     config['udp'] = true;
+
+    // 3. 窄 TUN：只把 Google 段塞进内核（见文件顶部 ⑤ NARROW_TUN）
+    //    必须写进 config，靠 PATCH /configs 热改的话一重载就丢。
+    if (NARROW_TUN.enabled) {
+      const tun = Object.assign({}, config.tun);
+      tun.enable = true;
+      tun.stack = NARROW_TUN.stack;
+      tun['auto-route'] = true;
+      tun['auto-detect-interface'] = true;
+      tun['route-address'] = NARROW_TUN.routeAddress.slice();
+      // 只接管指定网段时不要劫持 DNS：系统 DNS（223.5.5.5）不经过 TUN，
+      // 留着 any:53 只会让内核以为要接管、实际一条都收不到。
+      tun['dns-hijack'] = [];
+      config.tun = tun;
+      console.log(
+        `[NARROW_TUN] 只接管 ${NARROW_TUN.routeAddress.length} 个 Google 网段，默认路由保持不变`,
+      );
+    }
   }
 
   const proxyCount = config?.proxies?.length ?? 0;

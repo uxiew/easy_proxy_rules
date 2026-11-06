@@ -1036,6 +1036,27 @@ Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且�
     想保留完整功能（住宅出口 / AI 分流），**FlClash 请留在 v0.8.98**；
     升级到 v0.9.x 后手机端只能拿到订阅原本的能力 + DNS 修复。
 
+20. **`directExtra` 的 `co.jp` 会把 Google 日本站一起直连**
+
+    `ruleset/direct-extra.list` 最后一行是 `DOMAIN-SUFFIX,co.jp`，本意是「日本站点直连」。
+    它同时命中 Google 的日本域名，而 Google 在国内网络下直连必挂，实测：
+
+    ```text
+    --> accounts.google.co.jp:443  match RuleSet(directExtra) using DIRECT
+        error: dial tcp 47.88.58.234:443: connect: connection refused
+    --> www.google.co.jp:443       match RuleSet(directExtra) using DIRECT
+        error: dial tcp 31.13.80.54:443: i/o timeout
+    ```
+
+    47.88.58.234 是阿里云段、31.13.80.54 是 Facebook 段，都是污染解析的产物。
+    同 TLD 的 `www.yahoo.co.jp` 也命中 `directExtra`、但返回 200（不在封锁名单里），
+    所以症状很具迷惑性：**`.co.jp` 都能开，只有 Google 的 `.co.jp` 打不开**。
+
+    修复是在 `RULE-SET,directExtra` **之前**插一条 `DOMAIN-SUFFIX,google.co.jp, AI`，
+    组与 `RULE-SET,google, AI` 保持一致，账号登录在 `.com` / `.co.jp` 之间跳转时不换出口 IP。
+    方向别搞反：`direct-extra.list` 是「整份 → DIRECT」的规则集，**没法在文件内部写例外**，
+    只改 list 是无效的，例外必须落在规则链上、且优先级高于 `RULE-SET,directExtra`。
+
 ---
 
 ## 验证分流是否生效

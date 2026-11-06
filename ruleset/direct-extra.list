@@ -21,4 +21,7 @@ DOMAIN-SUFFIX,apple.com.cn
 # 原来这条是 `DOMAIN-SUFFIX, co.jp, EU`：日本站点绕道欧洲节点，延迟翻倍还白烧流量。
 # 你人在日本，直连就是最快的。如果确实需要用日本以外的 IP 访问某些日区服务，
 # 把下面这行注释掉，再在覆写 YAML 里自己写 `+rules: [DOMAIN-SUFFIX,co.jp,EU]`。
+# ⚠️ 这条会把 Google 的日本站一起卷进直连（google.co.jp / accounts.google.co.jp），
+#    而 Google 在国内网络下直连必挂（污染解析 + 阻断）。例外写在 smart.js 的规则链里：
+#    `DOMAIN-SUFFIX,google.co.jp, AI`，排在 `RULE-SET,directExtra` 之前，不要删。
 DOMAIN-SUFFIX,co.jp
