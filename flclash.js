@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-06 17:56:40
- * 源文件      : smart.js  sha256:3dc881a53bd1  1570 行 / 80673 字节
- * 源码提交    : f52cea9
+ * 构建时间    : 2026-11-06 18:09:21
+ * 源文件      : smart.js  sha256:c6d2d4587403  1586 行 / 81626 字节
+ * 源码提交    : 0110201
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -271,8 +271,8 @@ const RESIDENTIAL = {
   //   - 早先只收日本，好处是最短路径，坏处是「所有日本节点一起挂」时整条 AI 链路断掉；
   //   - 现在收亚洲：HK/TW/KR/SG 到日本住宅都在几十毫秒量级，越南/马来/泰/菲稍远，
   //     但都还在同一个「亚洲近场」里，跳板池从 6 个变成 30+ 个。
-  // 节点名必须含 filter 关键词，订阅改名后组会变空，
-  // 此时 url-test 落到 REJECT 兜底（阻断而不是泄漏），把 filter 改成新关键词即可恢复。
+  // 节点名必须含 filter 关键词；订阅改名后若一个都匹配不到，该组会退到 DIRECT
+  // （这一跳不经机场，但住宅本身仍可连），把 filter 改成新关键词即可恢复。
   // 覆写 YAML 里的住宅节点写 dialer-proxy: 前置-亚洲 即可。
   upstream: {
     enabled: true,
@@ -1448,36 +1448,52 @@ function main(config) {
     });
   }
 
-  // 【新增】上游出口组：住宅节点 dialer-proxy 指向它，只收亚洲节点自动择优
-  // （日本为主，港台韩新/东南亚备选；日本全挂时链路不断）。
-  // REJECT 必须放在 proxies 里兜底，原因（实测）：
-  //   - url-test 有活节点时不会选 REJECT（REJECT 不参与延迟竞争）；
-  //   - 但 filter 一个都匹配不到时，组会变空，内核塞进 COMPATIBLE = 直连，
-  //     真实 IP 静默泄漏。加了 REJECT 后空组 → 阻断，fail-closed。
+  // 【2026-11-06 改】上游出口组不再用 REJECT 兜底。
+  // 原来的 `proxies: ['REJECT']` 有两个实测副作用：
+  //   1) 冷启动时本组还没测完速，Now() 落在第一个成员 = REJECT，
+  //      而住宅节点的 dialer-proxy 指向本组 → 那一小段时间住宅全部连不上，
+  //      表现就是「莫名其妙连不上住宅，等一会儿又好了」；
+  //   2) REJECT 没有真实延迟，某些内核版本会把它判成「最快」，被反复选中。
+  // 现在显式成员改成「第一个真正匹配 filter 的节点」（构建时算出来）：
+  // 组里永远有一个真节点可用，不需要 REJECT；一个都匹配不到时才退 DIRECT
+  // （这一跳不经机场，但住宅本身仍然可用，比阻断好）。
   if (RESIDENTIAL.enabled && RESIDENTIAL.upstream && RESIDENTIAL.upstream.enabled) {
+    const upFilter = RESIDENTIAL.upstream.filter || smartGroups.JP.filter;
+    const upExclude = [RESIDENTIAL.nodePattern, INFO_NODE_PATTERN].filter(Boolean).join('|');
+    // 用同一套 filter 在本地算一个真实节点，保证 proxies 非空且能直连
+    let firstUpstream = '';
+    try {
+      const reIn = new RegExp(upFilter);
+      const reOut = upExclude ? new RegExp(upExclude) : null;
+      firstUpstream =
+        (config.proxies || []).map((p) => p.name).find((n) => reIn.test(n) && !(reOut && reOut.test(n))) || '';
+    } catch {
+      firstUpstream = ''; // filter 写坏时不要连累整份配置
+    }
+    if (!firstUpstream) {
+      console.log(`[上游组] filter 没有匹配到任何节点，${RESIDENTIAL.upstream.group} 退到 DIRECT`);
+    }
     // 插到「住宅出口」后面，UI 里三个组挨在一起；用名字定位，避免硬编码下标
     const exitIdx = finalGroups.findIndex((g) => g.name === RESIDENTIAL.group);
     finalGroups.splice(exitIdx >= 0 ? exitIdx + 1 : 2, 0, {
       name: RESIDENTIAL.upstream.group,
       type: 'url-test',
-      proxies: ['REJECT'],
+      proxies: firstUpstream ? [firstUpstream] : ['DIRECT'],
       'include-all-proxies': true,
       // 复用地区组 JP 的 filter，两处永远同步；留空即跟随，也可单独定制
-      filter: RESIDENTIAL.upstream.filter || smartGroups.JP.filter,
+      filter: upFilter,
       // 两个必须排除的对象：
       //   1) 住宅节点本身：节点名里的「JP」（如 🏠 住宅-JP）同样命中 filter，
       //      不排除的话住宅节点会被收进自己的上游组，形成 dialer 环；
       //   2) 机场占位/信息节点（到期、剩余流量、官网……）：本组是内核级
       //      include-all-proxies 收编，JS 侧的清洗管不到这里，必须显式排除，
       //      否则 url-test 可能把「🇦🇶 [到期…]」之类占位节点当前置（实测踩坑）。
-      'exclude-filter': [RESIDENTIAL.nodePattern, INFO_NODE_PATTERN]
-        .filter(Boolean)
-        .join('|'),
+      'exclude-filter': upExclude,
       url: 'http://www.gstatic.com/generate_204',
       interval: 300,
       tolerance: 50,
       // 关掉 groupBaseOption 里的 lazy：lazy=true 表示「第一次被用到才测速」，
-      // 而本组第一个成员是 REJECT → 冷启动后第一次 AI 请求会直接打到 REJECT 上失败。
+      // 冷启动后第一次住宅请求会在本组还没选出节点时发出 → 失败。
       // 关掉后启动即测速，住宅链路（dialer-proxy 指向本组）才能真正可用。
       lazy: false,
     });
