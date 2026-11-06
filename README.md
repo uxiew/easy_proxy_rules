@@ -171,7 +171,8 @@ Talkatone 实测现场：`进程 com.talkatone.android(10410)` / `规则 Match` 
    ```
    https://raw.githubusercontent.com/uxiew/easy_proxy_rules/main/smart.js
    ```
-   国内直连 GitHub 不稳的话，前面加加速前缀（如 `https://hk.gh-proxy.org/`）。
+   默认直连。实测本机直连 `raw.githubusercontent.com` 不通、`github.com` 正常，若更新总失败，
+   再在前面加镜像前缀（如 `https://hk.gh-proxy.org/`）—— 但别长期挂着，镜像会延迟同步。
 2. 设为**全局覆写**，模式切到「规则」（`global` 模式下所有规则失效）。
 3. 想用静态住宅出口，再建一个本地 YAML 覆写，内容参考 [`residential.example.yaml`](residential.example.yaml)。
 
@@ -294,7 +295,7 @@ IP 型 DoH 不需要任何引导，少一环就少一个死法（详见坑 15）
 
 | 方案                | 写法                     | 特点                                                                              |
 | ----------------- | ---------------------- | ------------------------------------------------------------------------------- |
-| **任意亚洲节点（推荐，默认）** | `dialer-proxy: 前置-亚洲`  | `url-test` 只收名字含亚洲国家关键词的节点自动择优（日本 6 + 港台韩新 24 + 东南亚 8）；全灭时落 `REJECT` 阻断，不会跳到美/欧 |
+| **任意亚洲节点（推荐，默认）** | `dialer-proxy: 前置-亚洲`  | `url-test` 只收名字含亚洲国家关键词的节点自动择优（日本 6 + 港台韩新 24 + 东南亚 8）；全灭时退 `DIRECT`（不经机场），住宅仍可连；不会再出现「莫名连不上住宅」 |
 | 全机场自动             | `dialer-proxy: AUTO`   | 最快，但中转会跳地区——出口 IP 没变，中转 ASN/延迟特征每次都变，对风控不友好                                     |
 | 固定单节点             | `dialer-proxy: 直连-日本3` | 最稳，但节点一挂全断；且订阅改名后配置直接校验失败（组引用了不存在的节点）                                           |
 
