@@ -50,10 +50,11 @@ const APP_PROXY = {
     // { name: 'ai-in', port: 7866, proxy: 'AI' },
     // { name: 'us-in', port: 7867, proxy: 'US' },
   ],
-  // 方式二：进程名 / 包名 / UID（桌面 + Android 通用）
+  // 方式二：进程名 / 路径 / 路径正则 / 包名 / UID（桌面 + Android 通用）
   processes: [
     // { value: 'Telegram', proxy: 'US' },
     // { value: '/Applications/Cursor.app/Contents/MacOS/Cursor', type: 'path', proxy: 'AI' },
+    // { value: '^/Applications/Claude\\.app/', type: 'path-regex', proxy: '住宅出口' },  // Electron 整个 App
     // { value: 'org.telegram.messenger', proxy: 'US' },   // Android 包名
   ],
 };
@@ -107,9 +108,19 @@ Android 上是**三层**机制，别混：
 | ② 进内核后走哪个组      | `APP_PROXY.processes`（包名） | 同一个 VPN 内，Telegram 走 US、Chrome 走 AUTO |
 | ③ 同一 App 内按域名细分 | `rules`                   | 例如 Chrome 里 claude.ai 走住宅、其余走 AUTO    |
 
-> **仓库默认已启用 4 条**（见 `smart.js` 的 `APP_PROXY.processes`）：
-> `com.whatsapp` / `com.talkatone.android` / `com.openai.chatgpt` / `com.anthropic.claude → 住宅出口`。
-> 它们只对 **Android** 生效（桌面端进程名不是包名），且只覆盖 TCP；语音/视频仍走机场。
+> **仓库默认已启用 6 条**（见 `smart.js` 的 `APP_PROXY.processes`）：
+>
+> | 规则 | 目标 | 生效端 |
+> |---|---|---|
+> | `com.whatsapp` / `com.talkatone.android` / `com.openai.chatgpt` / `com.anthropic.claude` | 住宅出口 | Android（包名） |
+> | `PROCESS-PATH-REGEX,^/Applications/Claude\.app/` | 住宅出口 | macOS |
+> | `PROCESS-PATH-REGEX,^/Applications/ChatGPT\.app/` | 住宅出口 | macOS |
+>
+> 桌面端两条用**路径正则**而不是进程名：Claude / ChatGPT 都是 Electron，真正建连的常是
+> `Xxx Helper`（network service）子进程，进程名还会被 macOS 截到 16 字符，精确匹配必漏。
+>
+> 桌面端命中这条 = 该 App 的**全部 TCP** 走住宅（含图片/静态资源）；**语音视频是 UDP**，
+> 会被导向 `udp: false` 的住宅节点而直接失败 —— 这是预料之中的取舍，见下方【常见坑】③。
 
 **验证包名规则是否真的命中**：看 FlClash 日志里连接后面的括号
 
@@ -157,8 +168,8 @@ Talkatone 实测现场：`进程 com.talkatone.android(10410)` / `规则 Match` 
 { value: 'com.whatsapp.w4b', proxy: '住宅出口' },
 ```
 
-判断是否生效：看连接详情的「规则」——`PROCESS-NAME` / `PROCESS-PATH` / `UID` 说明 processes 生效；  
-`Match` 说明没命中任何规则，正在走 `CATCH`（纯 IP 连接的典型表现）。
+判断是否生效：看连接详情的「规则」——`PROCESS-NAME` / `PROCESS-PATH` / `PROCESS-PATH-REGEX` / `UID`
+说明 processes 生效；`Match` 说明没命中任何规则，正在走 `CATCH`（纯 IP 连接的典型表现）。
 
 > 同类清单（都自带 DNS 或大量 IP 直连）：Talkatone、WhatsApp、Telegram 语音、Discord 语音、  
 > 部分手游与银行 App。它们的共同点：**规则看不到域名，UDP 也进不了住宅**。
@@ -255,7 +266,7 @@ residential.example.yaml  住宅节点覆写模板（Clash Party 用，只放凭
 
 | 顺序 | 对象                | 管什么                                |
 | -- | ----------------- | ---------------------------------- |
-| ①  | `APP_PROXY`       | 应用级分流：专用端口 / 进程名 / Android 包名（最常改） |
+| ①  | `APP_PROXY`       | 应用级分流：专用端口 / 进程名 / 路径正则 / Android 包名（最常改） |
 | ②  | `RESIDENTIAL`     | 住宅出口：总开关、组名、跳板组、专用端口               |
 | ③  | `TRAFFIC`         | 省流量：国内直连、Apple 直连                  |
 | ④  | `AI_STATIC_TO_AI` | AI 静态资源 / 安装包 → 机场 AI 组            |
