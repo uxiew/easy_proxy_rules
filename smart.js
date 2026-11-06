@@ -330,6 +330,46 @@ const AI_STATIC_TO_AI = [
   'DOMAIN-SUFFIX,openaicom.imgix.net', // OpenAI 图片 CDN
 ];
 
+// ------------------------------------------------------------
+// ⑤ NARROW_TUN —— 窄 TUN：只把 Google 网段塞进内核
+// ------------------------------------------------------------
+// 为什么需要它：Antigravity 的 language_server（Go + gRPC）不读系统代理，
+//   也不吃 HTTPS_PROXY（grpc-go 不做 env proxy 解析），没有 TUN 时它直连
+//   172.217.x / 142.251.x，状态永远是 SYN_SENT，界面「一直加载中」。
+// 全量 TUN 能解决，但会把整机流量都塞进内核。这里只挂 Google 的段：
+//   其余流量（包括默认路由）完全不进内核，对局域网 / Tailscale / 内网服务零影响。
+//
+// 判定成功的标志：
+//   netstat -rn -f inet | grep utun1500     → 只列出下面这些段，没有 0.0.0.0/1
+//   lsof -nP -a -p $(pgrep -f language_server) -iTCP | grep -v LISTEN
+//                                           → 源地址是 198.18.0.1、状态 ESTABLISHED
+//   Clash 连接页里该进程的链路 → 🏠 住宅出口
+//
+// ⚠️ 段要维护：它是「实测见过的 Google 段」的并集，不是官方完整列表。
+//    某天 Antigravity 换了后端、连接卡在 SYN_SENT，就用 lsof 看它连到哪个段再补。
+// ⚠️ 与「全量 TUN」互斥：如果你在 Clash Party 里手动开了全量 TUN，
+//    这里设 true 只是把路由范围缩小，不会叠加出两套。
+const NARROW_TUN = {
+  // 只接管下面这些网段。false = 完全不动 tun 配置（保持 Clash Party 面板的开关说了算）。
+  enabled: true,
+  // 想恢复整机 TUN：把 routeAddress 整个删掉（或改成 ['0.0.0.0/0'] 由面板控制）。
+  routeAddress: [
+    '142.250.0.0/15', // Google 主力段（142.250–142.251），language_server 最常连这里
+    '172.217.0.0/16', // Google 前端 / gstatic
+    '216.58.0.0/16', // www.google.com
+    '74.125.0.0/16', // Gmail / googleapis
+    '108.177.0.0/17', // Google 账号体系
+    '64.233.160.0/19', // Google 后端
+    '72.14.192.0/18', // Google 后端
+    '173.194.0.0/16', // Google 后端
+    '2001:4860::/32', // Google IPv6
+    '2404:6800::/32', // Google IPv6（亚洲）
+    '2607:f8b0::/32', // Google IPv6
+  ],
+  // macOS 上 Mixed 实测可用；启动异常时依次试 System → gVisor
+  stack: 'Mixed',
+};
+
 // ============================================================
 // 以下为内部实现：CDN 源、自定义关键词、节点清洗、分组、规则生成
 // ============================================================
@@ -1068,6 +1108,24 @@ function main(config) {
 
     //  确保开启了 UDP，因为 NTP (时间同步) 强制走 UDP 协议
     config['udp'] = true;
+
+    // 3. 窄 TUN：只把 Google 段塞进内核（见文件顶部 ⑤ NARROW_TUN）
+    //    必须写进 config，靠 PATCH /configs 热改的话一重载就丢。
+    if (NARROW_TUN.enabled) {
+      const tun = Object.assign({}, config.tun);
+      tun.enable = true;
+      tun.stack = NARROW_TUN.stack;
+      tun['auto-route'] = true;
+      tun['auto-detect-interface'] = true;
+      tun['route-address'] = NARROW_TUN.routeAddress.slice();
+      // 只接管指定网段时不要劫持 DNS：系统 DNS（223.5.5.5）不经过 TUN，
+      // 留着 any:53 只会让内核以为要接管、实际一条都收不到。
+      tun['dns-hijack'] = [];
+      config.tun = tun;
+      console.log(
+        `[NARROW_TUN] 只接管 ${NARROW_TUN.routeAddress.length} 个 Google 网段，默认路由保持不变`,
+      );
+    }
   }
 
   const proxyCount = config?.proxies?.length ?? 0;
