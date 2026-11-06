@@ -183,7 +183,7 @@ Talkatone 实测现场：`进程 com.talkatone.android(10410)` / `规则 Match` 
 | 组 | 类型 | 成员 | 干嘛的 |
 |---|---|---|---|
 | `🚀 全部节点` | select | `DIRECT` + 全部节点 | 手动挑单个节点，绕开所有自动逻辑 |
-| `住宅出口` | select | `🏠 住宅-JP` / `REJECT` / `AI` | **AI 风控面专用出口**，`include-all-proxies` + `filter: 🏠\|WS-` 动态收编住宅节点 |
+| `住宅出口` | select | `🏠 住宅-JP` / `REJECT`（默认**不含** `AI`） | **AI 风控面专用出口**，`include-all-proxies` + `filter: 🏠\|WS-` 动态收编住宅节点；`escapeToAI: false` 时切不出机场 = 要么住宅要么断网 |
 | `前置-亚洲` | url-test | 亚洲机场节点（日/港/台/韩/新/越/马/泰/菲） | 住宅节点的 `dialer-proxy`，只负责「本机 → 机场亚洲 → 住宅」这一跳 |
 | `AUTO` | url-test | 全量节点 | 默认出口，`filter: '.*'` 吃全量，按延迟自动选最快 |
 | `AI` | url-test | `JP/SG/US/DE/KR` | 机场 AI 组（Gemini、Google、中转站），**不含住宅节点** |
@@ -262,6 +262,7 @@ residential.example.yaml  住宅节点覆写模板（Clash Party 用，只放凭
 | `RESIDENTIAL.allAI` | `false` | 整个 `forAI` 走住宅——**别开**，`ai.yaml` 里有 `DOMAIN-REGEX,google.*`，会连 `googlevideo.com`（YouTube 视频流）一起烧住宅流量 |
 | `APP_PROXY.ports` | `[7865 → 住宅出口]` | 专用端口列表：端口整体绑到指定组/节点，跳过规则。见「应用级分流」 |
 | `APP_PROXY.processes` | `[]`（全注释） | 进程/包名规则，插在 `rules` 最前。桌面写进程名，Android 写包名 |
+| `RESIDENTIAL.escapeToAI` | `false` | 是否把 `AI` 放进「住宅出口」当手动逃生口。默认 `false` = 住宅挂了只能阻断，不会静默换机场 IP |
 | `RESIDENTIAL.dedicatedPort` | `0`（已迁移） | **旧字段**，仅兼容用：填非 0 值且 `APP_PROXY.ports` 里没有 `residential-in` 时自动补一条 |
 | `RESIDENTIAL.upstream.enabled` | `true` | 建「前置-亚洲」组：住宅节点的 `dialer-proxy` 指向它 |
 | `RESIDENTIAL.nodePattern` | `🏠\|WS-` | 住宅节点名匹配。**自己加的节点必须带 🏠 前缀**，别用「住宅」二字匹配（机场自带住宅节点会混进来，见坑 9） |
@@ -446,6 +447,38 @@ Clash Party 退出后端口消失，客户端拿到的是 `ECONNREFUSED`，**不
    比断网更危险（同账号 IP 跳变）。上面守卫的第二个闸门就是拦这个。
 
 > ⚠️ `NO_PROXY` 只写 `localhost,127.0.0.1`，**不要**把 `anthropic.com` 加进去 —— 加一条就让所有代理努力归零。
+
+### Claude Code 常驻会话（`~/.claude/remote` 的 ccd-cli）
+
+远程 / 常驻会话由守护进程 `~/.claude/remote/srv/<hash>/server` 拉起若干 `ccd-cli` 子进程，
+每个子进程各自读 `settings.json` 的 `env`，**不需要单独配代理**。它们对 `api.anthropic.com`
+用的是 HTTP/2 长连接，空闲时只有心跳，所以面板里会长期挂着 `0 B/s` 的几行，属正常现象。
+
+一条命令确认「全都走住宅、没有直连」：
+
+```bash
+lsof -nP -iTCP:7865 -sTCP:ESTABLISHED                    # 每个 ccd-cli 应有一条
+lsof -nP -a -p <PID> -iTCP -sTCP:ESTABLISHED             # 只应出现 127.0.0.1:7865，无 x.x.x.x:443
+```
+
+- 出现 `x.x.x.x:443` 直连 → 该会话没拿到 env（多半是旧版本残留进程），关掉重开。
+- 旧版本（如 `2.1.309`）遗留的会话会一直占着长连接，`kill <PID>` 即可，守护进程和其他会话不受影响。
+- 守护进程本身不联网（只有 unix socket），所以「让它走住宅」实际就是「让每个子进程拿到 `env`」。
+
+### 硬阻断（可选，需要 sudo）
+
+想把「万一没走代理」彻底堵死，在 pf 层封掉 Anthropic 网段的直连（本机代理不受影响）：
+
+```bash
+sudo pfctl -a com.easyproxy -f - <<'EOF'
+block drop out quick proto tcp to 160.79.104.0/21
+block drop out quick inet6 proto tcp to 2607:6bc0::/32
+EOF
+sudo pfctl -e
+```
+
+> 经 `127.0.0.1:7865` 的流量不会被拦：Clash 连的是住宅 IP `61.***193`，不是 Anthropic 网段。
+> 撤销：`sudo pfctl -a com.easyproxy -F rules`。重启后不保留，要持久化需写进 `/etc/pf.anchors/`。
 
 ### Proxifier
 

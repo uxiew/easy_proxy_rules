@@ -165,9 +165,9 @@ const APP_PROXY = {
 //       udp: false                   # 住宅代理基本不支持 UDP
 //   proxy-groups 不需要你写，本脚本会建「住宅出口」组并自动收编上面这个节点。
 //
-// 组内兜底：`['REJECT', 'AI']` —— REJECT 排第一，所以没配住宅节点、或节点失效时
-// 该组回落到阻断，不会静默走机场（出口 IP 悄悄变化比断网更危险）。
-// AI 排第二只作手动逃生口：住宅线路彻底挂了，在面板里能切过去应急，不会被自动选中。
+// 组内兜底：默认只有 `['住宅节点…', 'REJECT']` —— 没配住宅节点、或节点失效时
+// 该组回落到阻断，**不会**静默走机场（出口 IP 悄悄变化比断网更危险）。
+// 机场逃生口（AI）默认不进组，要应急得手动把 RESIDENTIAL.escapeToAI 改 true。
 // 所以配好节点后，要在 Clash Party「代理」页把「住宅出口」切到 🏠 住宅-xxx 一次
 // （store-selected 会记住）。
 const RESIDENTIAL = {
@@ -177,6 +177,12 @@ const RESIDENTIAL = {
   // FlClash 构建时由钩子自动填成注入的节点名 → 手机开箱即用。
   nodeName: '',
   nodePattern: '🏠|WS-', // 节点名匹配（Go RE2 正则），覆写里的节点名必须能命中
+  // 【逃生口】住宅线路彻底挂掉时，是否允许在面板把「住宅出口」切到 AI（机场）应急。
+  //   false（默认）= 组成员只有 住宅节点 + REJECT，**切不出机场** —— 要么住宅、要么断网。
+  //   这正是 Claude Code 这类「宁可断开也不许换 IP」的场景需要的语义：
+  //   出口 IP 悄悄从 61.***193 变成机场共享 IP，比直接报错危险得多。
+  //   真要应急：改成 true → 重载 → 面板切到 AI → 用完改回 false。
+  escapeToAI: false,
   // ⚠️ 命名约定：自己加的住宅节点必须带 🏠 前缀（如 🏠 住宅-JP / 🏠 住宅-US）。
   //   不能用「住宅」两个字做匹配——很多机场自带「家宽住宅」「住宅IP」节点，
   //   会被误收进住宅出口（换订阅后实测踩坑：18 个机场住宅节点混了进来）。
@@ -1358,14 +1364,17 @@ function main(config) {
   //   - REJECT 第二 → 手动选中某个住宅节点、该节点后来从订阅里消失时，内核回落到
   //     第一个成员（nodeName）；nodeName 也消失时回落 REJECT = 阻断，
   //     不会静默走机场（出口 IP 悄悄变化比断网更危险）；
-  //   - AI 第三，仅作手动应急通道：住宅线路彻底挂了能在面板切过去临时用。
+  //   - AI 只在 RESIDENTIAL.escapeToAI = true 时才进组，默认**不进**：
+  //     这一类流量（Claude Code / 订阅制 AI）要的是「住宅或断网」，
+  //     留着机场逃生口等于给「悄悄换出口」开了后门。
   //   - REJECT 必须始终在列：filter 一个都没匹配到时组会变空，内核塞 COMPATIBLE
   //     = 直连，真实 IP 直接泄漏（比走机场更糟）。
   if (RESIDENTIAL.enabled) {
     finalGroups.splice(1, 0, {
       name: RESIDENTIAL.group,
       type: 'select',
-      proxies: [RESIDENTIAL.nodeName, 'REJECT', 'AI'].filter(Boolean),
+      proxies: [RESIDENTIAL.nodeName, 'REJECT', ...(RESIDENTIAL.escapeToAI ? ['AI'] : [])]
+        .filter(Boolean),
       'include-all-proxies': true,
       filter: RESIDENTIAL.nodePattern,
       'exclude-filter': INFO_NODE_PATTERN,
