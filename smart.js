@@ -119,6 +119,20 @@ const APP_PROXY = {
     { value: '^/Applications/Claude\\.app/', type: 'path-regex', proxy: '住宅出口' },  // Claude 桌面端
     { value: '^/Applications/ChatGPT\\.app/', type: 'path-regex', proxy: '住宅出口' }, // ChatGPT 桌面端
 
+    // ----- Google Antigravity（AI IDE）+ 配套 CLI → 住宅出口 -----
+    // 原来靠 Proxifier 规则「Antigravity / Antigravity Helper* / language_server* / agy / agentapi」
+    // 走 Chain Clash-Static，现在等价迁到这里，Proxifier 可以退出。
+    // Antigravity.app 也是 Electron：主进程 Antigravity + Antigravity Helper*，
+    // 外加它自带的 language_server（在 Contents/Resources/bin/ 里，属于 App 包内），
+    // 一条路径正则全部覆盖。
+    // agy 是独立的 Homebrew 命令行工具（177MB 单文件），不在 App 包内，单独一条。
+    { value: '^/Applications/Antigravity\\.app/', type: 'path-regex', proxy: '住宅出口' },
+    { value: '/opt/homebrew/bin/agy', type: 'path', proxy: '住宅出口' },
+    // 未安装 / 不在 PATH，先留模板；装上后取消注释即可：
+    // { value: '^/Applications/Gemini\\.app/', type: 'path-regex', proxy: '住宅出口' },
+    // { value: '^/Applications/Antigravity IDE\\.app/', type: 'path-regex', proxy: '住宅出口' },
+    // { value: 'agentapi', proxy: '住宅出口' },
+
     // --- 桌面端：进程名 ---
     // { value: 'Telegram', proxy: 'US' },
     // { value: 'Discord', proxy: 'AUTO' },
