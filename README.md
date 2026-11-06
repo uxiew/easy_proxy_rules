@@ -107,6 +107,10 @@ Android 上是**三层**机制，别混：
 | ② 进内核后走哪个组      | `APP_PROXY.processes`（包名） | 同一个 VPN 内，Telegram 走 US、Chrome 走 AUTO |
 | ③ 同一 App 内按域名细分 | `rules`                   | 例如 Chrome 里 claude.ai 走住宅、其余走 AUTO    |
 
+> **仓库默认已启用 4 条**（见 `smart.js` 的 `APP_PROXY.processes`）：
+> `com.whatsapp → US`，`com.talkatone.android` / `com.openai.chatgpt` / `com.anthropic.claude → 住宅出口`。
+> 它们只对 **Android** 生效（桌面端进程名不是包名），且只覆盖 TCP；语音/视频仍走机场。
+
 **验证包名规则是否真的命中**：看 FlClash 日志里连接后面的括号
 
 ```
