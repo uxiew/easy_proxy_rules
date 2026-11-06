@@ -141,6 +141,34 @@ adb shell dumpsys package org.telegram.messenger | grep userId
 ⚠️ 包名 / 进程名写错**不会报错**，规则只是永不命中，表现是「配了但没效果」——所以务必先核对再重载。  
 包名写的是**已安装应用**，改名/卸载后规则就失效了。
 
+### 前提：TUN + DNS，否则进程规则「写了也不生效」
+
+这是踩过的最贵的一课。规则写对了、组名也对，但 App 打开就是**一直转圈**，连接详情里根本看不到它的流量。
+
+**根因一：流量没进内核。** `PROCESS-*` 只是「给已经进入内核的连接贴标签」，它拦不住绕开内核的连接。桌面端只有两条入口：应用自己把代理填成系统代理（或 7865 这类专用端口），或者开 **TUN**。像 Antigravity 的 `language_server`（Go）、`agy`（Go）、ChatGPT 的 `codex` 进程（Rust/Network.framework）都不读 macOS 系统代理，TUN 没开时它们直接连物理网卡，规则一条都匹配不到。Proxifier 以前之所以能管住，是因为它在网卡层拦截，比系统代理低一层。
+
+**根因二：DNS 被污染。** 就算 TUN 接管了流量，App 仍然自己做 DNS。系统 DNS 若指向路由器（`192.168.31.1`）或 Tailscale MagicDNS（`100.100.100.100`），这些地址走 LAN / Tailscale 路由，**不进 TUN**，`dns-hijack: any:53` 劫持不到，解析结果就是被污染的假 IP。实测 `chatgpt.com` 被解析成 `114.43.24.59`，`codex` 反复拨这个死 IP、16 秒超时，界面永远转圈。
+
+**处理（三步，都已在本机落地）**：
+
+```bash
+# 1) 开 TUN：Clash Party 首页「虚拟网卡 / TUN」开关，或 mihomo.yaml 里 tun.enable: true
+# 2) 把系统 DNS 指到一个会流经 TUN 的公网解析器（223.5.5.5 本身也通，关掉 TUN 也能用）
+networksetup -setdnsservers "Wi-Fi" 223.5.5.5
+# 3) 关掉 Tailscale 的 DNS 接管，否则 resolver #1 永远是 100.100.100.100
+/Applications/Tailscale.app/Contents/MacOS/Tailscale set --accept-dns=false
+```
+
+验证：`dig +short chatgpt.com` 必须返回 **`198.18.x.x`**（fake-ip）。返回真实 IP 就说明 DNS 还没进内核。
+
+```bash
+# 看进程规则到底命中了没有（hitCount 不涨 = 流量没进内核）
+curl -s --unix-socket /tmp/mihomo-party-501-58401.sock http://localhost/rules | \
+python3 -c "import sys,json;[print(r['payload'],'hit=',r['extra']['hitCount']) for r in json.load(sys.stdin)['rules'] if 'Process' in r['type']]"
+```
+
+副作用要知道：TUN 与 Proxifier 的系统扩展会互相干扰，二选一；关闭 Tailscale 的 DNS 接管后，`*.ts.net` 这类 MagicDNS 名字不再能解析（Tailscale 本身连接受影响，节点仍在）。
+
 ### App 自己解析 DNS / 直连 IP（WhatsApp、Talkatone 这类）
 
 有些 App 不走系统 DNS：内部硬编码 `8.8.8.8:53`，拿到真实 IP 再去连。于是会看到三个连锁现象：
@@ -545,11 +573,18 @@ sudo pfctl -a com.apple/easyproxy -F rules    # 临时版则清这个
 
 ### Proxifier
 
+> ⚠️ Proxifier 与 Clash 的 **TUN 模式会冲突**（流量被两边重复拦截，容易成环）。开 TUN 时把 Proxifier 停掉。
+>
+> **2026-11 起本机已改用 TUN，不再需要 Proxifier。** 之前靠它把 Antigravity / ChatGPT 钉在住宅，
+> 现在由 `PROCESS-PATH-REGEX` 规则 + TUN 接管，效果等价。若它的系统扩展还开着，
+> 去「系统设置 → 通用 → 登录项与扩展 → 网络扩展」关掉，否则它会抢在 Clash 前面，
+> 内核只能看到 `Proxifier` 这个客户端，进程规则全部失效。
+
+如果某天回退到不用 TUN，仍可用下面的方式：
+
 1. `Profile → Proxy Servers → Add`：`127.0.0.1:7865`，协议 **SOCKS5**
 2. `Profile → Proxification Rules → Add`：Applications 选目标程序，Action 选刚建的代理
 3. Default 规则设 `Direct`，别再套 7890
-
-> ⚠️ Proxifier 与 Clash 的 **TUN 模式会冲突**（流量被两边重复拦截，容易成环）。开 TUN 时把 Proxifier 停掉。
 
 ### Android：FlClash / v2rayNG
 
