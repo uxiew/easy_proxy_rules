@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-06 19:23:12
- * 源文件      : smart.js  sha256:93d5b7d4d413  1628 行 / 84838 字节
- * 源码提交    : 54226ea
+ * 构建时间    : 2026-11-06 19:41:20
+ * 源文件      : smart.js  sha256:682a47a99799  1632 行 / 85278 字节
+ * 源码提交    : 56a2305
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -124,8 +124,12 @@ const FLCLASH_RESIDENTIAL = {
 //             Electron 类 App（Claude / ChatGPT / Cursor / VS Code）真正的网络连接往往由
 //             `Xxx Helper` 子进程发出，进程名精确匹配会漏 → 用 path-regex 匹配整个 .app。
 //     Android：进程名就是**包名**，例如 org.telegram.messenger、com.android.chrome。
-//     前提：内核能拿到进程信息 —— 桌面端靠 find-process-mode（mihomo.yaml 已设 strict）
-//           + 应用走系统代理；Android 靠内核的 UID→包名映射。
+//     前提①：流量必须**先进内核**。桌面端只有两条路：应用把代理填成系统代理/专用端口，
+//            或者开 TUN 虚拟网卡。不读系统代理的应用（Go/Rust 写的 language_server、agy，
+//            以及用 Network.framework 的 App）不开 TUN 时连接直接走物理网卡，
+//            规则一条都匹配不到，表现为「规则写对了但一直转圈」。
+//     前提②：内核能拿到进程信息 —— 桌面端靠 find-process-mode（mihomo.yaml 已设 strict）
+//            + TUN 的 socket 归属查询；Android 靠内核的 UID→包名映射。
 //
 // 【怎么改】只改下面这个对象，不用碰规则和分组逻辑：
 //   1. 加端口：往 ports 里加一条（name 不能重复、port 不能重复，否则内核起不来）
