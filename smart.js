@@ -356,12 +356,14 @@ const NARROW_TUN = {
   routeAddress: [
     '142.250.0.0/15', // Google 主力段（142.250–142.251），language_server 最常连这里
     '172.217.0.0/16', // Google 前端 / gstatic
+    '172.253.0.0/16', // googleapis 的 VIP 段（实测 172.253.120.x 会漏，必须单列）
     '216.58.0.0/16', // www.google.com
     '74.125.0.0/16', // Gmail / googleapis
     '108.177.0.0/17', // Google 账号体系
     '64.233.160.0/19', // Google 后端
     '72.14.192.0/18', // Google 后端
     '173.194.0.0/16', // Google 后端
+    '209.85.128.0/17', // Google 后端
     '2001:4860::/32', // Google IPv6
     '2404:6800::/32', // Google IPv6（亚洲）
     '2607:f8b0::/32', // Google IPv6
