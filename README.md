@@ -141,15 +141,70 @@ adb shell dumpsys package org.telegram.messenger | grep userId
 ⚠️ 包名 / 进程名写错**不会报错**，规则只是永不命中，表现是「配了但没效果」——所以务必先核对再重载。  
 包名写的是**已安装应用**，改名/卸载后规则就失效了。
 
-### 前提：TUN + DNS，否则进程规则「写了也不生效」
+### 前提：流量得先进内核 —— TUN 与「系统代理」二选一
 
 这是踩过的最贵的一课。规则写对了、组名也对，但 App 打开就是**一直转圈**，连接详情里根本看不到它的流量。
 
-**根因一：流量没进内核。** `PROCESS-*` 只是「给已经进入内核的连接贴标签」，它拦不住绕开内核的连接。桌面端只有两条入口：应用自己把代理填成系统代理（或 7865 这类专用端口），或者开 **TUN**。像 Antigravity 的 `language_server`（Go）、`agy`（Go）、ChatGPT 的 `codex` 进程（Rust/Network.framework）都不读 macOS 系统代理，TUN 没开时它们直接连物理网卡，规则一条都匹配不到。Proxifier 以前之所以能管住，是因为它在网卡层拦截，比系统代理低一层。
+`PROCESS-*` 不负责拦截，它只是给**已经进入内核**的连接贴标签。桌面端流量只有两条入口：
 
-**根因二：DNS 被污染。** 就算 TUN 接管了流量，App 仍然自己做 DNS。系统 DNS 若指向路由器（`192.168.31.1`）或 Tailscale MagicDNS（`100.100.100.100`），这些地址走 LAN / Tailscale 路由，**不进 TUN**，`dns-hijack: any:53` 劫持不到，解析结果就是被污染的假 IP。实测 `chatgpt.com` 被解析成 `114.43.24.59`，`codex` 反复拨这个死 IP、16 秒超时，界面永远转圈。
+| 路线 | 能覆盖什么 | 代价 |
+| -- | -- | -- |
+| **A. TUN（虚拟网卡）** | 全部进程。包括完全不读系统代理的：Antigravity 的 `language_server`（Go）、`agy`（Go）、ChatGPT 的 `codex`（Rust / Network.framework） | 需网络扩展；**与 Proxifier 扩展冲突**，二选一 |
+| **B. 系统代理（HTTP/HTTPS）** | 主动读系统代理的程序：浏览器、ChatGPT / Claude 桌面端（Chromium / Electron）、多数 npm / pip / brew 类工具 | 不装扩展、随时可关；**管不住自建网络栈的进程** |
 
-**处理（三步，都已在本机落地）**：
+#### 路线 B（不开 TUN）—— 两个硬要求
+
+**① HTTP 和 HTTPS 必须都开，只开 SOCKS 等于没开。**
+
+Clash Party 的 `sysProxy.mode: manual` 正常会同时写 HTTP / HTTPS / SOCKS 三个。系统里只剩 SOCKS 时，Chromium 系会走 SOCKS5 并退化成**本地解析 DNS**，于是被污染 → 转圈。这是「不开 TUN 就转圈」最常见的真因，与住宅带宽无关。
+
+```bash
+# 检查：三个都应是 7890，HTTPEnable / HTTPSEnable 必须为 1
+scutil --proxy | grep -E "HTTPEnable|HTTPPort|HTTPSEnable|HTTPSPort|SOCKSEnable|SOCKSPort"
+
+# 修复（等价于在 Clash Party 里关一次再开「系统代理」）
+networksetup -setwebproxy Wi-Fi 127.0.0.1 7890
+networksetup -setsecurewebproxy Wi-Fi 127.0.0.1 7890
+networksetup -setwebproxystate Wi-Fi on
+networksetup -setsecurewebproxystate Wi-Fi on
+```
+
+走 HTTP 代理时**域名是交给 mihomo 远端解析的**，本地 DNS 污染不到它 —— 所以路线 B 不需要改系统 DNS，也不需要 fake-ip。
+
+**② 规则里的 `PROCESS-*` 照样生效，一行都不用改。**
+
+实测（TUN 关闭、仅系统 HTTP 代理）：ChatGPT 的 `Codex (Service)` 在关闭 TUN 之后**新建**的连接，全部命中 `ProcessPathRegex → 🏠 住宅-JP<住宅出口>`。内核能从本地端口反查到发起进程，所以进程规则不是 TUN 专属。
+
+```bash
+# 验证出口：不带 -x 也一样，浏览器/Electron 走的就是这条链
+curl -s -x http://127.0.0.1:7890 https://chatgpt.com/cdn-cgi/trace | grep -E "^ip=|^loc="
+#   ip=61.124.29.193   loc=JP     ← 住宅出口
+```
+
+#### 路线 B 管不住的：Antigravity / `language_server`
+
+`language_server` 是独立 Go 二进制，**三样都不认**（本机实测，全部无效）：
+
+| 尝试 | 结果 |
+| -- | -- |
+| 系统代理（HTTP / HTTPS 全开） | 忽略，直接连物理网卡 |
+| VS Code 的 `http.proxy` / `http.proxySupport` 设置 | 只对 Electron 主进程和扩展生效 |
+| `open -a Antigravity --args --proxy-server=http://127.0.0.1:7890` | 只影响 Chromium 主进程，不影响它 fork 出来的子进程 |
+
+卡住时的现场（`lsof -nP -a -p <lsp-pid> -iTCP`）：
+
+```
+TCP 192.168.31.228:56057->172.217.116.4:443            (SYN_SENT)   ← Google
+TCP [2409:...]:56056->[2001:4860:4845:400::]:443       (SYN_SENT)   ← Google IPv6
+```
+
+一直 `SYN_SENT` 不 `ESTABLISHED` = 连不上，界面就是「加载中」。
+
+**结论：Antigravity 只有 TUN 或 Proxifier 两条路。** 如果就是不想开 TUN，那 Proxifier 此时已不再与 TUN 冲突，让它只代理 `language_server` 一个进程（路径规则），其余全部放行即可 —— 这比整机 TUN 更轻。
+
+#### 路线 A（TUN）还要处理 DNS
+
+**根因：DNS 被污染。** 就算 TUN 接管了流量，App 仍然自己做 DNS。系统 DNS 若指向路由器（`192.168.31.1`）或 Tailscale MagicDNS（`100.100.100.100`），这些地址走 LAN / Tailscale 路由，**不进 TUN**，`dns-hijack: any:53` 劫持不到，解析结果就是被污染的假 IP。实测 `chatgpt.com` 被解析成 `114.43.24.59`，`codex` 反复拨这个死 IP、16 秒超时，界面永远转圈。
 
 ```bash
 # 1) 开 TUN：Clash Party 首页「虚拟网卡 / TUN」开关，或 mihomo.yaml 里 tun.enable: true
@@ -571,20 +626,33 @@ sudo pfctl -a com.apple/easyproxy -F rules    # 临时版则清这个
 > 经 `127.0.0.1:7865` 的流量不会被拦：Clash 连的是住宅 IP `61.124.29.193`，不在 Anthropic 网段。  
 > `pfctl -e` 打印 `pf already enabled` 属正常提示，不是错误。
 
-### Proxifier
+### Proxifier（不开 TUN 时 Antigravity 的唯一解）
 
-> ⚠️ Proxifier 与 Clash 的 **TUN 模式会冲突**（流量被两边重复拦截，容易成环）。开 TUN 时把 Proxifier 停掉。
->
-> **2026-11 起本机已改用 TUN，不再需要 Proxifier。** 之前靠它把 Antigravity / ChatGPT 钉在住宅，
-> 现在由 `PROCESS-PATH-REGEX` 规则 + TUN 接管，效果等价。若它的系统扩展还开着，
-> 去「系统设置 → 通用 → 登录项与扩展 → 网络扩展」关掉，否则它会抢在 Clash 前面，
-> 内核只能看到 `Proxifier` 这个客户端，进程规则全部失效。
+> ⚠️ Proxifier 与 Clash 的 **TUN 模式会冲突**（流量被两边重复拦截，容易成环）。两者**二选一**，不要同时开。
 
-如果某天回退到不用 TUN，仍可用下面的方式：
+取舍：
 
-1. `Profile → Proxy Servers → Add`：`127.0.0.1:7865`，协议 **SOCKS5**
-2. `Profile → Proxification Rules → Add`：Applications 选目标程序，Action 选刚建的代理
-3. Default 规则设 `Direct`，别再套 7890
+| 场景 | 选谁 |
+| -- | -- |
+| 要管住所有进程（含 Antigravity 的 `language_server`、`agy`） | **TUN**，把 Proxifier 扩展停掉 |
+| 不想装 / 不想开 TUN | **Proxifier**，只代理个别进程，其余全部放行 |
+
+不开 TUN 时，ChatGPT / Claude 桌面端靠系统 HTTP/HTTPS 代理已经够用（见上文「路线 B」），
+Proxifier 只需要管住「不读代理」的那一类进程：
+
+1. `Profile → Proxy Servers → Add`：`127.0.0.1:7865`，协议 **SOCKS5**（7865 固定走住宅出口）
+2. `Profile → Proxification Rules → Add`：Applications 填
+   `/Applications/Antigravity.app/Contents/Resources/bin/language_server`，Action 选刚建的代理
+3. Default 规则设 `Direct`，别再套 7890，否则会跟系统代理打架
+4. 检查「系统设置 → 通用 → 登录项与扩展 → 网络扩展」，Proxifier 扩展必须是启用状态
+
+判断是否真生效：
+
+```bash
+lsof -nP -a -p $(pgrep -f "Resources/bin/language_server" | head -1) -iTCP | grep -v LISTEN
+# 对了：目标 127.0.0.1:7865 且 ESTABLISHED
+# 没对：目标仍是 172.217.x.x:443，状态 SYN_SENT
+```
 
 ### Android：FlClash / v2rayNG
 
