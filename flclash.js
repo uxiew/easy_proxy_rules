@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-06 18:09:21
- * 源文件      : smart.js  sha256:c6d2d4587403  1586 行 / 81626 字节
- * 源码提交    : 0110201
+ * 构建时间    : 2026-11-06 19:08:51
+ * 源文件      : smart.js  sha256:05cd61e088bb  1614 行 / 83726 字节
+ * 源码提交    : 0a3b92f
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -121,6 +121,8 @@ const FLCLASH_RESIDENTIAL = {
 //   方式二 processes（进程 / 包名）—— 桌面 + Android 通用
 //     生成 PROCESS-NAME / PROCESS-PATH / UID 规则，插在 rules 最前面（先于任何域名规则）。
 //     桌面端：进程名（Telegram、Discord）或可执行文件绝对路径（Electron 多进程用 path 更准）。
+//             Electron 类 App（Claude / ChatGPT / Cursor / VS Code）真正的网络连接往往由
+//             `Xxx Helper` 子进程发出，进程名精确匹配会漏 → 用 path-regex 匹配整个 .app。
 //     Android：进程名就是**包名**，例如 org.telegram.messenger、com.android.chrome。
 //     前提：内核能拿到进程信息 —— 桌面端靠 find-process-mode（mihomo.yaml 已设 strict）
 //           + 应用走系统代理；Android 靠内核的 UID→包名映射。
@@ -144,7 +146,11 @@ const APP_PROXY = {
   ],
 
   // ---------- 方式二：进程 / 包名 / UID ----------
-  // type 省略 = PROCESS-NAME；type: 'path' = PROCESS-PATH；type: 'uid' = UID（Android 用）
+  // type 省略      = PROCESS-NAME        进程名精确匹配（macOS 上会被截断到 16 字符）
+  // type: 'path'   = PROCESS-PATH        可执行文件绝对路径精确匹配
+  // type: 'path-regex' = PROCESS-PATH-REGEX  路径正则（Go RE2），匹配整个 .app 目录最省事
+  // type: 'name-regex' = PROCESS-NAME-REGEX  进程名正则（覆盖 Helper 子进程时用）
+  // type: 'uid'    = UID                 Android 用
   // ⚠️ 写错的后果是「规则永不命中」，内核**不会报错**，所以务必先核对名字/包名。
   processes: [
     // ===== 已启用（改完需在 Clash Party / FlClash 里重载）=====
@@ -156,6 +162,18 @@ const APP_PROXY = {
     { value: 'com.openai.chatgpt', proxy: '住宅出口' },    // ChatGPT：AI 风控面，出口用住宅 IP
     { value: 'com.anthropic.claude', proxy: '住宅出口' },  // Claude：同上
     // { value: 'com.whatsapp.w4b', proxy: '住宅出口' },   // WhatsApp Business，需要时打开
+
+    // ===== 已启用：桌面端 AI 客户端 → 住宅出口 =====
+    // Claude 桌面端 / ChatGPT 桌面端都是 Electron：主进程叫 Claude / ChatGPT，
+    // 但真正建连的常常是 `Xxx Helper`（network.mojom.NetworkService）子进程。
+    // macOS 的进程名会被截断到 16 字符，精确匹配 Helper 不现实，所以用**路径正则**匹配
+    // 整个 .app 包（主进程 + 所有 Helper 一次覆盖）。
+    // ⚠️ App 装在别的目录（如 ~/Applications）时这里匹配不到，改成对应前缀。
+    // ⚠️ 命中这条 = 该 App 的**全部** TCP 流量走住宅，包括图片/静态资源；
+    //    UDP（语音/视频）会被导向 udp:false 的住宅节点 → 直接失败，属预期。
+    //    要保持「语音走机场」就得对 UDP 单独放行，当前不这么做（见下方【常见坑】③）。
+    { value: '^/Applications/Claude\\.app/', type: 'path-regex', proxy: '住宅出口' },  // Claude 桌面端
+    { value: '^/Applications/ChatGPT\\.app/', type: 'path-regex', proxy: '住宅出口' }, // ChatGPT 桌面端
 
     // --- 桌面端：进程名 ---
     // { value: 'Telegram', proxy: 'US' },
@@ -884,8 +902,18 @@ const getRules = ()=>{
     // 进程规则一旦命中就直接决定出口；排在任何 DOMAIN 规则之后都会被截胡。
     // 配置见文件顶部 APP_PROXY.processes。数组为空时不产生任何规则，等于没改。
     // 注意：值里不能带逗号，否则会被当成策略名截断。
-    ...APP_PROXY.processes.map(({ value, proxy, type }) => {
-      const kind = type === 'path' ? 'PROCESS-PATH' : type === 'uid' ? 'UID' : 'PROCESS-NAME';
+    ...APP_PROXY.processes
+      // FlClash（Android）上没有 /Applications，桌面路径类规则永远不会命中，直接跳过
+      .filter(({ type }) => !(FLCLASH_MODE && (type === 'path' || type === 'path-regex')))
+      .map(({ value, proxy, type }) => {
+      // type → 内核规则类型；内核支持 PROCESS-NAME/PATH 及其 REGEX 版本 + UID。
+      const KINDS = {
+        path: 'PROCESS-PATH',
+        'path-regex': 'PROCESS-PATH-REGEX',
+        'name-regex': 'PROCESS-NAME-REGEX',
+        uid: 'UID',
+      };
+      const kind = KINDS[type] || 'PROCESS-NAME';
       return `${kind},${value},${proxy}`;
     }),
 
