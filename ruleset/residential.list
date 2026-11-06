@@ -20,3 +20,11 @@ DOMAIN-SUFFIX,amazon.com
 # 按需添加，例如：
 # DOMAIN-SUFFIX,coinbase.com
 # DOMAIN-SUFFIX,binance.com
+
+# --- 语音 / VoIP（账号绑地区，怕共享 IP）---
+# Talkatone：号码与账号绑美国 IP，信令走住宅最稳。
+# ⚠️ 它自带 DNS（查 8.8.8.8），大部分连接是**纯 IP**，域名规则命中不了；
+#    想让所有流量都走住宅，仍要在 APP_PROXY.processes 里写包名
+#    （com.talkatone.android），本行只兜住走系统 DNS 的那部分端点。
+# ⚠️ 语音/视频媒体是 UDP，住宅节点 udp:false 过不去，会落到机场（正常现象）。
+DOMAIN-SUFFIX,talkatone.com
