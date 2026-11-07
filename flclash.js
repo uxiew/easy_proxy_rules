@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-07 14:04:06
- * 源文件      : smart.js  sha256:eea8ef4dd78f  1754 行 / 92932 字节
- * 源码提交    : 1f6f113
+ * 构建时间    : 2026-11-07 14:22:16
+ * 源文件      : smart.js  sha256:07352aa9b520  1762 行 / 93617 字节
+ * 源码提交    : e29cdf9
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -1629,12 +1629,16 @@ function main(config) {
     if (!firstUpstream) {
       console.log(`[上游组] filter 没有匹配到任何节点，${RESIDENTIAL.upstream.group} 退到 DIRECT`);
     }
-    // 插到「住宅出口」后面，UI 里三个组挨在一起；用名字定位，避免硬编码下标
-    const exitIdx = finalGroups.findIndex((g) => g.name === RESIDENTIAL.group);
-    finalGroups.splice(exitIdx >= 0 ? exitIdx + 1 : 2, 0, {
+    // 【2026-11-07 改】不再写显式 `proxies: [firstUpstream]`。
+    // 写成那样会得到一个「两个大阪、两个都被标成当前选中」的组：
+    // 显式 members 一个「大阪」，include-all-proxies + filter 又收编一个「大阪」，
+    // 内核按名单输出时不去重，面板按 `now === 成员名` 高亮 → 两个都打勾。
+    // 现在成员完全交给 include-all-proxies + filter；只有本地一个都匹配不到时
+    // 才用 DIRECT 兜底（否则 url-test 组为空，内核会塞 COMPATIBLE = 直连，
+    // 这一跳变成不经机场，住宅链路可能直接连不上）。
+    const upstreamGroup = {
       name: RESIDENTIAL.upstream.group,
       type: 'url-test',
-      proxies: firstUpstream ? [firstUpstream] : ['DIRECT'],
       'include-all-proxies': true,
       // 复用地区组 JP 的 filter，两处永远同步；留空即跟随，也可单独定制
       filter: upFilter,
@@ -1664,7 +1668,11 @@ function main(config) {
       // 冷启动后第一次住宅请求会在本组还没选出节点时发出 → 失败。
       // 关掉后启动即测速，住宅链路（dialer-proxy 指向本组）才能真正可用。
       lazy: false,
-    });
+    };
+    if (!firstUpstream) upstreamGroup.proxies = ['DIRECT'];
+    // 插到「住宅出口」后面，UI 里三个组挨在一起；用名字定位，避免硬编码下标
+    const exitIdx = finalGroups.findIndex((g) => g.name === RESIDENTIAL.group);
+    finalGroups.splice(exitIdx >= 0 ? exitIdx + 1 : 2, 0, upstreamGroup);
   }
 
   // 覆盖规则配置
