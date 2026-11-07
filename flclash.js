@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-06 23:05:21
- * 源文件      : smart.js  sha256:2d475680e4e1  1702 行 / 89348 字节
- * 源码提交    : 6bcbfd8
+ * 构建时间    : 2026-11-07 12:15:42
+ * 源文件      : smart.js  sha256:b56cdb2212f1  1730 行 / 91052 字节
+ * 源码提交    : 59e9ce9
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -408,6 +408,28 @@ const AI_STATIC_TO_AI = [
 const NARROW_TUN = {
   // 只接管下面这些网段。false = 完全不动 tun 配置（保持 Clash Party 面板的开关说了算）。
   enabled: true,
+
+  // ---- AI 客户端长连接（2026-11-07 新增，可单独关）----
+  // ChatGPT 桌面端的 Remote Control / Codex enrollment 由后台进程建常驻 WebSocket，
+  // 它不读 macOS 系统代理，自己用系统 DNS 解析 → 拿到被污染的假 IP → 直连超时，
+  // 桌面端报 "Pairing code unavailable: Remote control failed to connect"。
+  // 打开后额外接管「系统 DNS + fake-ip 段」：
+  //   DNS 进内核被 dns-hijack 劫持 → Clash 返回 fake-ip(198.18.x.x)
+  //   → 应用连 fake-ip 进内核 → 命中现有 PROCESS-PATH-REGEX / RULE-SET,aiStrict
+  //   → 住宅出口。默认路由仍是 192.168.31.1，局域网 / Tailscale / 纯 IP 直连不受影响。
+  // 关掉（includeAI: false）= 恢复「只接管 Google 段」的旧行为。
+  //
+  // ⚠️ 边界（契约）：这里只是把「域名解析后的连接」收进内核，**不是全量 TUN**。
+  //    默认路由、局域网、纯 IP 直连都不动；出站仍按规则分流。
+  //    不要因为这个开关去把 routeAddress 改成 0.0.0.0/0。
+  includeAI: true,
+  aiRouteAddress: [
+    '223.5.5.5/32', // 系统 DNS（本机 scutil --dns 实测只有这一台）
+    // default-nameserver 里的备用项，同时兜住「换网络后路由器 DHCP 下发的 ISP DNS」
+    '119.29.29.29/32',
+    '198.18.0.0/16', // fake-ip-range，域名流量进内核的入口
+  ],
+
   // 想恢复整机 TUN：把 routeAddress 整个删掉（或改成 ['0.0.0.0/0'] 由面板控制）。
   routeAddress: [
     '142.250.0.0/15', // Google 主力段（142.250–142.251），language_server 最常连这里
@@ -1181,17 +1203,23 @@ function main(config) {
     //    必须写进 config，靠 PATCH /configs 热改的话一重载就丢。
     if (NARROW_TUN.enabled) {
       const tun = Object.assign({}, config.tun);
+      const addr = NARROW_TUN.routeAddress.slice();
+      if (NARROW_TUN.includeAI) addr.push(...NARROW_TUN.aiRouteAddress);
       tun.enable = true;
       tun.stack = NARROW_TUN.stack;
       tun['auto-route'] = true;
       tun['auto-detect-interface'] = true;
-      tun['route-address'] = NARROW_TUN.routeAddress.slice();
-      // 只接管指定网段时不要劫持 DNS：系统 DNS（223.5.5.5）不经过 TUN，
-      // 留着 any:53 只会让内核以为要接管、实际一条都收不到。
-      tun['dns-hijack'] = [];
+      tun['route-address'] = addr;
+      // includeAI 关闭时不劫持 DNS：系统 DNS 不进 TUN，留 any:53 也收不到。
+      // includeAI 打开时系统 DNS 已进 TUN，必须劫持才能让它返回 fake-ip。
+      tun['dns-hijack'] = NARROW_TUN.includeAI ? ['any:53'] : [];
       config.tun = tun;
       console.log(
-        `[NARROW_TUN] 只接管 ${NARROW_TUN.routeAddress.length} 个 Google 网段，默认路由保持不变`,
+        `[NARROW_TUN] 接管 ${NARROW_TUN.routeAddress.length} 个 Google 网段` +
+          (NARROW_TUN.includeAI
+            ? ` + ${NARROW_TUN.aiRouteAddress.length} 段 DNS/fake-ip（AI 长连接）`
+            : '') +
+          '，默认路由保持不变',
       );
     }
   }
