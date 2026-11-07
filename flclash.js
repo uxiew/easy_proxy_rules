@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-07 12:15:42
- * 源文件      : smart.js  sha256:b56cdb2212f1  1730 行 / 91052 字节
- * 源码提交    : 59e9ce9
+ * 构建时间    : 2026-11-07 14:04:06
+ * 源文件      : smart.js  sha256:eea8ef4dd78f  1754 行 / 92932 字节
+ * 源码提交    : 1f6f113
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -1580,6 +1580,18 @@ function main(config) {
   //   - REJECT 必须始终在列：filter 一个都没匹配到时组会变空，内核塞 COMPATIBLE
   //     = 直连，真实 IP 直接泄漏（比走机场更糟）。
   if (RESIDENTIAL.enabled) {
+    // 【2026-11-07 新增】把「手动选择要能记住」这件事从面板依赖里解出来。
+    // 住宅出口是 select 组：默认落在第一位 = REJECT（fail-closed，宁可断网
+    // 也不静默换出口），用户在面板里点一次某个住宅节点后，必须能持久化，
+    // 否则内核一重启就回到 REJECT，表现为「昨天还能用，今天 AI 全断」。
+    //   store-selected: 记住每个 select 组当前选中的节点（写 work/cache.db）
+    //   store-fake-ip:  记住 fake-ip 映射，DNS 缓存命中时不必重新解析
+    // 幂等合并：面板生成器已经写过就保留原值，不覆盖面板的其它 profile 字段。
+    config.profile = Object.assign(
+      { 'store-selected': true, 'store-fake-ip': true },
+      config.profile || {},
+    );
+
     finalGroups.splice(1, 0, {
       name: RESIDENTIAL.group,
       type: 'select',
@@ -1634,8 +1646,20 @@ function main(config) {
       //      否则 url-test 可能把「🇦🇶 [到期…]」之类占位节点当前置（实测踩坑）。
       'exclude-filter': upExclude,
       url: 'http://www.gstatic.com/generate_204',
+      // interval 保持 300：本组是**所有**住宅链路的跳板，发现故障要快。
+      // 但「测得勤」不等于「切得勤」——切不切由下面的 tolerance 决定，
+      // 所以这里不改 interval，只放宽 tolerance。
       interval: 300,
-      tolerance: 50,
+      // 【2026-11-07 改】tolerance 50 → 200。
+      // tolerance 是「防抖阈值」：新节点必须比当前节点快 200ms 以上才切。
+      // 写 50 的后果是：亚洲节点互相之间延迟差经常在 50~150ms 波动，
+      // 于是每 300s 就可能换一次跳板，而住宅节点的 dialer-proxy 指向本组，
+      // **跳板一换，经住宅出口的常驻连接（ChatGPT/Claude 的 WebSocket）全部断开**，
+      // 客户端表现为「聊到一半提示网络错误」。牺牲 200ms 延迟换连接稳定性是值得的。
+      tolerance: 200,
+      // 连续失败 3 次就提前触发健康检查，不必干等下一个 interval。
+      // 只在真失败时生效，不影响上面的防抖逻辑（正常波动不会累计失败）。
+      'max-failed-times': 3,
       // 关掉 groupBaseOption 里的 lazy：lazy=true 表示「第一次被用到才测速」，
       // 冷启动后第一次住宅请求会在本组还没选出节点时发出 → 失败。
       // 关掉后启动即测速，住宅链路（dialer-proxy 指向本组）才能真正可用。
