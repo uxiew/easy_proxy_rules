@@ -262,6 +262,77 @@ lsof -nP -a -p $(pgrep -f "Resources/bin/language_server" | head -1) -iTCP | gre
 > `172.253.0.0/16` 就是补出来的 —— 少了它会看到 `172.253.120.x` 一直 `SYN_SENT`。
 > 某天 Antigravity 换后端、又卡住，用上面的 `lsof` 看它连哪个段再补。
 
+##### AI 客户端长连接（`includeAI`，2026-11-07）
+
+`NARROW_TUN.includeAI` 解决另一类直连：ChatGPT 桌面端的 Remote Control / Codex enrollment
+由后台进程建常驻 WebSocket，它**不读 macOS 系统代理**，自己用系统 DNS 解析 → 拿到被污染的
+假 IP（实测 `chatgpt.com` → `108.160.169.174`）→ 直连超时，桌面端报
+`Pairing code unavailable: Remote control failed to connect`，配对码/二维码都生成不出来。
+
+打开后 `route-address` 额外追加三段，`dns-hijack` 置为 `any:53`：
+
+```text
+223.5.5.5/32     系统 DNS —— 不进 TUN 就劫持不到（这台机器 scutil --dns 只有它）
+119.29.29.29/32  dns.default-nameserver 里的备用项 + 换网络后可能的系统 DNS
+198.18.0.0/16    fake-ip-range —— 域名流量进内核的入口
+```
+
+链路：DNS 查询进内核被劫持 → Clash 返回 fake-ip → 应用连 `198.18.x.x` 进内核 →
+命中 `PROCESS-PATH-REGEX,^/Applications/ChatGPT\.app/` 或 `RULE-SET,aiStrict` → 住宅出口。
+
+###### 边界：这不是全量 TUN，也**不要**改成全量 TUN
+
+契约是「默认路由永远不动」。打开 `includeAI` 后入口侧的变化要说清，别自己骗自己：
+
+| 维度 | 状态 |
+| --- | --- |
+| 默认路由 | 仍是 `192.168.31.1`，`netstat -rn \| grep utun1500` 里**没有** `0.0.0.0/1` |
+| 局域网 / Tailscale / 内网 | 不进 TUN（只有白名单段） |
+| 纯 IP 直连（不查 DNS） | 仍是窄的，只有 Google 13 段 |
+| **域名流量** | **全部进内核**——任何域名被解析成 fake-ip 后，连接都会落到 TUN |
+| 出站分流 | 不变，仍按规则链走（国内域名经 `geosite:cn` 过滤返回真实 IP，直连不走代理） |
+
+也就是说：窄 TUN 从「按 IP 窄」变成了「按域名归内核 + 按规则出口」，出口行为没变，
+但**机器整体对内核的依赖变重了**（内核挂了 DNS 就断，比之前「只有 Google 服务挂」影响大）。
+这是这个方案的已知代价，不要用「反正都接管了」当理由把 `route-address` 改成 `0.0.0.0/0`。
+
+###### 换网络必须自查一次
+
+劫持成立的前提是「系统 DNS 的地址恰好被路由进 TUN」。这台机器现在是 `223.5.5.5`，
+换个 Wi-Fi 后如果路由器把 DNS 改成 `192.168.31.1` 或别的 ISP DNS，查询就不进 TUN →
+不劫持 → `chatgpt.com` 又解析回污染 IP → 现象和没修之前一模一样，而且很难再排查一遍。
+
+```bash
+scutil --dns | grep "nameserver\[0\]"   # 不是 223.5.5.5 / 119.29.29.29 就得往 aiRouteAddress 里补
+dig +short chatgpt.com                  # 应返回 198.18.x.x，返回真实 IP = 劫持已失效
+```
+
+**默认路由仍是 `192.168.31.1`**，局域网 / Tailscale / 纯 IP 直连不受影响；但整机 DNS 查询
+会由内核接管（境外域名返回 fake-ip，国内域名经 `geosite:cn` 过滤后仍返回真实 IP 直连）。
+`includeAI: false` 即恢复「只接管 Google 段」的旧行为。
+
+验证（不用点 GUI）：
+
+```bash
+dig +short chatgpt.com                     # 应返回 198.18.x.x
+curl -4 --noproxy '*' -o /dev/null -w '%{http_code}\n' https://chatgpt.com/  # 000 → 200
+netstat -rn -f inet | grep utun1500       # 有 198.18/16、223.5.5.5，没有 0.0.0.0/1
+```
+
+> ⚠️ Clash Party 面板的 TUN 开关会写回 `mihomo.yaml` 的 `tun.enable`，与脚本输出不一致。
+> 三处要同时对齐：`smart.js` 的 `NARROW_TUN`、`override/19eecbc78fc.js` 副本、
+> `mihomo.yaml` 的 `tun.enable`。只改脚本会被面板覆盖成 `false`。
+
+###### 同一站点的「页面」和「登录态」必须同出口
+
+`includeAI` 只解决「连不上」，不解决「登录态割裂」。2026-11-07 的教训：`muse.ai` 的页面
+走 `RULE-SET,proxy → AUTO[新加坡]`，而它的登录态在 `auth.meta.com` / `accounts.meta.com`
+（`RULE-SET,aiStrict → 住宅出口`），OAuth 在两个出口 IP 之间跳 → 会话绑不上 →
+`muse.ai/access` 白屏 / `401 Authentication required` / 反复弹登录。
+
+规则：**一个 AI 产品的所有域名必须落在同一梯队**。新增站点时先确认它的认证域走哪条规则，
+再决定主域放哪。`meta.com` / `muse.ai` 这类现在统一在 `ai-strict.list` 的 Meta 段里。
+
 ##### 报错先分「链路」还是「服务端」
 
 界面上看到的报错一律不可信，去翻语言服务器自己的日志，它会写清是 `dial tcp ... i/o timeout`

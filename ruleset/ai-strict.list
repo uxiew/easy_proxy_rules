@@ -94,6 +94,11 @@ DOMAIN-SUFFIX,sentry.io
 # OpenAI / ChatGPT
 # ------------------------------------------------------------
 DOMAIN-SUFFIX,openai.com
+# ⚠️ chatgpt.com 后缀同时覆盖桌面端 Remote Control 的常驻 WebSocket
+#    （wss://chatgpt.com/backend-api/wham/remote/control/...）与 ab.chatgpt.com 等遥测域。
+#    这条长连接不读系统代理，靠 NARROW_TUN.includeAI 把 DNS/fake-ip 段塞进 TUN 才进内核；
+#    进内核后由 PROCESS-PATH-REGEX,^/Applications/ChatGPT\.app/ 或本规则集送住宅出口。
+#    不要把它挪进 AI_STATIC_TO_AI 或 directExtra。
 DOMAIN-SUFFIX,chatgpt.com
 DOMAIN-SUFFIX,chatgptapi.com
 # 网页静态资源
@@ -120,6 +125,12 @@ DOMAIN-SUFFIX,ai.meta.com
 #   账号登录（accounts.meta.com）都挂在这上面。
 #   ⚠️ 代价：www.meta.com 是 Quest 商店，也会跟着走住宅，流量不大可接受
 DOMAIN-SUFFIX,meta.com
+# Muse 独立站（muse.ai）—— 必须和 meta.com 同一梯队：
+#   页面在 muse.ai、登录态在 auth.meta.com / accounts.meta.com。
+#   只把 auth 走住宅、页面留机场，会出现「OAuth 在不同出口 IP 之间跳」→ 会话绑不上，
+#   表现就是 muse.ai/access 白屏、401、反复跳登录。实测 12:12 muse.ai 走 AUTO[新加坡]、
+#   auth.meta.com 走 住宅-JP，页面出不来。整站同出口即正常。
+DOMAIN-SUFFIX,muse.ai
 # Llama 系列官网与 Llama API（api.llama.com）
 DOMAIN-SUFFIX,llama.com
 # AudioCraft（MusicGen/AudioGen）、Seamless 翻译等 FAIR 演示站
