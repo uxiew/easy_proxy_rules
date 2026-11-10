@@ -437,8 +437,9 @@ Talkatone 实测现场：`进程 com.talkatone.android(10410)` / `规则 Match` 
 | `🚀 全部节点`                          | select   | `DIRECT` + 全部节点                      | 手动挑单个节点，绕开所有自动逻辑                                                                                        |
 | `住宅出口`                             | select   | `REJECT`（默认）→ `🏠 住宅-JP`（默认**不含** `AI`） | **AI 风控面专用出口**，`include-all-proxies` + `filter: 🏠\|WS-` 动态收编住宅节点；默认落在 `REJECT` = fail-closed，手动选一次节点后由 `store-selected` 记住；`escapeToAI: false` 时切不出机场 |
 | `前置-亚洲`                            | url-test | 亚洲机场节点（日/港/台/韩/新/越/马/泰/菲）            | 住宅节点的 `dialer-proxy`，只负责「本机 → 机场亚洲 → 住宅」这一跳；`tolerance: 200` 防抖 |
-| `AUTO`                             | url-test | 全量节点                                 | 默认出口，`filter: '.*'` 吃全量，按延迟自动选最快                                                                        |
-| `AI`                               | url-test | `JP/SG/US/DE/KR`                     | 机场 AI 组（Gemini、Google、中转站），**不含住宅节点**                                                                   |
+| `AUTO`                             | fallback | `JP` → `SG` → `KR` → `OT`            | 默认出口。**按国家顺序**取第一个活的（日本优先），国家内部由地区组按延迟挑最快；三个地区全挂才落到 `OT` |
+| `AI`                               | fallback | `JP` → `SG` → `KR` → `OT`            | 机场 AI 组（Gemini、Google、中转站），**不含住宅节点**；顺序规则与 `AUTO` 相同 |
+| `OT`                               | url-test | 除 `JP/SG/KR` 以外的全部节点                | 「其它地区」兜底，`filter: '.*'` + 排除已单列地区，保证一个节点只属于一个地区组 |
 | `CATCH`                            | select   | `AUTO` / `DIRECT` / `REJECT`         | `MATCH` 兜底 + **手动总闸**                                                                                   |
 | `ADS_FILTER`                       | select   | `REJECT` / `DIRECT`                  | 广告/统计域名开关                                                                                               |
 | `NSFW`                             | fallback | `JP/TW/KR/US/DE`                     | NSFW 规则出口                                                                                               |
@@ -486,9 +487,62 @@ Talkatone 实测现场：`进程 com.talkatone.android(10410)` / `规则 Match` 
   它只加速发现，不改变切换阈值，正常延迟波动不会累计失败次数。
 
 > 所以本项目的取向是：**跳板（`前置-亚洲`）用 `url-test` 但把 `tolerance` 调大**；  
-> **AI 出口（`住宅出口`）用 `select` 由人决定**；`fallback` 只用在 `NSFW` 这种「顺序有意义、  
-> 抖动无所谓」的场景。不要把 `住宅出口` 改成 `url-test`——它会为了几十毫秒的延迟差反复换出口 IP，  
-> 直接触发账号风控。
+> **AI 出口（`住宅出口`）用 `select` 由人决定**；`fallback` 用在「顺序有意义」的地方 ——  
+> `NSFW`（顺序有意义、抖动无所谓）和 `AUTO`/`AI`（**国家顺序有意义**，见下节）。  
+> 不要把 `住宅出口` 改成 `url-test`——它会为了几十毫秒的延迟差反复换出口 IP，直接触发账号风控。
+
+### 国家优先（`REGION_PRIORITY`）
+
+`AUTO` / `AI` 不是「谁快用谁」，而是**先按国家顺序，国家内部再挑最快**：
+
+```
+AUTO = fallback[ JP(url-test) , SG(url-test) , KR(url-test) , OT(url-test) ]
+                 ↑ 国家内部挑最快    ↑ 国家之间按书写顺序取第一个活的
+```
+
+效果：只要日本还有一台活的就待在日本；日本全挂 → 新加坡 → 韩国 → 其它地区。
+
+改顺序 / 换国家只动配置区（`smart.js` 第 0 部分 ⑥）：
+
+```js
+const REGION_PRIORITY = {
+  enabled: true,
+  targets: {
+    AUTO: ['JP', 'SG', 'KR'],   // 越靠前越优先
+    AI:   ['JP', 'SG', 'KR'],   // 可以和 AUTO 不同，比如 AI 只要 ['JP','US']
+  },
+  othersGroup: 'OT',            // '' = 不留逃生口，全挂就断（严格锁定三国）
+  interval: 120,
+};
+```
+
+为什么不再用全量 `url-test`：实测日本 42ms、新加坡 28ms 时，全量 url-test **永远**挂在新加坡，
+出口国家在 JP/SG 之间漂移；AI 站点会把「同一账号在不同国家登录」当成异常活动，反复要求验证码。
+`fallback` 只判断活/死、不看延迟，日本慢 20ms 也仍然留在日本 —— 这是拿延迟换地域稳定，刻意的。
+
+三点要知道：
+
+- **`OT` 只是兜底，不是第二梯队。** 它是 `filter: '.*'` 再排除 `JP/SG/KR` 的节点，保证「一个节点只属于一个
+  地区组」，不会出现同一台被两套健康检查重复测。加新地区（比如想优先 `US`）就在 `targets` 里写
+  `['JP','SG','KR','US']`，`OT` 会自动把 `US` 也排除掉，不用改 `OT`。
+- **`lazy: false` 是必须的。** `groupBaseOption` 默认 `lazy: true`（第一次用到才测速），
+  `fallback` 在没有任何健康数据时只能按内部顺序盲猜，冷启动第一波请求会落到错的地区 ——
+  和 `前置-亚洲` 当初踩的是同一个坑。
+- **订阅里没有某个地区时不会报错。** `keepRefs` 组在组装阶段会剔除「因为零节点被删掉的组」
+  （如订阅只剩日本 → `AUTO` 自动变成 `fallback[JP]`），否则内核报 `proxy group AUTO: proxy KR not found`，
+  整份配置加载失败。
+
+改完记得在 Clash Party 里点一次 ↻ 重新生成配置；验证：
+
+```bash
+curl -s --unix-socket /tmp/mihomo-party-501-58401.sock http://localhost/proxies | \
+python3 -c "import sys,json;d=json.load(sys.stdin)['proxies'];[print(g,d[g]['type'],d[g]['now']) for g in ('AUTO','AI','OT')]"
+# AUTO Fallback JP
+# AI Fallback JP
+# OT URLTest 直连澳洲-jiasu138.top
+```
+
+再跑一次真实请求确认出口国家（`https://api.ip.sb/geoip` 会回 `Osaka` 之类）。
 
 
 ---
@@ -534,6 +588,8 @@ residential.example.yaml  住宅节点覆写模板（Clash Party 用，只放凭
 | ②  | `RESIDENTIAL`     | 住宅出口：总开关、组名、跳板组、专用端口               |
 | ③  | `TRAFFIC`         | 省流量：国内直连、Apple 直连                  |
 | ④  | `AI_STATIC_TO_AI` | AI 静态资源 / 安装包 → 机场 AI 组            |
+| ⑤  | `NARROW_TUN`      | 窄 TUN：只把 Google 段塞进内核（救 `language_server`） |
+| ⑥  | `REGION_PRIORITY` | `AUTO`/`AI` 的国家优先顺序（JP → SG → KR → 其它） |
 
 | 配置                             | 默认              | 作用                                                                                                   |
 | ------------------------------ | --------------- | ---------------------------------------------------------------------------------------------------- |
