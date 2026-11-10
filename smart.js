@@ -395,6 +395,44 @@ const NARROW_TUN = {
 };
 
 // ============================================================
+// ⑥ 地区优先（REGION_PRIORITY）—— AUTO / AI 按国家顺序选出口
+// ============================================================
+// 需求：优先日本 → 新加坡 → 韩国；这三个地区全都没有（或全挂）时，才用其他国家。
+//
+// 实现方式：把目标组从「全量 url-test」换成「fallback 套地区组」：
+//   AUTO(地区) = fallback[ JP(地区) , SG(地区) , KR(地区) , OT(其它) ]
+//   JP/SG/KR/OT 自己仍是 url-test → 国家内部挑最快的那台
+//   fallback 按书写顺序取第一个「活的」成员 → 国家之间按顺序优先
+// 两者嵌套正好是「先按国家顺序，国家内部挑最快」。
+//
+// 和旧行为（全量 url-test）的差别，用实测数据说：
+//   旧：日本 42ms、新加坡 28ms → 永远挂在新加坡，出口国家在 JP/SG 之间漂移，
+//       AI 站点会因此反复触发「异常活动」验证（这也是 AI 组 tolerance 调到 200 的原因）。
+//   新：只要日本还有一台活的就待在日本；日本全挂 → 新加坡 → 韩国 → 其它。
+//
+// ⚠️ fallback 只判断「活/死」，不看延迟。日本节点比新加坡慢 20ms 也仍然选日本 ——
+//    这是刻意的取舍：地域稳定 > 绝对速度。想要回「谁快用谁」，把 enabled 设 false。
+// ⚠️ 地区组之间的健康检查只有一份开销：AUTO 和 AI 引用的是同一批 JP/SG/KR/OT，
+//    不会因为两个目标组各测一遍而翻倍。
+const REGION_PRIORITY = {
+  enabled: true,
+
+  // 目标组 → 地区顺序（越靠前越优先）。地区名必须是 smartGroups 里的 key（JP/SG/KR/TW/HK/US/DE...）。
+  // 只写你信任的地区；没写进来的国家会落到下面的 othersGroup。
+  targets: {
+    AUTO: ['JP', 'SG', 'KR'],
+    AI: ['JP', 'SG', 'KR'],
+  },
+
+  // 上述地区全不可用时落到哪个组。
+  // '' = 不留逃生口，严格只在列出的国家里选（全挂就等于组空 → 回落到 DIRECT/AUTO 兜底）。
+  othersGroup: 'OT',
+
+  // fallback 组自己的检查节奏（它只关心成员活没活，所以比地区组快一点）
+  interval: 120,
+};
+
+// ============================================================
 // 以下为内部实现：CDN 源、自定义关键词、节点清洗、分组、规则生成
 // ============================================================
 
@@ -584,7 +622,10 @@ const smartGroups = {
     icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/kr.svg`,
   },
   SG: {
-    filter: '新加坡|SG|坡|狮城|🇸🇬|Singapore',
+    // ⚠️ 不要放单字「坡」：马来西亚节点常写「吉隆坡」，会被误收进新加坡组。
+    //    2026-11-10 起 SG 组要做「优先于韩国」的地区组，误收的后果比原来严重得多
+    //    （吉隆坡节点会被当成新加坡、优先于 KR 被选中），所以只用多字/全称关键词。
+    filter: '新加坡|狮城|SG|Singapore|🇸🇬',
     icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/sg.svg`,
   },
   US: {
@@ -619,6 +660,61 @@ const smartGroups = {
     icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/flags/eu.svg`,
   },
 };
+
+// ---------- 地区优先：把 AUTO / AI 改造成「国家顺序 fallback + 国内取最快」 ----------
+// 放在 smartGroups 定义之后、main() 之前，靠改写 smartGroups 生效，
+// 这样 main() 里的 expandGroup / activeGroups 不用改动就能识别新结构。
+(function applyRegionPriority() {
+  const cfg = REGION_PRIORITY;
+  if (!cfg || !cfg.enabled) return;
+
+  const targets = Object.entries(cfg.targets || {}).filter(([name]) => smartGroups[name]);
+  if (!targets.length) return;
+
+  // 所有被引用到的地区组，用来拼「其它地区」的排除正则
+  const regionKeys = [...new Set(targets.flatMap(([, order]) => order || []))].filter(
+    (k) => smartGroups[k] && smartGroups[k].filter,
+  );
+
+  // 1) 其它地区组：全量收编，但把已单列的地区排掉。
+  //    排掉是为了「一个节点只属于一个地区组」——
+  //    否则日本节点同时出现在 JP 和 OT 里，同一台被两套健康检查各测一遍，白烧探测。
+  if (cfg.othersGroup && !smartGroups[cfg.othersGroup]) {
+    smartGroups[cfg.othersGroup] = {
+      type: 'url-test',
+      filter: '.*',
+      'exclude-filter': regionKeys.map((k) => smartGroups[k].filter).join('|'),
+      interval: 300,
+      tolerance: 50,
+      icon: `${CDN_BASE}/clash-verge-rev/clash-verge-rev.github.io@main/docs/assets/icons/adjust.svg`,
+    };
+  }
+
+  // 2) 目标组本身改成 fallback，成员是「地区组按顺序 + 其它地区」
+  for (const [name, order] of targets) {
+    const base = smartGroups[name];
+    const members = [...(order || []), cfg.othersGroup].filter((k) => k && smartGroups[k]);
+    if (!members.length) continue;
+
+    smartGroups[name] = {
+      ...base,
+      type: 'fallback',
+      // keepRefs：不让 expandGroup 把地区组摊平成 100+ 个节点，否则顺序语义全丢
+      keepRefs: true,
+      proxies: members,
+      interval: cfg.interval || base.interval,
+      // 【2026-11-10】关掉 lazy：groupBaseOption 里 lazy=true 表示「第一次被用到才测」，
+      // fallback 在没有任何健康数据时不知道该选谁，只能按内部顺序猜；
+      // 实测冷启动第一波请求会因此落到后面的地区（或直接失败等重测）。
+      // 关掉后配置一加载就把各地区的活/死测出来，顺序语义立刻生效 —— 和「前置-亚洲」同一个坑。
+      lazy: false,
+      // 原来「全量收编」的 filter 现在没用了，成员完全由 proxies 决定。
+      // 这里置空而不是 delete，是因为 ...base 已经把它带进来了。
+      filter: undefined,
+      'exclude-filter': undefined,
+    };
+  }
+})();
 
 // ===========================
 
@@ -1448,9 +1544,27 @@ function main(config) {
 
     let combinedProxies = expandGroup(name);
 
+    // 【2026-11-10】keepRefs 组（CATCH / ADS_FILTER / AUTO / AI）引用的是「组名」，
+    // 但被引用的组可能因为零节点被上面的 activeGroups 剔除
+    // （典型：订阅里没有韩国节点 → KR 被去掉，而 AUTO 的 proxies 里还写着 'KR'）。
+    // 不摘掉的话内核直接报 `proxy group AUTO: proxy KR not found`，整份配置加载失败。
+    // 这里统一按「真实存在 / 内置策略 / 组仍然存活」过滤一遍。
+    if (groupConfig.keepRefs) {
+      const kept = combinedProxies.filter(
+        (p) =>
+          p !== name && // 自引用（AUTO 兜底时曾经写成 ['AUTO','DIRECT']）
+          (allProxyNames.includes(p) || BUILTIN_PROXIES.includes(p) || activeGroups.has(p)),
+      );
+      if (kept.length !== combinedProxies.length) {
+        const dropped = combinedProxies.filter((p) => !kept.includes(p));
+        console.log(`[节点清洗] 组 "${name}" 移除失效引用: ${dropped.join(', ')}`);
+      }
+      combinedProxies = kept;
+    }
+
     // 极端防空组崩溃兜底
     if (combinedProxies.length === 0) {
-      if (requiredGroupsFromRules.has(name) && smartGroups.AUTO) {
+      if (requiredGroupsFromRules.has(name) && smartGroups.AUTO && name !== 'AUTO') {
         // 规则显式引用且该组为空时，优先回退到 AUTO，避免误直连；保留 DIRECT 兜底。
         combinedProxies = ['AUTO', 'DIRECT'];
       } else {
