@@ -435,7 +435,7 @@ Talkatone 实测现场：`进程 com.talkatone.android(10410)` / `规则 Match` 
 | 组                                  | 类型       | 成员                                   | 干嘛的                                                                                                     |
 | ---------------------------------- | -------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------- |
 | `🚀 全部节点`                          | select   | `DIRECT` + 全部节点                      | 手动挑单个节点，绕开所有自动逻辑                                                                                        |
-| `住宅出口`                             | select   | `REJECT`（默认）→ `🏠 住宅-JP`（默认**不含** `AI`） | **AI 风控面专用出口**，`include-all-proxies` + `filter: 🏠\|WS-` 动态收编住宅节点；默认落在 `REJECT` = fail-closed，手动选一次节点后由 `store-selected` 记住；`escapeToAI: false` 时切不出机场 |
+| `住宅出口`                             | select   | `REJECT`（默认）→ `🏠 住宅-JP`（默认**不含** `AI`） | **AI 风控面专用出口**，`include-all-proxies` + `filter: 🏠\|IP-` 动态收编住宅节点；默认落在 `REJECT` = fail-closed，手动选一次节点后由 `store-selected` 记住；`escapeToAI: false` 时切不出机场 |
 | `前置-亚洲`                            | url-test | 亚洲机场节点（日/港/台/韩/新/越/马/泰/菲）            | 住宅节点的 `dialer-proxy`，只负责「本机 → 机场亚洲 → 住宅」这一跳；`tolerance: 200` 防抖 |
 | `AUTO`                             | fallback | `JP` → `SG` → `KR` → `OT`            | 默认出口。**按国家顺序**取第一个活的（日本优先），国家内部由地区组按延迟挑最快；三个地区全挂才落到 `OT` |
 | `AI`                               | fallback | `JP` → `SG` → `KR` → `OT`            | 机场 AI 组（Gemini、Google、中转站），**不含住宅节点**；顺序规则与 `AUTO` 相同 |
@@ -593,7 +593,7 @@ residential.example.yaml  住宅节点覆写模板（Clash Party 用，只放凭
 
 | 配置                             | 默认              | 作用                                                                                                   |
 | ------------------------------ | --------------- | ---------------------------------------------------------------------------------------------------- |
-| `RESIDENTIAL.enabled`          | `true`          | 住宅出口总开关                                                                                              |
+| `RESIDENTIAL.enabled`          | `'auto'`        | 住宅出口三态开关：`'auto'` = 有住宅节点才建链路，没有就整条不建、AI 规则改投 `AI` 组；`true` = 强制建；`false` = 强制不建。见「没有家宽怎么办」 |
 | `RESIDENTIAL.aiStrict`         | `true`          | AI 服务商走住宅（推荐）                                                                                        |
 | `RESIDENTIAL.allAI`            | `false`         | 整个 `forAI` 走住宅——**别开**，`ai.yaml` 里有 `DOMAIN-REGEX,google.*`，会连 `googlevideo.com`（YouTube 视频流）一起烧住宅流量 |
 | `APP_PROXY.ports`              | `[7865 → 住宅出口]` | 专用端口列表：端口整体绑到指定组/节点，跳过规则。见「应用级分流」                                                                    |
@@ -601,7 +601,7 @@ residential.example.yaml  住宅节点覆写模板（Clash Party 用，只放凭
 | `RESIDENTIAL.escapeToAI`       | `false`         | 是否把 `AI` 放进「住宅出口」当手动逃生口。默认 `false` = 住宅挂了只能阻断，不会静默换机场 IP                                             |
 | `RESIDENTIAL.dedicatedPort`    | `0`（已迁移）        | **旧字段**，仅兼容用：填非 0 值且 `APP_PROXY.ports` 里没有 `residential-in` 时自动补一条                                   |
 | `RESIDENTIAL.upstream.enabled` | `true`          | 建「前置-亚洲」组：住宅节点的 `dialer-proxy` 指向它                                                                   |
-| `RESIDENTIAL.nodePattern`      | `🏠\|WS-`       | 住宅节点名匹配。**自己加的节点必须带 🏠 前缀**，别用「住宅」二字匹配（机场自带住宅节点会混进来，见坑 9）                                            |
+| `RESIDENTIAL.nodePattern`      | `🏠\|IP-`       | 住宅节点名匹配。**自己加的节点必须带 🏠 前缀或 IP- 前缀**，别用「住宅」二字匹配（机场自带住宅节点会混进来，见坑 9）                                            |
 | `RESIDENTIAL.upstream.filter`  | 显式亚洲关键词         | 跳板池节点名匹配：日/港/台/韩/新/越/马/泰/菲（多字词，见坑 8）。**已与 `smartGroups.JP` 解耦**，改地区组不会连带改跳板池                         |
 | `TRAFFIC.domesticDirect`       | `true`          | 追加 `GEOSITE,cn → DIRECT`（`GEOIP,CN` 对 fake-ip 域名无效）                                                  |
 | `TRAFFIC.appleDirect`          | `true`          | Apple 全家桶直连（iCloud 同步/App Store 原来走机场，最费流量）                                                          |
@@ -635,7 +635,7 @@ IP 型 DoH 不需要任何引导，少一环就少一个死法（详见坑 15）
 
 ### 住宅出口组的成员顺序：`nodeName` → `REJECT` → `AI`
 
-`住宅出口` 是 `select` 组，成员 = 动态收编的住宅节点（`filter: 🏠|WS-`）+ 固定兜底项，  
+`住宅出口` 是 `select` 组，成员 = 动态收编的住宅节点（`filter: 🏠|IP-`）+ 固定兜底项，  
 `smart.js` 里写的是 `proxies: [RESIDENTIAL.nodeName, 'REJECT', 'AI']`（`escapeToAI: false` 时第三项不生成）。
 
 `select` 组不会自动切换，但**选中的节点消失时内核回落到第一个成员**，所以顺序就是语义：
@@ -679,19 +679,75 @@ IP 型 DoH 不需要任何引导，少一环就少一个死法（详见坑 15）
 **想要「住宅挂了就自动走机场」**：把 `smart.js` 里改成 `proxies: ['AI', 'REJECT']`，  
 代价是「节点从配置里消失」那种情况会静默走机场。不推荐。
 
+### 没有家宽怎么办（`RESIDENTIAL.enabled: 'auto'`）
+
+**以前没有家宽静态 IP = AI 全被阻断**：`住宅出口` 组只有 `REJECT`，而 `aiStrict` /
+`residential` / Anthropic IP 段 / ChatGPT+Claude 进程规则全都指向它。
+现在默认 `enabled: 'auto'`，脚本自己判定一次，**组名永远存在，只换成员**：
+
+| 判定                     | `住宅出口` 组成员                             | `前置-亚洲`                          | 规则落点                            |
+| ---------------------- | --------------------------------------- | -------------------------------- | ------------------------------- |
+| 看得到住宅节点（名字命中 `🏠\|IP-`） | `[🏠节点, REJECT]`                        | `url-test`，全量收编亚洲节点              | 全部照旧指向 `住宅出口`                   |
+| 看不到                    | `[AI, REJECT]`（**纯转发**，等于机场出口）         | 惰性 `select`：`[首个亚洲节点, DIRECT]`，不测速 | 9 处住宅规则**原样保留**，落点换成 `AI` 组    |
+
+<sup>注 1</sup> 为什么无家宽时**不把组删掉**：指向 `住宅出口` 的引用不止脚本生成的那 9 处。
+排在 `smart.js` **之后**的覆写 YAML、订阅自带的 rules，都可能手写
+
+```
+DOMAIN, challenges.cloudflare.com, 住宅出口
+```
+
+脚本改不到它们，组一消失就是 `rules[0] [...] error: proxy [住宅出口] not found`，
+整份配置拒绝加载（2026-11-13 实测）。所以改成「名字常驻 + 成员转发 AI」：
+外部规则照旧指向它，行为就是退回机场出口。同理 `前置-亚洲` 也常驻——它的引用方是覆写里
+节点的 `dialer-proxy`，删掉就报 `proxy [IP-JP] dialer-proxy [前置-亚洲] not found`。
+
+<sup>注 2</sup> 只有显式 `enabled: false` 才连组名一起不生成；那种模式请同时清掉覆写/订阅里
+所有指向这两个名字的引用，否则同样会拒载。日常「没家宽」用 `'auto'` 就够了，不要用 `false`。
+
+「换成 `AI`」的 9 处：4 条 Android 包名 + 4 条桌面进程/路径 + `IP-ASN`/`IP-CIDR`/`IP-CIDR6`
+（Anthropic 段）+ `RULE-SET,aiStrict` + `RULE-SET,residential` + `GEOSITE,anthropic`。
+**规则条数、顺序、其它分流全部不变**，只是「住宅出口」这个词被换成了「AI」。
+
+```js
+enabled: 'auto',  // 默认：有就建，没有就让「住宅出口」转发 AI（机场出口）
+// enabled: true,  // 强制建：覆写 YAML 排在 smart.js 之后时必须显式写这个
+// enabled: false, // 连组名都不生成 —— 只有「确定没人引用这两个名字」时才用
+```
+
+> ⚠️ **覆写顺序这次真的有影响了**。`'auto'` 只能看到「脚本运行时已经存在的节点」：
+> - `residential.yaml` 排在 `smart.js` **之前** → 脚本能看到 🏠 节点 → 正常建住宅链；
+> - 排在**之后** → 脚本看到的是「没有住宅节点」→ 判成无家宽，`住宅出口` 变成
+>   `[AI, REJECT]` 纯转发，AI 流量退回机场（**不会报错，但出口 IP 会变成机场共享 IP**）。
+>
+> 所以桌面端两种改法任选：① 把 `residential.yaml` 挪到覆写列表里 `smart.js` 前面
+> （`+proxies` 两种顺序都保留节点，已实测）；② 直接写 `enabled: true` 强制建。
+
+判断结果会打在客户端日志里，搜 `[住宅出口]` 就能看到是哪一种：
+
+```
+[住宅出口] 已启用：住宅节点命中 🏠|IP-，AI 与账号类流量走住宅
+[住宅出口] 未检测到住宅节点（🏠|IP-）：本次「住宅出口」组 = 纯转发到 AI（机场出口），规则里的住宅落点也改投 AI；组名仍然存在，外部规则不会报 not found。
+```
+
+验证（无住宅节点时的预期）：
+
+```bash
+# 面板里应该看到 住宅出口（成员 AI / REJECT）和 前置-亚洲（惰性 select）
+curl -s -H "Authorization: Bearer <secret>" 127.0.0.1:9090/proxies | jq -r '.proxies|keys[]' | grep 住宅
+# 脚本生成的规则里不该再有指向 住宅出口 的条目（那 9 处已换成 AI）
+curl -s -H "Authorization: Bearer <secret>" 127.0.0.1:9090/rules | jq -r '.rules[]|"\(.type),\(.payload),\(.proxy)"' | grep -c 住宅出口
+```
+
 ### 加第二个住宅节点（切换式，0 行代码）
 
-|                        |                                   |
-| ---------------------- | --------------------------------- |
-| `住宅出口` 组靠 \`filter: 🏠 | WS-\` 动态收编，新节点加进覆写就自动出现，UI 里手动切换： |
+`住宅出口` 组靠 `filter: 🏠|IP-` 动态收编，新节点加进覆写就自动出现，UI 里手动切换：
 
-1. 本地覆写的 `+proxies` 列表里加一段节点，**名字带 🏠 前缀**（如 `🏠 住宅-US`，不能用「住宅」二字当匹配词，见坑 10），`type: socks5`
+1. 本地覆写的 `+proxies` 列表里加一段节点，**名字带 🏠 前缀或 IP- 前缀**（如 `🏠 住宅-US` / `IP-US`，不能用「住宅」二字当匹配词，见坑 10），`type: socks5`
 2. `dialer-proxy` 可以整行删掉（本机直连 Webshare，非日本节点建议直连，绕日本反而慢）
 3. UI 里把「住宅出口」切到新节点（`store-selected` 会记住）
 
-|                                         |        |
-| --------------------------------------- | ------ |
-| 不会泄漏到别处：`AUTO`/`AI`/`前置-亚洲` 的排除项都含 \`🏠 | WS-\`。 |
+不会泄漏到别处：`AUTO`/`AI`/`前置-亚洲` 的排除项都含 `🏠|IP-`。
 
 > 新 IP 上线前先查一次欺诈评分（如 ip.net.coffee / scamalytics），脏 IP 别拿来登录账号。
 
@@ -719,10 +775,7 @@ RESIDENTIAL.extraExits = [
 `nodeFilter`——`🏠 住宅-US` 同时含「住宅」和「US」，不排除的话它会进两个组，分流错乱。
 
 **3. 上游组必须排除住宅节点**。`前置-美国` 的 filter 含 `US`，会把 `🏠 住宅-US`
-
-|                                              |             |
-| -------------------------------------------- | ----------- |
-| 自己收进去形成 dialer 环（实测复现过），\`exclude-filter: 住宅 | WS-\` 必须带上。 |
+自己收进去形成 dialer 环（实测复现过），`exclude-filter: 🏠|IP-` 必须带上。
 
 **4. 规则集按服务商拆文件**。`ai-strict.list` 保留主出口的服务商，新增  
 `ai-strict-us.list` 放另一个出口的。想挪服务商 = 在两个文件之间搬域名行，不改代码。
@@ -1044,9 +1097,8 @@ Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且�
 
 10. **住宅节点的匹配词不能是「住宅」两个字**
     很多机场自带「家宽住宅」「住宅IP」节点。用 `住宅` 做 `nodePattern` 时，换订阅后
-|  |  |
-| --- | --- |
-    实测 18 个机场住宅节点混进了「住宅出口」。改成 `🏠|WS-`，自己加的节点名固定带 🏠 前缀。
+    实测 18 个机场住宅节点混进了「住宅出口」。现在固定成 `🏠|IP-`，
+    自己加的节点名带 🏠 前缀（`🏠 住宅-JP`）或 IP- 前缀（`IP-JP`）都能被收编。
 
 11. **`select` 组的默认值 = 第一个成员，而 `store-selected` 不一定开着**
     桌面端 Clash Party 的配置里有 `profile.store-selected: true`，手动选过就记住；
@@ -1209,6 +1261,38 @@ Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且�
     组与 `RULE-SET,google, AI` 保持一致，账号登录在 `.com` / `.co.jp` 之间跳转时不换出口 IP。
     方向别搞反：`direct-extra.list` 是「整份 → DIRECT」的规则集，**没法在文件内部写例外**，
     只改 list 是无效的，例外必须落在规则链上、且优先级高于 `RULE-SET,directExtra`。
+
+21. **`RESIDENTIAL.enabled: 'auto'` 看不到「排在它后面才加载的覆写」→ 有家宽也判成没有**
+
+    `'auto'` 的判据是「脚本运行时 `config.proxies` 里有没有名字匹配 `🏠|IP-` 的节点」，
+    而 Clash Party 是按覆写列表顺序执行的：`residential.yaml` 排在 `smart.js` **之后**时，
+    脚本跑到这一步还没见过住宅节点 → 判成无家宽 → 住宅链整条不建，
+    AI 流量静默退回机场（出口 IP 从住宅变成机场共享 IP，**不报任何错**）。
+
+    症状和「住宅节点掉了」几乎一样，只有日志能区分：
+
+    ```text
+    [住宅出口] 未检测到住宅节点（🏠|IP-）：本次「住宅出口」组 = 纯转发到 AI（机场出口）…
+    ```
+
+    两种修法：① 把 `residential.yaml` 挪到 `smart.js` **前面**（`+proxies` 不会因为顺序
+    变化而丢节点，已实测）；② 在 `smart.js` 里写死 `enabled: true`。
+
+    反方向也有坑：写死 `enabled: true` 但**确实没有**住宅节点时，`住宅出口` 组只有
+    `REJECT`，AI 与账号类流量全被阻断——这正是 `'auto'` 要解决的问题。详见
+    「没有家宽怎么办（`RESIDENTIAL.enabled: 'auto'`）」。
+
+    ⚠️ 2026-11-13 的连带事故（两个组名都不能删）：这种排序下脚本判成「无家宽」后，
+    如果按旧逻辑把两个组一起删掉，而覆写/订阅里还有引用，内核直接拒载整份配置：
+
+    ```text
+    rules[0] [DOMAIN, challenges.cloudflare.com, 住宅出口] error: proxy [住宅出口] not found
+    proxy [🏠 住宅-JP] dialer-proxy [前置-亚洲] not found
+    ```
+
+    现在不管判成有家宽还是没家宽，两个组名都会生成：无家宽时 `住宅出口` = `[AI, REJECT]`
+    纯转发，`前置-亚洲` = 惰性 `select`（`[首个亚洲节点, DIRECT]`，不测速）。
+    只有显式 `enabled: false` 才真的不生成，那时必须自己清掉外部引用。
 
 ---
 
