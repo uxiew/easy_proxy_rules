@@ -98,6 +98,9 @@ function header(cred, m) {
  *
  * 本文件 = 凭据头 + smart.js 全文，与桌面端 Clash Party 同源同逻辑
  * （重建组/规则 + AI 走住宅 + 前置亚洲跳板 + 国内直连 + 占位节点清洗 + 应用级分流）。
+ * 唯一差异：占位符版头部带 FLCLASH_NO_RESIDENTIAL = true，因为没有住宅节点可注入，
+ * 该标记优先级高于 RESIDENTIAL.enabled（true / 'auto' 都会被覆盖），强制判定
+ * 「没有家宽」→ 不建住宅链、AI 规则改投 AI 组（开箱即用，不会全阻断）。
  *
  * FlClash 模式自动跳过的桌面专属项（写了会和 App 打架）：
  *   dns.listen 0.0.0.0:1053    -> 跳过，端口交给 FlClash 绑定
@@ -131,13 +134,13 @@ function header(cred, m) {
  */
 // ============ 住宅节点凭据（唯一需要改的地方） ============
 const FLCLASH_RESIDENTIAL = {
-  name: ${JSON.stringify(cred.name)}, // 必须带 🏠 前缀（命中 smart.js 的 nodePattern）
+  name: ${JSON.stringify(cred.name)}, // 必须带 🏠 或 IP- 前缀（命中 smart.js 的 nodePattern）
   server: ${JSON.stringify(cred.server)},
   port: ${JSON.stringify(Number(cred.port))},
   username: ${JSON.stringify(cred.username)},
   password: ${JSON.stringify(cred.password)},
 };
-// ==========================================================
+${isPublic ? "// 占位符版没有真实凭据：告诉 smart.js 按「没有家宽」处理，AI 走 AI 组\nconst FLCLASH_NO_RESIDENTIAL = true;\n" : ''}// ==========================================================
 
 // ================= smart.js 全文（勿手改） =================
 

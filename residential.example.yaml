@@ -6,16 +6,22 @@
 #   ruleset/residential.list 负责：具体哪些域名走住宅（一行一个，随时改）
 #   本文件负责：节点地址/账号/密码/跳板（密钥，私有不提交）
 #
+# ⚠️ 没有家宽静态 IP 的用户：不要用本文件。
+#    把 smart.js 里的 RESIDENTIAL.enabled 改成 false 即可 —— 住宅出口 / 前置-亚洲
+#    两个组都不生成，住宅节点自动移除，相关规则全部改投 AI 组，其它照旧。
+#    本文件一旦导入，里面的 +proxies 节点会让「组不存在」变成 proxy not found 拒载。
+#
 # 用法：
 #   1. Clash Party → 覆写 → 新建（或导入本地文件）→ 把下面内容粘进去、填好凭据 → 保存
-#   2. 设为「全局」覆写（和 smart.js 一样）
-#      ⚠️ 顺序现在有影响了（2026-11-12 起 RESIDENTIAL.enabled 默认 'auto'）：
-#         smart.js 靠「运行时能不能看到 🏠/IP- 节点」判断要不要建住宅链路，
-#         所以本文件要排在 smart.js **前面**，脚本才看得见节点。
-#         排在后面的话会被判成「没有家宽」→ 住宅链整条不建，AI 流量退回机场
-#         （不报错，但出口变成机场共享 IP）。
-#         不想调顺序就在 smart.js 里写死 RESIDENTIAL.enabled: true 强制建。
-#      说明：smart.js 用 include-all-proxies 动态收编，节点本身前后顺序都不会丢。
+#   2. 设为「全局」覆写（和 smart.js 一样）。
+#      默认 RESIDENTIAL.enabled: true，本文件排在 smart.js 前 / 后都行：
+#      「住宅出口」组用 include-all-proxies + filter 在内核侧收编，
+#      后置注入的 🏠/IP- 节点照样进组。
+#      ⚠️ 把 enabled 改成 'auto' 不推荐：它仍有效，但判的是「脚本运行时看不看得到
+#         住宅节点」，不是「你有没有家宽」。本文件必须排在 smart.js **前面**，否则
+#         有家宽也会被误判成「没有家宽」→ 两组都不生成、AI 规则改投 AI 组，
+#         行为与 enabled: false 相同（AI 静默走机场共享 IP，不报错）。没有家宽请直接用
+#         enabled: false，别指望 auto 替你判断。
 #   3. 重载配置后到「代理」页，把「住宅出口」组切到 🏠 住宅-xxx
 #
 # ⚠️ 三个必须注意的点：
@@ -65,6 +71,10 @@
 # ------------------------------------------------------------
 # 可选：临时给某些域名补规则（不改 smart.js 也能加）
 # 规则会插到最前面，优先级高于 smart.js 里的住宅规则和所有 RULE-SET。
+# ⚠️ 这些规则指向「住宅出口」：把 RESIDENTIAL.enabled 设为 false（无家宽）时，
+#    该组不存在，内核会报 proxy not found 并拒载整份配置 —— 必须一起删掉。
+#    另外 challenges.cloudflare.com / withpersona.com 已在 ruleset/ai-strict.list 里，
+#    不要在这里重复写 DOMAIN, 版本（曾导致 rules[0] not found 整份配置加载失败）。
 # ------------------------------------------------------------
 # +rules:
 #   - DOMAIN-SUFFIX,perplexity.ai,住宅出口
