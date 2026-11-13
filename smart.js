@@ -16,7 +16,7 @@
  * 本文件会被提交到公共仓库，因此只放「逻辑」，不放任何服务器/账号/密码。
  * - 这里：建组「住宅出口」+ 决定"哪一类规则走哪个组"
  * - 覆写 YAML：住宅节点的 server/port/username/password/dialer-proxy（密钥）
- * 两边通过「节点名」解耦：覆写里的节点名只要含「住宅」或「WS-」，就会被自动收编进组里。
+ * 两边通过「节点名」解耦：覆写里的节点名只要含「住宅」或「IP-」，就会被自动收编进组里。
  *
  * 【规则内容去哪了】(新增)
  * 域名清单不再写在脚本里，全部在仓库的 ruleset/ 下，改域名不用动 JS：
@@ -200,7 +200,7 @@ const APP_PROXY = {
 //
 // 覆写 YAML 里要写的东西（示例见仓库 residential.example.yaml）：
 //   proxies:
-//     - name: '🏠 住宅-US'          # 名字必须带 🏠 前缀（命中 nodePattern），
+//     - name: '🏠 住宅-US'          # 名字必须带 🏠 或 IP- 前缀（命中 nodePattern），
 //                                   # 别用「住宅」二字做匹配词（机场自带住宅节点会混进来）
 //       type: socks5                 # 必须是 socks5，不要用 http（见 README「七宗罪」）
 //       server: x.x.x.x
@@ -211,25 +211,41 @@ const APP_PROXY = {
 //       udp: false                   # 住宅代理基本不支持 UDP
 //   proxy-groups 不需要你写，本脚本会建「住宅出口」组并自动收编上面这个节点。
 //
-// 组内兜底：默认只有 `['住宅节点…', 'REJECT']` —— 没配住宅节点、或节点失效时
-// 该组回落到阻断，**不会**静默走机场（出口 IP 悄悄变化比断网更危险）。
+// 组内兜底：默认只有 `['住宅节点…', 'REJECT']` —— 节点失效时该组回落到阻断，
+// **不会**静默走机场（出口 IP 悄悄变化比断网更危险）。
+// 「根本没配住宅节点」是另一回事：那种情况由下面的 enabled: 'auto' 判定，
+// 整条链不建、AI 规则改投 AI 组，而不是让 AI 全被 REJECT 卡死。
 // 机场逃生口（AI）默认不进组，要应急得手动把 RESIDENTIAL.escapeToAI 改 true。
 // 所以配好节点后，要在 Clash Party「代理」页把「住宅出口」切到 🏠 住宅-xxx 一次
 // （store-selected 会记住）。
 const RESIDENTIAL = {
-  enabled: true, // 一键开关：false = 完全回到改造前的行为
+  // 【三态开关】决定这次要不要建「住宅出口 / 前置-亚洲」这条链：
+  //   'auto'（默认）—— 有住宅节点就建；一个都没有就整条不生成，AI 与账号类规则
+  //                    改投 AI 组（机场出口）。给「没有家宽静态 IP」的人用：
+  //                    不再是「AI 全被 REJECT」，而是退回机场，其余规则一字不改。
+  //   true           —— 强制建。⚠️ 覆写 YAML 排在 smart.js **之后**时，脚本运行时
+  //                    还看不到住宅节点，auto 会判成「没有」；这种排序必须显式 true。
+  //                    把 residential.yaml 挪到 smart.js 之前也可以（proxies 两种顺序都保留）。
+  //   false          —— 强制不建，等同没有家宽。
+  enabled: 'auto',
   group: '住宅出口', // 组名，规则引用它；不要在覆写 YAML 里重复定义同名组，否则内核报重名
   // 组内第一个成员（= select 的默认值）。留空 → 默认 REJECT（需手动选一次）。
   // FlClash 构建时由钩子自动填成注入的节点名 → 手机开箱即用。
   nodeName: '',
-  nodePattern: '🏠|WS-', // 节点名匹配（Go RE2 正则），覆写里的节点名必须能命中
+  // 节点名匹配（Go RE2 正则），覆写里的节点名必须能命中这两个前缀之一：
+  //   🏠       —— 手工命名，最稳（🏠 住宅-JP / 🏠 住宅-US）
+  //   IP-      —— 服务商按 IP 出节点时的命名（IP-JP / IP-1.2.3.4）
+  // 为什么用 `IP-` 而不是裸 `IP`：裸 IP 会命中 IPLC、IPV6、机场的「IPLC 专线」这类
+  // 节点名；带横线能把这些全都排除掉。也不要写成 `IP` + 空格之类，名字里有空格就断。
+  nodePattern: '🏠|IP-',
   // 【逃生口】住宅线路彻底挂掉时，是否允许在面板把「住宅出口」切到 AI（机场）应急。
   //   false（默认）= 组成员只有 住宅节点 + REJECT，**切不出机场** —— 要么住宅、要么断网。
   //   这正是 Claude Code 这类「宁可断开也不许换 IP」的场景需要的语义：
   //   出口 IP 悄悄从 61.***193 变成机场共享 IP，比直接报错危险得多。
   //   真要应急：改成 true → 重载 → 面板切到 AI → 用完改回 false。
   escapeToAI: false,
-  // ⚠️ 命名约定：自己加的住宅节点必须带 🏠 前缀（如 🏠 住宅-JP / 🏠 住宅-US）。
+  // ⚠️ 命名约定：自己加的住宅节点必须带 🏠 前缀（如 🏠 住宅-JP / 🏠 住宅-US）
+  //   或 IP- 前缀（如 IP-JP / IP-住宅-US）。两者命中同一个 nodePattern。
   //   不能用「住宅」两个字做匹配——很多机场自带「家宽住宅」「住宅IP」节点，
   //   会被误收进住宅出口（换订阅后实测踩坑：18 个机场住宅节点混了进来）。
 
@@ -505,6 +521,43 @@ const directSSHIPs = [
 // 手动 select 不受影响（想看剩余流量还能在面板里点）。
 const INFO_NODE_PATTERN =
   '套餐|剩余|到期|已用|重置|流量|官网|续费|地址|更新订阅|过期|有效|客户|下载|不显示|电报|频道|工单|建议|卡顿|试用|公告|维护|客服|网址|ㅤ';
+
+// ===========住宅出口：这次到底建不建=========
+// 「有没有家宽」没法靠猜：建组和写规则是静态的，而住宅节点来自覆写 YAML。
+// 所以先判定、再让所有引用点读同一个结果：
+//   1) main() 拿到最终 proxies（含 FlClash 注入的节点）之后判定一次；
+//   2) 结果存进 residentialActive，getRules() / 建组 / listeners 全部读它；
+//   3) 为 null 时（被外部当模块调用，例如从 smart.js 提取纯数据），
+//      退回配置里的开关本身，行为与改造前一致。
+let residentialActive = null;
+const isResidentialOn = () =>
+  residentialActive === null ? RESIDENTIAL.enabled !== false : residentialActive;
+// 原来指向「住宅出口」的东西，没有家宽时统一改投 AI 组（机场出口）
+const residentialPolicy = () => (isResidentialOn() ? RESIDENTIAL.group : 'AI');
+
+function hasResidentialNode(proxies) {
+  if (!Array.isArray(proxies) || proxies.length === 0) return false;
+  try {
+    const matched = new RegExp(RESIDENTIAL.nodePattern);
+    const info = INFO_NODE_PATTERN ? new RegExp(INFO_NODE_PATTERN) : null;
+    return proxies.some(
+      (p) => p && typeof p.name === 'string' && matched.test(p.name) && !(info && info.test(p.name)),
+    );
+  } catch {
+    // nodePattern 写坏时宁可保留住宅链：静默换成机场出口比报错更危险
+    return true;
+  }
+}
+
+function resolveResidentialEnabled(config) {
+  const setting = RESIDENTIAL.enabled;
+  if (setting === true) return true;
+  if (setting === false) return false;
+  // 'auto'：只认「运行时真的看得到一个住宅节点」这一种证据
+  if (RESIDENTIAL.nodeName) return true; // FlClash 构建时已注入
+  return hasResidentialNode(config && config.proxies);
+}
+
 // ===========自动识别并分配 策略组=========
 // ===========自动识别并分配 策略组=========
 // ⚠️ 修复：移除了不兼容 Go 正则引擎的 or() 和 nor() 预查函数
@@ -1014,8 +1067,13 @@ const getRules = ()=>{
   // aiStrict 模式（默认）：只有 ai-strict.list 里的 AI 服务商官方域名走住宅，
   //   其余 AI 规则（中转站、镜像站、通用服务商）走普通 AI 组 = 机场。
   // allAI 模式：整个 RULE-SET,forAI 一刀切走住宅（默认关闭，会连带 YouTube 视频流）。
-  const aiPolicy = RESIDENTIAL.enabled && RESIDENTIAL.allAI ? RESIDENTIAL.group : 'AI';
-  const aiStrictPolicy = RESIDENTIAL.enabled && RESIDENTIAL.aiStrict ? RESIDENTIAL.group : aiPolicy;
+  //
+  // 【没有家宽时】aiTarget 自动变成 'AI'：规则一条不少、顺序不变，只是把
+  // 「住宅出口」这个落点换成机场 AI 组。这样没配住宅的人不再是「AI 全被阻断」，
+  // 而是退回机场；配了住宅的人行为与之前完全一致。
+  const aiTarget = residentialPolicy();
+  const aiPolicy = RESIDENTIAL.allAI ? aiTarget : 'AI';
+  const aiStrictPolicy = RESIDENTIAL.aiStrict ? aiTarget : aiPolicy;
   // Apple 流量去向（TRAFFIC.appleDirect 见文件顶部，默认直连省流量）
   const applePolicy = TRAFFIC.appleDirect ? 'DIRECT' : 'AI';
 
@@ -1036,7 +1094,10 @@ const getRules = ()=>{
         uid: 'UID',
       };
       const kind = KINDS[type] || 'PROCESS-NAME';
-      return `${kind},${value},${proxy}`;
+      // 没有家宽时，指向「住宅出口」的进程规则改投 AI 组：
+      // 否则规则引用了不存在的组，内核启动直接报 proxy not found，整份配置加载失败。
+      const target = proxy === RESIDENTIAL.group ? residentialPolicy() : proxy;
+      return `${kind},${value},${target}`;
     }),
 
     // 局域网与私有地址
@@ -1049,15 +1110,16 @@ const getRules = ()=>{
     // 原来这三条在 ruleset/ai.yaml 里，跟着 forAI 走 AI 组：
     // 域名走住宅、程序直连 IP 走机场 → 风控看到「同一会话两个 IP」，比用脏 IP 更糟。
     // fake-ip 模式下域名请求不会命中 IP 规则，但 Claude 桌面端 / SDK 直连 IP 时会。
-    ...(RESIDENTIAL.enabled && RESIDENTIAL.aiStrict
+    // 没有家宽时落点同样是 aiTarget = AI，保持「这类 IP 和 AI 域名同一个出口」。
+    ...(RESIDENTIAL.aiStrict
       ? [
           // ⚠️ IP-ASN 需要 ASN 数据库（ASN.mmdb）。桌面端 Clash Party 自带这个文件，
           //    手机 FlClash 不一定有；缺了它内核会在启动时尝试下载，下载失败则**整份配置
           //    加载失败**（实测 `mihomo -t` 报 ASN 下载超时），表现就是「所有节点全部失效」。
           //    所以 FlClash 模式跳过它，只保留不依赖数据库的 IP-CIDR。
-          ...(FLCLASH_MODE ? [] : [`IP-ASN,399358,${RESIDENTIAL.group},no-resolve`]),
-          `IP-CIDR,160.79.104.0/21,${RESIDENTIAL.group},no-resolve`,
-          `IP-CIDR6,2607:6bc0::/32,${RESIDENTIAL.group},no-resolve`,
+          ...(FLCLASH_MODE ? [] : [`IP-ASN,399358,${aiTarget},no-resolve`]),
+          `IP-CIDR,160.79.104.0/21,${aiTarget},no-resolve`,
+          `IP-CIDR6,2607:6bc0::/32,${aiTarget},no-resolve`,
         ]
       : []),
 
@@ -1071,12 +1133,12 @@ const getRules = ()=>{
     // 必须排在 RULE-SET,forAI 之前：ai.yaml 里就有 DOMAIN-SUFFIX,anthropic.com，
     // 放在后面的话 forAI 先命中，Claude 会走机场，住宅出口永远轮不到。
     // 规则集内容见 ruleset/ai-strict.list（含 Claude 的 Turnstile、auth0、Persona、遥测）。
-    ...(RESIDENTIAL.enabled && RESIDENTIAL.aiStrict
-      ? [`RULE-SET,aiStrict, ${RESIDENTIAL.group}`]
-      : []),
+    // 没有家宽时整条规则保留，只把落点从住宅换成 AI（aiTarget），不会漏到 AUTO。
+    ...(RESIDENTIAL.aiStrict ? [`RULE-SET,aiStrict, ${aiTarget}`] : []),
 
     // 住宅出口：非 AI 的账号/支付/电商，清单在 ruleset/residential.list
-    ...(RESIDENTIAL.enabled ? [`RULE-SET,residential, ${RESIDENTIAL.group}`] : []),
+    // 没有家宽时同样保留，落点换成 AI：这些站点仍需固定出口，只是不再是住宅 IP。
+    `RULE-SET,residential, ${aiTarget}`,
 
     // ===== Google 日本域名：必须抢在 directExtra 之前 =====
     // ruleset/direct-extra.list 里有 `DOMAIN-SUFFIX,co.jp`（日本站点直连），它会把
@@ -1201,10 +1263,15 @@ function main(config) {
   if (typeof FLCLASH_RESIDENTIAL !== 'undefined' && FLCLASH_RESIDENTIAL) {
     FLCLASH_MODE = true;
     const c = FLCLASH_RESIDENTIAL; // { name, server, port, username, password }
-    if (c && c.server && c.port) {
+    // 显式关掉住宅出口（enabled: false）时不要注入节点：
+    // 它的 dialer-proxy 指向「前置-亚洲」，而那一组此时不会建 → proxy not found，
+    // 整份配置加载失败（比「AI 走机场」严重得多）。
+    if (c && c.server && c.port && RESIDENTIAL.enabled === false) {
+      console.log('[FlClash] RESIDENTIAL.enabled = false：跳过住宅节点注入，AI 流量走 AI 组');
+    } else if (c && c.server && c.port) {
       config.proxies = (config.proxies || []).filter((p) => p && p.name !== c.name);
       config.proxies.push({
-        name: c.name, // 必须带 🏠 前缀（命中 nodePattern）
+        name: c.name, // 必须带 🏠 或 IP- 前缀（命中 nodePattern）
         type: 'socks5', // http + dialer-proxy 连不通（见 README 坑 5）
         server: c.server,
         port: Number(c.port),
@@ -1220,6 +1287,29 @@ function main(config) {
       // 每次启动 AI 站点全被阻断（ChatGPT App 报「非预期的 SSL 证书」）。
       RESIDENTIAL.nodeName = c.name;
     }
+  }
+
+  // ===== 判定：这次到底有没有家宽 =====
+  // 必须在 FlClash 注入之后、getRules()/建组之前定下来（两处都读同一个结果）。
+  // 没有家宽时：不建「住宅出口 / 前置-亚洲」，AI 与账号类规则改投 AI 组（机场出口），
+  // 其余规则、顺序、分流全部不变。
+  residentialActive = resolveResidentialEnabled(config);
+  if (residentialActive) {
+    console.log(`[住宅出口] 已启用：住宅节点命中 ${RESIDENTIAL.nodePattern}，AI 与账号类流量走住宅`);
+  } else if (RESIDENTIAL.enabled === false) {
+    console.log(
+      `[住宅出口] RESIDENTIAL.enabled = false：不生成「${RESIDENTIAL.group}」与「${RESIDENTIAL.upstream.group}」，` +
+        'AI 与账号类规则改投 AI 组（机场出口）。' +
+        `⚠️ 这种模式下组名不存在：若覆写 YAML / 订阅里还有规则或 dialer-proxy 指向这两个名字，` +
+        '内核会报 proxy not found 并拒绝加载整份配置。要么删掉那些引用，要么别用 false（用 auto）。',
+    );
+  } else {
+    console.log(
+      `[住宅出口] 未检测到住宅节点（${RESIDENTIAL.nodePattern}）：本次「${RESIDENTIAL.group}」组 = 纯转发到 AI（机场出口），` +
+        '规则里的住宅落点也改投 AI；组名仍然存在，外部规则不会报 not found。' +
+        `「${RESIDENTIAL.upstream.group}」留一个惰性占位组兜住 dialer-proxy 引用。` +
+        '要真用住宅出口：把 residential.yaml 排在 smart.js 之前，或把 RESIDENTIAL.enabled 显式设为 true。',
+    );
   }
 
   // 【FlClash（手机）只改路由，不动系统级配置】
@@ -1637,7 +1727,20 @@ function main(config) {
   //     留着机场逃生口等于给「悄悄换出口」开了后门。
   //   - REJECT 必须始终在列：filter 一个都没匹配到时组会变空，内核塞 COMPATIBLE
   //     = 直连，真实 IP 直接泄漏（比走机场更糟）。
-  if (RESIDENTIAL.enabled) {
+  //
+  // 【2026-11-13 改】「住宅出口」现在**始终生成**（只有显式 enabled: false 才不建）。
+  //
+  // 上一版是「没有家宽就整组不建」，前提是「所有指向它的引用都由本脚本生成、都能改投 AI」。
+  // 这个前提不成立：排在 smart.js **之后**的覆写 YAML、以及订阅自带的 rules，都可能手写
+  //   DOMAIN, challenges.cloudflare.com, 住宅出口
+  // 脚本改不到它们，组一消失就是
+  //   rules[0] [DOMAIN, challenges.cloudflare.com, 住宅出口] error: proxy [住宅出口] not found
+  // 整份配置加载失败（比「AI 走机场」严重得多）。所以组名必须永远存在，用成员来表达语义：
+  //   有家宽 → [住宅节点, REJECT]（+AI 仅 escapeToAI）= fail-closed，切不出机场
+  //   无家宽 → ['AI']                            = 纯转发，正是「退回默认 AI 组」
+  // 保留 include-all-proxies + filter：万一覆写在后面注入了住宅节点，它会被收编进来，
+  // 用户在面板里仍能手动切过去（默认第一项是 AI，行为稳定）。
+  if (RESIDENTIAL.enabled !== false) {
     // 【2026-11-07 新增】把「手动选择要能记住」这件事从面板依赖里解出来。
     // 住宅出口是 select 组：默认落在第一位 = REJECT（fail-closed，宁可断网
     // 也不静默换出口），用户在面板里点一次某个住宅节点后，必须能持久化，
@@ -1653,8 +1756,11 @@ function main(config) {
     finalGroups.splice(1, 0, {
       name: RESIDENTIAL.group,
       type: 'select',
-      proxies: [RESIDENTIAL.nodeName, 'REJECT', ...(RESIDENTIAL.escapeToAI ? ['AI'] : [])]
-        .filter(Boolean),
+      // 无家宽时第一位必须是 AI：任何指向本组的外部规则都会落到机场出口，
+      // 而不是像以前那样落到 REJECT 把 AI 全掐死。
+      proxies: isResidentialOn()
+        ? [RESIDENTIAL.nodeName, 'REJECT', ...(RESIDENTIAL.escapeToAI ? ['AI'] : [])].filter(Boolean)
+        : ['AI', 'REJECT'],
       'include-all-proxies': true,
       filter: RESIDENTIAL.nodePattern,
       'exclude-filter': INFO_NODE_PATTERN,
@@ -1671,7 +1777,30 @@ function main(config) {
   // 现在显式成员改成「第一个真正匹配 filter 的节点」（构建时算出来）：
   // 组里永远有一个真节点可用，不需要 REJECT；一个都匹配不到时才退 DIRECT
   // （这一跳不经机场，但住宅本身仍然可用，比阻断好）。
-  if (RESIDENTIAL.enabled && RESIDENTIAL.upstream && RESIDENTIAL.upstream.enabled) {
+  // 兜底：即使住宅链整体关掉，只要还有节点的 dialer-proxy 指向「前置-亚洲」，
+  // 这一组就必须存在 —— 否则内核报 proxy not found，整份配置加载失败
+  // （住宅节点可能来自覆写 YAML，脚本关不掉，但能保证引用有效）。
+  const upstreamReferenced = (config.proxies || []).some(
+    (p) => p && p['dialer-proxy'] === RESIDENTIAL.upstream.group,
+  );
+  // 【2026-11-13 修】auto 判定「没有家宽」时，也必须建「前置-亚洲」。
+  // 桌面端的住宅节点来自**排在 smart.js 之后**的覆写 YAML，脚本运行时根本看不见；
+  // 一旦因为看不到节点就不建组，覆写随后注入的 `dialer-proxy: 前置-亚洲` 立刻悬空，
+  // 内核直接报 `proxy [🏠 住宅-JP] dialer-proxy [前置-亚洲] not found`，
+  // 整份配置加载失败（比「AI 走机场」严重得多，用户看到的是全部节点失效）。
+  // 所以只有显式 `enabled: false` 才真正两组都不建 —— 那种情况请同时删掉覆写里的住宅节点
+  // （FlClash 侧脚本会自己跳过注入，不需要你动手）。
+  const buildUpstream =
+    !!RESIDENTIAL.upstream &&
+    RESIDENTIAL.upstream.enabled &&
+    (isResidentialOn() || upstreamReferenced || RESIDENTIAL.enabled !== false);
+  if (buildUpstream) {
+    if (!isResidentialOn()) {
+      console.log(
+        `[住宅出口] 未启用：只保留「${RESIDENTIAL.upstream.group}」这一个惰性占位组，` +
+          `避免排在后面的覆写注入住宅节点后报 proxy not found；「${RESIDENTIAL.group}」不生成。`,
+      );
+    }
     const upFilter = RESIDENTIAL.upstream.filter || smartGroups.JP.filter;
     const upExclude = [RESIDENTIAL.nodePattern, INFO_NODE_PATTERN].filter(Boolean).join('|');
     // 用同一套 filter 在本地算一个真实节点，保证 proxies 非空且能直连
@@ -1728,6 +1857,21 @@ function main(config) {
       lazy: false,
     };
     if (!firstUpstream) upstreamGroup.proxies = ['DIRECT'];
+    // 【2026-11-13 修】没有家宽时把它降级成「惰性 select」。
+    // 它在这次配置里的唯一职责是**兜住悬空引用**（覆写里的 dialer-proxy），
+    // 而不是真的当跳板：不做 include-all-proxies 全量收编、不 attach 测速，
+    // 否则连着 30 个亚洲节点每 5 分钟白测一轮，纯浪费。
+    // 成员留「首个匹配到的亚洲节点 + DIRECT」两个：万一覆写确实注入了住宅节点，
+    // 用户在面板里手动把它切过去还能用，不是个死组。
+    if (!isResidentialOn()) {
+      for (const key of ['include-all-proxies', 'filter', 'exclude-filter', 'url', 'interval',
+        'tolerance', 'max-failed-times']) {
+        delete upstreamGroup[key];
+      }
+      upstreamGroup.type = 'select';
+      upstreamGroup.lazy = true;
+      upstreamGroup.proxies = Array.from(new Set([firstUpstream, 'DIRECT'].filter(Boolean)));
+    }
     // 插到「住宅出口」后面，UI 里三个组挨在一起；用名字定位，避免硬编码下标
     const exitIdx = finalGroups.findIndex((g) => g.name === RESIDENTIAL.group);
     finalGroups.splice(exitIdx >= 0 ? exitIdx + 1 : 2, 0, upstreamGroup);
@@ -1835,7 +1979,7 @@ function main(config) {
     // 兼容旧开关：RESIDENTIAL.dedicatedPort 非 0、且 ports 里没有同名条目时补一条。
     // （老配置里 dedicatedPort: 7865 仍然有效，不会因为这次重构把 7865 弄丢）
     if (
-      RESIDENTIAL.enabled &&
+      isResidentialOn() &&
       Number(RESIDENTIAL.dedicatedPort) &&
       !wanted.some((p) => p.name === 'residential-in')
     ) {
@@ -1849,8 +1993,9 @@ function main(config) {
     for (const item of wanted) {
       const port = Number(item && item.port);
       if (!port) continue;
-      // 住宅出口整体关掉时，指向它的端口会让内核校验失败（proxy not found），直接跳过
-      if (item.proxy === RESIDENTIAL.group && !RESIDENTIAL.enabled) continue;
+      // 没有家宽时，这个入口改绑 AI 组：删掉端口会让已经填了 127.0.0.1:7865 的
+      // 应用变成 connection refused（比换个出口更难排查）；改绑 AI 至少保持可用。
+      const target = item.proxy === RESIDENTIAL.group ? residentialPolicy() : item.proxy;
       // 名字或端口重复都会让内核起不来：先到先得，后面重复的静默丢弃
       if (listeners.some((l) => l && (l.name === item.name || Number(l.port) === port))) continue;
       listeners.push({
@@ -1858,7 +2003,7 @@ function main(config) {
         type: 'mixed', // mixed = HTTP + SOCKS5，通吃只支持其中一种的客户端
         port,
         listen: '127.0.0.1', // 只监听本机，不暴露到局域网
-        proxy: item.proxy,
+        proxy: target,
       });
     }
 
