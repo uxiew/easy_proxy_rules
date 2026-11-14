@@ -1,0 +1,22 @@
+# >>> easy_proxy_rules / claude-guard >>>
+# Claude 代理守卫 / 环境体检：代码、配置、文档统一维护在
+#   ~/Projects/easy_proxy_rules/claude-guard/  （见其 README.md）
+# 本文件只负责加载。想改仓库位置，在这段之前写：
+#   export EASY_PROXY_RULES_HOME=/abs/path/to/easy_proxy_rules
+_cg_repo="${EASY_PROXY_RULES_HOME:-$HOME/Projects/easy_proxy_rules}"
+_cg_lib="$_cg_repo/claude-guard/claude-guard.zsh"
+typeset -g CLAUDE_GUARD_DIR="$_cg_repo/claude-guard"
+if [[ -r "$_cg_lib" ]]; then
+  source "$_cg_lib"
+else
+  # fail-closed：库缺失时不要让 claude 裸奔（无守卫 = 可能直连暴露真实 IP）
+  claude() {
+    printf '\033[31m[claude 守卫] 规则库未加载（%s 不可读）—— 已阻止启动。\033[0m\n' \
+      "$CLAUDE_GUARD_DIR/claude-guard.zsh" >&2
+    printf '  恢复：检查仓库路径，或执行 %s/install.sh；临时绕过：command claude ...\n' \
+      "$CLAUDE_GUARD_DIR" >&2
+    return 1
+  }
+fi
+unset _cg_repo _cg_lib
+# <<< easy_proxy_rules / claude-guard <<<

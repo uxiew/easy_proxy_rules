@@ -473,6 +473,26 @@ const REGION_PRIORITY = {
   interval: 120,
 };
 
+// ------------------------------------------------------------
+// ⑦ WEBRTC_GUARD —— 拦截常见 STUN 探测（可选，默认关）
+// ------------------------------------------------------------
+// 目的：浏览器 WebRTC 会直接向 STUN 服务器发 UDP，不走 HTTP 代理。
+//   这条 UDP 若没进内核（系统代理模式 / App 自己发 / 节点不支持 UDP），
+//   探测页就会拿到真实公网 IP。规则层能做的只有「拒绝这些探测」，
+//   拦不住「根本没进内核的 UDP」——那是平台边界，不是规则能修的。
+//
+// 代价（所以默认关）：
+//   REJECT 3478/5349/19302-19309 + 域名含 stun，会同时打断 Google Meet、
+//   微信/QQ 语音、Discord、游戏语音等一切依赖 STUN 打洞的功能。
+//   只要「Claude 网页不出卖我的 IP」且不用网页通话时，再打开。
+//
+// 覆盖不到：自定义端口的 STUN、TURN 中继（常见 3478 之外的私有端口）、
+//   域名没被内核嗅探出来的纯 IP 探测、以及从未进入内核的 UDP。
+// 清单见 ruleset/webrtc-guard.list。
+const WEBRTC_GUARD = {
+  enabled: false,
+};
+
 // ============================================================
 // 以下为内部实现：CDN 源、自定义关键词、节点清洗、分组、规则生成
 // ============================================================
@@ -1018,6 +1038,19 @@ const ruleProviders = {
     url: `${RAW_BASE}/auto-extra.list`,
     path: './ruleset/uxiew/auto-extra.yaml',
   },
+  // WebRTC 常见 STUN 探测拦截（可选，见顶部 ⑦ WEBRTC_GUARD）。
+  // 只在打开时才定义 provider：关着的时候不产生任何下载请求。
+  ...(WEBRTC_GUARD.enabled
+    ? {
+        webrtcGuard: {
+          ...ruleProviderCommon,
+          behavior: 'classical',
+          format: 'text',
+          url: `${RAW_BASE}/webrtc-guard.list`,
+          path: './ruleset/uxiew/webrtc-guard.yaml',
+        },
+      }
+    : {}),
 };
 
 // ===========================
@@ -1144,6 +1177,13 @@ const getRules = ()=>{
     'RULE-SET,private, DIRECT',
     'RULE-SET,applications, DIRECT',
     'RULE-SET,lancidr, DIRECT,no-resolve',
+
+    // ===== WebRTC 常见 STUN 探测拦截（可选，默认关，见顶部 ⑦）=====
+    // 位置很关键：必须排在所有必要技术规则之后、任何业务规则之前。
+    //   - 放前面会把内网/节点流量一起拦掉；
+    //   - 放后面会被进程规则、AI 规则先接走，等于没装。
+    // 打开后会打断依赖 STUN 的语音/视频，取舍见 WEBRTC_GUARD 注释。
+    ...(WEBRTC_GUARD.enabled ? ['RULE-SET,webrtcGuard, REJECT'] : []),
 
     // ===== Anthropic 的 IP 段 → 住宅出口（必须，否则同一账号两个出口 IP）=====
     // 原来这三条在 ruleset/ai.yaml 里，跟着 forAI 走 AI 组：

@@ -552,7 +552,7 @@ python3 -c "import sys,json;d=json.load(sys.stdin)['proxies'];[print(g,d[g]['typ
 ```
 smart.js                  主脚本：建组 + 生成规则（只有逻辑，没有域名清单）
 flclash.js                FlClash 单文件覆写（占位符版，由 build-flclash.js 生成，勿手改）
-build-flclash.js          生成器：凭据头 + smart.js 全文 → flclash.js / flclash-private.js
+build-flclash.js          生成器：凭据头 + smart.js 全文 → flclash.js / flclash-private.js（含构建期自检）
 flclash-credentials.json  私有凭据（.gitignore 排除，生成私有版用）
 flclash-private.js        生成的私有版（.gitignore 排除，粘贴到手机）
 ruleset/
@@ -561,9 +561,18 @@ ruleset/
 ├── residential.list      非 AI 的账号/支付/电商 → 住宅出口
 ├── direct-extra.list     补充直连域名
 ├── auto-extra.list       Google 通用资产 → AUTO
+├── webrtc-guard.list     WebRTC/STUN 探测拦截（可选，默认不启用，见 `WEBRTC_GUARD`）
 ├── custom.list           自定义规则
 └── nsfw.list             NSFW 规则
 residential.example.yaml  住宅节点覆写模板（Clash Party 用，只放凭据，不提交）
+claude-guard/             Claude Code 启动守卫 + 环境体检（详见 claude-guard/README.md）
+├── claude-guard.zsh      函数库：~/.zshrc 只 source 这一个文件
+├── guard.conf            集中配置：端口 / 超时 / 白名单 / node 路径
+├── allowed-exit-ips      出口 IP 白名单（缺失或为空 → 拒绝启动）
+├── config-check.mjs      生效配置「仅代理」判定（Node，零网络）
+├── zshrc.snippet         ~/.zshrc 加载器片段（install / uninstall 用）
+├── install.sh / uninstall.sh / selftest.zsh
+└── claude-settings.example.json   settings.json 的 env 参考模板
 ```
 
 ### 两个 AI 清单为什么不能合并
@@ -580,7 +589,7 @@ residential.example.yaml  住宅节点覆写模板（Clash Party 用，只放凭
 
 ## 关键配置项（`smart.js` 第 0 部分：用户配置区）
 
-`smart.js` 开头就是 `// 第 0 部分：用户配置区`，按使用频率排了四个对象，**所有可调项都在这里**（之后的 CDN 源、节点清洗、分组、规则生成属于内部逻辑，日常不用动）：
+`smart.js` 开头就是 `// 第 0 部分：用户配置区`，按使用频率排了七个对象，**所有可调项都在这里**（之后的 CDN 源、节点清洗、分组、规则生成属于内部逻辑，日常不用动）：
 
 | 顺序 | 对象                | 管什么                                |
 | -- | ----------------- | ---------------------------------- |
@@ -590,6 +599,7 @@ residential.example.yaml  住宅节点覆写模板（Clash Party 用，只放凭
 | ④  | `AI_STATIC_TO_AI` | AI 静态资源 / 安装包 → 机场 AI 组            |
 | ⑤  | `NARROW_TUN`      | 窄 TUN：只把 Google 段塞进内核（救 `language_server`） |
 | ⑥  | `REGION_PRIORITY` | `AUTO`/`AI` 的国家优先顺序（JP → SG → KR → 其它） |
+| ⑦  | `WEBRTC_GUARD`    | 可选：拦截常见 STUN 探测（默认关，会打断语音通话，见下） |
 
 | 配置                             | 默认              | 作用                                                                                                   |
 | ------------------------------ | --------------- | ---------------------------------------------------------------------------------------------------- |
@@ -605,6 +615,7 @@ residential.example.yaml  住宅节点覆写模板（Clash Party 用，只放凭
 | `RESIDENTIAL.upstream.filter`  | 显式亚洲关键词         | 跳板池节点名匹配：日/港/台/韩/新/越/马/泰/菲（多字词，见坑 8）。**已与 `smartGroups.JP` 解耦**，改地区组不会连带改跳板池                         |
 | `TRAFFIC.domesticDirect`       | `true`          | 追加 `GEOSITE,cn → DIRECT`（`GEOIP,CN` 对 fake-ip 域名无效）                                                  |
 | `TRAFFIC.appleDirect`          | `true`          | Apple 全家桶直连（iCloud 同步/App Store 原来走机场，最费流量）                                                          |
+| `WEBRTC_GUARD.enabled`         | `false`         | 拦截常见 STUN 探测：`DST-PORT 3478/5349/19302-19309` + `DOMAIN-KEYWORD,stun` → `REJECT`。**会同时打断 Google Meet、微信语音、游戏语音**，且拦不住「从未进入内核的 UDP」。见「WebRTC 探测要不要拦」 |
 
 ### DNS：一律用 IP 型 DoH，不要域名型
 
@@ -619,6 +630,38 @@ IP 型 DoH 不需要任何引导，少一环就少一个死法（详见坑 15）
 `default-nameserver` 只负责解析**节点域名**（`jp.jisu16.top` 这类），所以放路由器 DNS 优先、  
 公网 IP 兜底即可。
 
+### WebRTC 探测要不要拦（`WEBRTC_GUARD`）
+
+浏览器 WebRTC 打洞时直接向 STUN 服务器发 **UDP**，不吃 HTTP 代理，也不一定被 TUN 接管。  
+[`ruleset/webrtc-guard.list`](ruleset/webrtc-guard.list) 提供一份**默认关闭**的拦截清单：
+`DST-PORT 3478/5349/19302-19309` + `DOMAIN-KEYWORD,stun` → `REJECT`（11 条）。
+
+开关在 `smart.js` 第 0 部分 ⑦：
+
+```js
+const WEBRTC_GUARD = {
+  enabled: false, // true = 拦截；会打断网页通话，见下
+};
+```
+
+规则插入点固定在**内网/必要技术规则之后、AI 业务规则之前**——放前面会把内网和节点流量一起拦掉，
+放后面会被进程规则、AI 规则先接走，等于没装。关着的时候连 `rule-providers` 都不生成，
+不会产生任何下载请求。
+
+**它拦不到什么（别把它当成「关闭 WebRTC」）：**
+
+| 拦不到的情况 | 原因 |
+| --- | --- |
+| 自定义端口的 STUN、私有端口的 TURN 中继 | 只覆盖常见端口 |
+| 纯 IP 探测（域名没被内核嗅探出来） | 关键字规则失效，只剩端口规则 |
+| **从未进入内核的 UDP** | 系统代理模式 / App 自己发 / IPv6 未接管 —— 这是平台边界，规则层无解 |
+
+最后一条正是 Android 上 `detectradar` 能拿到真实 IP 的原因：手机 FlClash 走 `VpnService`，
+内核之外的 UDP 直接由系统发出去，规则再严也管不到（见坑 23）。
+
+**代价**：会同时打断 Google Meet、微信/QQ 语音、Discord、游戏语音等一切依赖 STUN 打洞的功能。
+宁可不通话也不想被探测时再打开；需要通话就单独放行对应域名/端口，并重新验证——放行即缩小防护范围。
+
 ### 住宅链路的上游怎么选（`dialer-proxy`）
 
 出口 IP 由住宅节点决定（恒定），但**中转路径**由上游决定，三种选法：
@@ -626,7 +669,7 @@ IP 型 DoH 不需要任何引导，少一环就少一个死法（详见坑 15）
 
 | 方案                | 写法                     | 特点                                                                              |
 | ----------------- | ---------------------- | ------------------------------------------------------------------------------- |
-| **任意亚洲节点（推荐，默认）** | `dialer-proxy: 前置-亚洲`  | `url-test` 只收名字含亚洲国家关键词的节点自动择优（日本 6 + 港台韩新 24 + 东南亚 8）；全灭时退 `DIRECT`（不经机场），住宅仍可连；不会再出现「莫名连不上住宅」 |
+| **任意亚洲节点（推荐，默认）** | `dialer-proxy: 前置-亚洲`  | `url-test` 全量收编名字含亚洲国家关键词的节点自动择优（日本 6 + 港台韩新 24 + 东南亚 8）；**组内不含 `DIRECT`**，一个亚洲节点都匹配不到时退 `REJECT`（阻断，不裸连）；`tolerance: 200` 防跳板抖动断长连接 |
 | 全机场自动             | `dialer-proxy: AUTO`   | 最快，但中转会跳地区——出口 IP 没变，中转 ASN/延迟特征每次都变，对风控不友好                                     |
 | 固定单节点             | `dialer-proxy: 直连-日本3` | 最稳，但节点一挂全断；且订阅改名后配置直接校验失败（组引用了不存在的节点）                                           |
 
@@ -864,31 +907,44 @@ Clash Party 退出后端口消失，客户端拿到的是 `ECONNREFUSED`，**不
 真正会漏的是两种情况，都不在 Claude Code 里：
 
 1. **不读 `settings.json` 的进程** —— 脚本里的 `curl`、Python 的 anthropic SDK、Cursor、IDE 插件只认  
-   shell 环境变量，Clash Party 挂掉时它们会静默直连。要兜住就在 `~/.zshrc` 里加个启动前闸门：
-   ```zsh
-   claude() {
-     local port=7865
-     local cfg="$HOME/Library/Application Support/mihomo-party/work/config.yaml"
-     if ! nc -z -G 1 -w 1 127.0.0.1 $port >/dev/null 2>&1; then
-       echo "[claude 守卫] 127.0.0.1:$port 没有监听 —— 已阻止启动（无代理时直连会暴露真实 IP）" >&2
-       return 1
-     fi
-     local expect ip
-     expect=$(awk '/name: .*住宅-JP/{f=1} f && /server:/{gsub(/.*server: */,""); gsub(/"/,""); print; exit}' "$cfg" 2>/dev/null)
-     ip=$(curl -s --max-time 6 -x "http://127.0.0.1:$port" https://api.ipify.org)
-     if [ -z "$ip" ] || { [ -n "$expect" ] && [ "$ip" != "$expect" ] && [ "$CLAUDE_SKIP_IP_CHECK" != "1" ]; }; then
-       echo "[claude 守卫] 出口 IP=${ip:-取不到}，住宅节点=$expect —— 已阻止启动" >&2
-       echo "  确认无碍再绕过：CLAUDE_SKIP_IP_CHECK=1 claude ..." >&2
-       return 1
-     fi
-     HTTP_PROXY="http://127.0.0.1:$port" HTTPS_PROXY="http://127.0.0.1:$port" \
-       ALL_PROXY="http://127.0.0.1:$port" NO_PROXY="localhost,127.0.0.1" command claude "$@"
-   }
-   ```
+   shell 环境变量，Clash Party 挂掉时它们会静默直连。兜法是终端启动前加一道闸门（`claude()` 包装函数）。
 2. **代理活着但出口被切走** —— 「住宅出口」被点成 `AI`，端口是通的但用的是机场 IP，  
-   比断网更危险（同账号 IP 跳变）。上面守卫的第二个闸门就是拦这个。
+   比断网更危险（同账号 IP 跳变）。所以闸门不能只 `nc` 一下端口，还得校验出口 IP 确实是住宅 IP。
 
 > ⚠️ `NO_PROXY` 只写 `localhost,127.0.0.1`，**不要**把 `anthropic.com` 加进去 —— 加一条就让所有代理努力归零。
+
+### 启动守卫与环境体检（`claude-guard`）
+
+上面两道闸门 + 只读体检已收进本仓库 [`claude-guard/`](claude-guard/README.md) 统一管理。  
+`~/.zshrc` 里不再内联两百多行 shell，只剩一段带标记的加载器（由 `claude-guard/install.sh` 幂等维护）。
+下面是**简化示意**，完整片段见 [`claude-guard/zshrc.snippet`](claude-guard/zshrc.snippet)，
+里面还包含「规则库缺失时拒绝启动」的 fail-closed 兜底：
+
+```zsh
+# >>> easy_proxy_rules / claude-guard >>>
+_cg_repo="${EASY_PROXY_RULES_HOME:-$HOME/Projects/easy_proxy_rules}"
+source "$_cg_repo/claude-guard/claude-guard.zsh"
+# <<< easy_proxy_rules / claude-guard <<<
+```
+
+| 命令                  | 作用                                                     |
+| ------------------- | ------------------------------------------------------ |
+| `claude`            | 启动前 fail-closed：端口 → 出口 IP → 白名单 → 配置一致性             |
+| `claude-check`      | 只读体检：代理链路、生效配置「仅代理」判定、DNS、环境指纹                      |
+| `claude-guard-info` | 打印当前生效的规则目录与 `guard.conf` 取值                          |
+| `claude-guard-reload` | 改完 `guard.conf` 后热重载，不必新开终端                         |
+
+判定口径集中在 [`claude-guard/guard.conf`](claude-guard/guard.conf)，出口 IP 白名单在
+[`claude-guard/allowed-exit-ips`](claude-guard/allowed-exit-ips)，`settings.json` 的 `env` 参考模板在
+[`claude-guard/claude-settings.example.json`](claude-guard/claude-settings.example.json)。
+自检：在本仓库执行 `zsh claude-guard/selftest.zsh`（全程用临时夹具，不碰真实配置、不联网）。
+
+> ⚠️ **这里原先贴过一份内联守卫代码，已废弃**：它用 `awk '/name: .*住宅-JP/'` 从 mihomo 配置取期望节点 IP，  
+> 但面板里节点实际叫 `🏠 住宅-JP`，匹配恒为空 → `expect` 为空时 IP 一致性校验被静默跳过，  
+> 等于「看着 OK、实则不设防」。现行版本改成显式白名单，**白名单缺失或为空直接拒绝启动**。
+
+细节（fail-closed 判定顺序、速度约定、`claude-check` 输出解读、故障排查）见
+[`claude-guard/README.md`](claude-guard/README.md)。
 
 ### Claude Code 常驻会话（`~/.claude/remote` 的 ccd-cli）
 
@@ -1035,6 +1091,27 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
 
 同一份头部还会列出「手机端跳过了哪些桌面专属项」和「全局模式的坑」，  
 所以不需要再回头翻 README 就能判断这份脚本是不是最新的。
+
+### 构建期自检：不合格就不落盘
+
+`node build-flclash.js` 先在内存里生成产物，再**用 `vm` 真的跑一遍**这个脚本，检查最终形态；
+任何一条不过就 `exit 1`，**一个文件都不写出**——避免坏产物覆盖上一版可用的文件。
+
+| 检查 | 防的事故 |
+| --- | --- |
+| 每条规则的落点都在组名 / 内置策略里 | 悬空组名 → 内核拒载整份配置（`proxy not found`） |
+| `RULE-SET` 引用的 provider 都存在 | `not found rule-set` |
+| 最后一条是 `MATCH` 兜底、规则数 ≥ 40 | 规则集丢失 / 只拉到半截 |
+| `MUST_NOT_DIRECT` 里的域名首条命中不得是 `DIRECT` | 改个直连名单把 Claude 弄断网（`claude.ai`、`challenges.cloudflare.com`、`chatgpt.com`、`gemini.google.com`、`raw.githubusercontent.com`） |
+| 国内直连（`GEOSITE,cn` / `GEOIP,CN`）排在 `forAI` 之前 | 国内站被 AI 组接走、烧流量 |
+| 住宅组不含 `AI`、前置组不含 `DIRECT` | 住宅出口退化成「能切机场 IP 的普通组」、跳板被拆 |
+| 占位符版不得生成「住宅出口」 | 公共版粘到手机上 AI 全被 `REJECT` |
+| 规则集条目数不低于下限（约当前 70%） | 清单被清空 / 截断 |
+| `ai-strict.list` 必须覆盖四个关键域名 | 漏一条就整类流量走机场 |
+
+断言做的是**首条命中模拟**（展开本地 `.list` 按顺序匹配），所以改规则顺序也能测出来。
+负向验证过：把 `ai-strict.list` 里的 `claude.ai` 注释掉，或把某条规则落点改成不存在的组名，
+构建都会直接失败并列出具体原因。
 
 > **FlClash 模式只改路由 + DNS 上游，不动系统级配置**（`FLCLASH_MODE`）。  
 > 手机上内核跑在 App 的 VPN 服务里，监听端口 / IPv6 策略都由 App 统一管，脚本再覆盖就会打架。
@@ -1331,7 +1408,7 @@ Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且�
     不跑 `main()` 的纯数据提取路径下 `'auto'` 等同 `true`（完全不探测），
     详见「`'auto'` 还有效吗」一节。
 
-    22. **别为了兜外部手写规则，把住宅组改成「成员转发 AI」**
+22. **别为了兜外部手写规则，把住宅组改成「成员转发 AI」**
 
     2026-11-13 走过一次弯路：为了修复用户覆写里手写的
     `DOMAIN, challenges.cloudflare.com, 住宅出口`（组被删掉后报 `rules[0] ... not found`），
@@ -1348,6 +1425,20 @@ Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且�
     把手写的 `DOMAIN,` 行删掉即可。节点上的 `dialer-proxy: 前置-亚洲` 也不需要靠
     「把前置组偷偷建回来」兜底：`enabled: false` 时脚本会把这类住宅链节点直接移除，
     两个组名彻底不存在，符合「没有家宽就不需要住宅和前置组」。
+
+23. **Android 上 `detectradar` 报 WebRTC/DNS 暴露，不是配置写错，是平台边界**
+
+    同一份 `smart.js`，桌面 Clash Party 下 `detectradar` 全绿，手机 FlClash 下报 WebRTC 与
+    DNS 暴露。原因不在 YAML，也不在构建产物：
+
+    - 手机内核跑在 App 的 `VpnService` 里，只有被 VPN 接管的流量才受规则约束，
+      **没进内核的 UDP 拦不住**（规则再严也无解）；
+    - 系统「私人 DNS」走 DoT/853、浏览器自带 DoH 时，解析根本不经过配置里的
+      `nameserver`，`dns-hijack: any:53` 也管不到 853/443 上的加密 DNS；
+    - `tun.enable` 开着 ≠ 泄漏已修好，`dns-hijack` 生效 ≠ 浏览器不用自己的 DoH。
+
+    要治只能在 App/系统层收口（关掉系统私人 DNS、关浏览器安全 DNS、确认 UDP 进内核），
+    规则层能做的只有「把已知 STUN 端口拒掉」，见「WebRTC 探测要不要拦」。
 
 ---
 
@@ -1379,6 +1470,47 @@ sleep 1 && curl -x http://127.0.0.1:7890 -o /dev/null https://claude.ai/
 curl -s --noproxy '*' --unix-socket "$SOCK" http://localhost/proxies \
   | python3 -c "import sys,json;p=json.load(sys.stdin)['proxies'];print(p['住宅出口']['all'], p['住宅出口']['now'])"
 ```
+
+### 国内直连兜底的三答案验收
+
+只看一个页面通不通，判断不了 `GEOIP,CN` 兜底有没有误伤。同一个域名在不同网络下会拿到
+**三类答案**，每类都要单独走一遍「首条命中 → 最终出站」：
+
+| 解析答案 | 典型来源 | 期望首条命中 | 期望出站 |
+| --- | --- | --- | --- |
+| **纯中国 IP** | 国内递归（223.5.5.5）解析国内站 | 域名类走 `GEOSITE,cn` → `DIRECT`；直连 IP 走 `GEOIP,CN` → `DIRECT` | 直连 |
+| **纯境外 IP** | 境外递归解析同一域名 | 业务规则（`forAI` / `forGlobal`）→ `AI` / `AUTO` | 机场节点 |
+| **混合答案** | ECS 就近解析、CDN 同时返回国内外 IP | 以**第一条命中**为准，且每次稳定 | 不能一次直连一次走机场 |
+
+```bash
+# ① 真实解析答案：直接问上游，绕开内核
+#    fake-ip 模式下内核只会回 198.18.x.x，看不到真实答案属于哪一类
+dig +short @223.5.5.5 example.com     # 国内递归
+dig +short @1.1.1.1   example.com     # 境外递归
+
+# ② 内核视角：只有回 198.18.x.x 才说明这个域名进了内核（fake-ip 生效）
+dig +short @127.0.0.1 -p 1053 example.com
+
+# ③ 两条入口各走一遍：域名访问 / 直连 IP 访问
+curl -x http://127.0.0.1:7890 https://example.com/cdn-cgi/trace | grep -E '^ip=|^loc='
+curl -x http://127.0.0.1:7890 "https://$(dig +short @1.1.1.1 example.com | head -1)/" 2>/dev/null
+```
+
+**关键点：`GEOIP,CN` 只对「IP 入口」有效。** fake-ip 下域名请求根本不会带真实 IP 去匹配 IP 规则，
+所以同一个站会分两条路：
+
+- 域名入口 → 命中的是域名规则（`GEOSITE,cn`、`RULE-SET,forAI`…）；
+- 直连 IP 入口 → 才轮到 `GEOIP,CN` 兜底，也才可能因为「境外解析出中国 IP」被误判直连。
+
+三个判据（缺一条都算「未验证」，不能算通过）：
+
+1. **解析答案**属于哪一类（纯中国 / 纯境外 / 混合）；
+2. 内核日志里这条连接**首条命中**是哪条规则（`GEOSITE,cn`、`GEOIP,CN` 还是 `RULE-SET,forAI`）；
+3. 最终 `using` 的组 / 节点，以及 trace 里的 `loc`。
+
+> 典型漏法：域名解析出**混合 IP**，程序又喜欢直连 IP（SDK、桌面客户端），首条命中落到
+> `GEOIP,CN → DIRECT` → 本该走机场的流量裸连出去。只测「浏览器能不能打开」永远发现不了这个，
+> 因为浏览器那一侧走的是域名规则。
 
 ---
 

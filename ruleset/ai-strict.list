@@ -86,6 +86,11 @@ DOMAIN-SUFFIX,featuregates.org
 DOMAIN,cdn.growthbook.io
 DOMAIN,browser-intake-us5-datadoghq.com
 DOMAIN,cdn.usefathom.com
+# 服务端日志摄取（CLI / 桌面端上报用，与上面的 browser-intake 是同一厂商的两个入口）。
+# 2026-11-14 实测：原来只有 ai.yaml 的 DOMAIN-KEYWORD,datadog 兜住，首条命中落到
+# forAI → AI 组（机场大阪），和主站出口不一致。精确域名放这里，排在上面的 aiStrict 更前，即可钉回住宅。
+DOMAIN,http-intake.logs.us5.datadoghq.com
+DOMAIN,http-intake.logs.datadoghq.com
 # 前端报错上报（流量极小）
 DOMAIN-SUFFIX,sentry.io
 

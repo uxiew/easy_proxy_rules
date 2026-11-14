@@ -1,0 +1,18 @@
+# Claude Code 出口 IP 白名单（模板）
+#
+# 用法：cp allowed-exit-ips.example allowed-exit-ips
+#      然后把真实住宅出口 IP 写进去（一行一个 IPv4）。
+# 为什么单独放 example：
+#       合法的同名文件已被 .gitignore 排除——真实出口 IP 不该进公开仓库
+#       （README 里对它的展示也是打码的，如 61.***193）。
+#
+# 取当前出口 IP（经住宅专用入口，不碰到真实出口）：
+#   curl -x http://127.0.0.1:7865 -s https://www.cloudflare.com/cdn-cgi/trace | grep '^ip='
+#
+# 行为：文件缺失 / 无有效 IP → 拒绝启动（fail-closed），不会静默放行。
+#       住宅 IP 更换时追加一行即可，旧 IP 可留着方便回滚：
+#   echo 新IP >> claude-guard/allowed-exit-ips
+#       只想临时放行一次：CLAUDE_SKIP_IP_CHECK=1 claude ...（端口检查仍然生效）
+#
+# 下面这行是占位（RFC 5737 文档段），替换成你自己的：
+203.0.113.7

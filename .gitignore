@@ -1,3 +1,6 @@
 # 私有文件：凭据与生成的私有脚本
 flclash-credentials.json
 flclash-private.js
+
+# 真实住宅出口 IP 不进公开仓库（模板见 claude-guard/allowed-exit-ips.example）
+claude-guard/allowed-exit-ips

@@ -23,6 +23,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const vm = require('vm');
 const { execSync } = require('child_process');
 
 const ROOT = __dirname;
@@ -151,21 +152,255 @@ function build(cred, m) {
   return header(cred, m) + smart;
 }
 
+// ---------- 构建期自检 ----------
+// 为什么在构建期做：生成物里一个悬空组名，到手机上就是 kernel 拒载整份配置、
+// 表现为「所有节点失效」；一个关键域名落成 DIRECT，表现为「Claude 突然连不上」。
+// 这些错在内核日志里往往只有一句 proxy not found，事后很难定位，所以提前拦住。
+//
+// 检查分两类：
+//   静态 —— 规则集文件是否存在、条目数是否异常、关键域名有没有被误收进直连名单；
+//   动态 —— 用 vm 真的跑一遍生成的脚本，检查最终 rules / proxy-groups 的形态。
+
+const BUILTIN_POLICIES = new Set(['DIRECT', 'REJECT', 'PASS', 'GLOBAL']);
+// 这些域名一旦第一条命中是 DIRECT，就等于把真实 IP 交给对方 / 把服务弄断。
+const MUST_NOT_DIRECT = [
+  'claude.ai',
+  'api.anthropic.com',
+  'challenges.cloudflare.com',
+  'chatgpt.com',
+  'gemini.google.com',
+  'raw.githubusercontent.com',
+];
+// 本地规则集：能展开做「首条命中」模拟的只有这些；远程的（Loyalsoldier 等）跳过，
+// 跳过只会让断言更保守（不误报），不会放过 DIRECT。
+const LOCAL_SETS = {
+  aiStrict: 'ruleset/ai-strict.list',
+  residential: 'ruleset/residential.list',
+  directExtra: 'ruleset/direct-extra.list',
+  autoExtra: 'ruleset/auto-extra.list',
+  webrtcGuard: 'ruleset/webrtc-guard.list',
+  forNSFW: 'ruleset/nsfw.list',
+};
+// 条目数下限：防的是「规则集被清空 / 拉取到半截」，不是精确值。
+// 数值取「当前条目数的 ~70%」：正常增删不会触发，被清空或截断一定触发。
+const MIN_ENTRIES = {
+  'ruleset/ai-strict.list': 60, // 当前 80
+  'ruleset/residential.list': 2, // 当前 3
+  'ruleset/direct-extra.list': 5, // 当前 8
+  'ruleset/auto-extra.list': 2, // 当前 3
+  'ruleset/webrtc-guard.list': 10, // 当前 11
+};
+
+function readList(file) {
+  const full = path.join(ROOT, file);
+  if (!fs.existsSync(full)) return null;
+  return fs
+    .readFileSync(full, 'utf8')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'))
+    .map((line) => line.split(',').map((part) => part.trim()));
+}
+
+function buildLocalSets() {
+  const sets = {};
+  for (const [name, file] of Object.entries(LOCAL_SETS)) sets[name] = readList(file) || [];
+  return sets;
+}
+
+function domainMatches(kind, value, domain) {
+  if (kind === 'DOMAIN') return domain === value;
+  if (kind === 'DOMAIN-SUFFIX') return domain === value || domain.endsWith('.' + value);
+  if (kind === 'DOMAIN-KEYWORD') return domain.includes(value);
+  return false;
+}
+
+// 首条命中模拟：只认域名类规则和可展开的本地 RULE-SET，其余（GEOIP / GEOSITE /
+// IP-CIDR / 远程规则集）一律跳过——对域名来说它们要么不适用，要么无法离线展开。
+function firstHit(rules, sets, domain) {
+  for (const rule of rules) {
+    const parts = String(rule).split(',').map((part) => part.trim());
+    const kind = (parts[0] || '').toUpperCase();
+    if (kind === 'MATCH') return { rule, policy: parts[1] };
+    if (kind === 'RULE-SET') {
+      const set = sets[parts[1]];
+      if (!set) continue;
+      for (const entry of set) {
+        if (entry.length >= 2 && domainMatches((entry[0] || '').toUpperCase(), entry[1], domain)) {
+          return { rule, policy: parts[2], via: entry.join(',') };
+        }
+      }
+      continue;
+    }
+    if (['DOMAIN', 'DOMAIN-SUFFIX', 'DOMAIN-KEYWORD'].includes(kind) && parts.length >= 3) {
+      if (domainMatches(kind, parts[1], domain)) return { rule, policy: parts[2] };
+    }
+  }
+  return null;
+}
+
+function policyOf(rule) {
+  const parts = String(rule).split(',').map((part) => part.trim());
+  if ((parts[0] || '').toUpperCase() === 'MATCH') return parts[1];
+  const last = parts[parts.length - 1] || '';
+  return last.toLowerCase() === 'no-resolve' ? parts[parts.length - 2] : last;
+}
+
+function inspect(text, options) {
+  const problems = [];
+  const sandbox = {
+    module: { exports: {} },
+    exports: {},
+    console: { log() {}, warn() {}, error() {} },
+  };
+  vm.createContext(sandbox);
+  try {
+    vm.runInContext(text, sandbox, { filename: options.label });
+  } catch (error) {
+    return [`脚本加载失败：${error.message}`];
+  }
+  const main = sandbox.module.exports;
+  if (typeof main !== 'function') return ['module.exports 不是 main()'];
+
+  const config = {
+    proxies: [
+      { name: '🇯🇵 JP-01', type: 'ss', server: '192.0.2.1', port: 1 },
+      { name: '🇸🇬 SG-01', type: 'ss', server: '192.0.2.2', port: 2 },
+      { name: '🇺🇸 US-01', type: 'ss', server: '192.0.2.3', port: 3 },
+    ],
+    'proxy-groups': [],
+    rules: [],
+    dns: {},
+    tun: {},
+    'rule-providers': {},
+  };
+  try {
+    main(config);
+  } catch (error) {
+    return [`main() 执行失败：${error.message}`];
+  }
+
+  const rules = (config.rules || []).map(String);
+  const groups = config['proxy-groups'] || [];
+  const providers = config['rule-providers'] || {};
+  const names = groups.map((group) => group.name);
+  const nameSet = new Set(names);
+
+  if (rules.length < 40) problems.push(`规则只有 ${rules.length} 条，疑似规则集丢失`);
+  if (!rules.length || !/^MATCH\s*,/.test(rules[rules.length - 1])) {
+    problems.push('最后一条不是 MATCH 兜底');
+  }
+  if (new Set(names).size !== names.length) problems.push('存在重名策略组');
+
+  // 悬空引用：规则的落点必须在组名或内置策略里
+  for (const rule of rules) {
+    const policy = policyOf(rule);
+    if (!policy || (!BUILTIN_POLICIES.has(policy) && !nameSet.has(policy))) {
+      problems.push(`悬空落点「${policy}」：${rule}`);
+    }
+  }
+  // RULE-SET 引用的 provider 必须存在（FlClash 会补齐订阅的，但自身引用的必须有）
+  for (const rule of rules) {
+    const parts = rule.split(',').map((part) => part.trim());
+    if ((parts[0] || '').toUpperCase() === 'RULE-SET' && parts[1] && !providers[parts[1]]) {
+      problems.push(`规则集未定义：${parts[1]}`);
+    }
+  }
+
+  // 关键域名：第一条命中不得是 DIRECT
+  const sets = buildLocalSets();
+  for (const domain of MUST_NOT_DIRECT) {
+    const hit = firstHit(rules, sets, domain);
+    if (!hit) continue;
+    if (hit.policy === 'DIRECT') problems.push(`${domain} 被 DIRECT 截胡：${hit.rule}${hit.via ? `（${hit.via}）` : ''}`);
+  }
+
+  // 国内直连必须存在，且排在 forAI 之前（否则国内站被 AI 组接走烧流量）
+  const iCn = rules.findIndex((rule) => /^(GEOSITE,cn|GEOIP,CN)/i.test(rule));
+  const iForAI = rules.findIndex((rule) => /^RULE-SET,forAI,/i.test(rule));
+  if (iCn < 0) problems.push('缺少国内直连兜底（GEOSITE,cn 或 GEOIP,CN）');
+  else if (iForAI >= 0 && iCn > iForAI) problems.push('国内直连排在 forAI 之后，国内站会被 AI 组接走');
+
+  // 住宅链语义：住宅组不许含 AI，前置组不许含 DIRECT
+  const residential = groups.find((group) => group.name === '住宅出口');
+  const upstream = groups.find((group) => group.name === '前置-亚洲');
+  if (residential && (residential.proxies || []).includes('AI')) {
+    problems.push('住宅出口组成员含 AI（会变成能切到机场共享 IP 的普通组）');
+  }
+  if (upstream && (upstream.proxies || []).includes('DIRECT')) {
+    problems.push('前置-亚洲组成员含 DIRECT（等于拆掉跳板、可能裸连住宅 IP）');
+  }
+  if (options.expectNoResidential && residential) {
+    problems.push('无家宽构建仍生成了「住宅出口」组');
+  }
+
+  // 规则集条目数下限（静态）
+  for (const [file, min] of Object.entries(MIN_ENTRIES)) {
+    const entries = readList(file);
+    if (entries === null) {
+      if (file.includes('webrtc-guard')) continue; // 可选规则集，允许不存在
+      problems.push(`规则集文件缺失：${file}`);
+    } else if (entries.length < min) {
+      problems.push(`${file} 只有 ${entries.length} 条（下限 ${min}），疑似被清空或截断`);
+    }
+  }
+  // 关键 AI 域名必须被 ai-strict 覆盖（否则会被 forAI 接走，走机场）
+  const aiStrict = new Set((sets.aiStrict || []).map((entry) => entry[1]));
+  for (const domain of ['claude.ai', 'anthropic.com', 'challenges.cloudflare.com', 'chatgpt.com']) {
+    if (!aiStrict.has(domain)) problems.push(`ai-strict.list 缺少 ${domain}`);
+  }
+  // 直连名单不得误收关键 AI 域名
+  for (const file of ['ruleset/direct-extra.list', 'ruleset/residential.list']) {
+    for (const entry of readList(file) || []) {
+      if (MUST_NOT_DIRECT.includes(entry[1])) problems.push(`${file} 把 ${entry[1]} 收进了规则集`);
+    }
+  }
+
+  return problems;
+}
+
+function assertGenerated(targets) {
+  const failures = [];
+  for (const target of targets) {
+    const problems = inspect(target.text, target);
+    for (const problem of problems) failures.push(`[${target.label}] ${problem}`);
+  }
+  if (failures.length) {
+    console.error('✗ 构建自检失败，未写出任何产物：');
+    for (const failure of failures) console.error('  - ' + failure);
+    process.exit(1);
+  }
+  console.log(`✓ 构建自检通过（${targets.length} 份产物：悬空引用 0、关键域名未被 DIRECT 截胡、规则集条目正常）`);
+}
+
 // ---------- 主流程 ----------
 
 const m = meta();
 
-fs.writeFileSync(path.join(ROOT, 'flclash.js'), build(PLACEHOLDER, m), 'utf8');
-console.log(`✓ flclash.js（占位符版，可提交）  源指纹 ${m.sha}`);
+const publicText = build(PLACEHOLDER, m);
+// 占位符版头部带 FLCLASH_NO_RESIDENTIAL：必须走「无家宽」分支，不该再出现住宅组。
+const targets = [{ label: 'flclash.js（占位符版）', text: publicText, expectNoResidential: true }];
 
 const credPath = path.join(ROOT, 'flclash-credentials.json');
+let privateText = null;
 if (fs.existsSync(credPath) && !process.argv.includes('--public')) {
   const cred = JSON.parse(fs.readFileSync(credPath, 'utf8'));
   if (!cred.server || !cred.port) {
     console.error('✗ flclash-credentials.json 缺 server/port');
     process.exit(1);
   }
-  fs.writeFileSync(path.join(ROOT, 'flclash-private.js'), build(cred, m), 'utf8');
+  privateText = build(cred, m);
+  targets.push({ label: 'flclash-private.js（私有版）', text: privateText });
+}
+
+// 先全部校验，再落盘：任何一份不合格都不写出，避免坏产物覆盖上一版可用的文件。
+assertGenerated(targets);
+
+fs.writeFileSync(path.join(ROOT, 'flclash.js'), publicText, 'utf8');
+console.log(`✓ flclash.js（占位符版，可提交）  源指纹 ${m.sha}`);
+
+if (privateText) {
+  fs.writeFileSync(path.join(ROOT, 'flclash-private.js'), privateText, 'utf8');
   console.log(`✓ flclash-private.js（私有版，勿提交）→ 粘贴到手机  源指纹 ${m.sha}`);
 } else {
   console.log('（未找到 flclash-credentials.json，跳过私有版）');
