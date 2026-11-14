@@ -178,7 +178,7 @@ networksetup -setsecurewebproxystate Wi-Fi on
 ```bash
 # 验证出口：不带 -x 也一样，浏览器/Electron 走的就是这条链
 curl -s -x http://127.0.0.1:7890 https://chatgpt.com/cdn-cgi/trace | grep -E "^ip=|^loc="
-#   ip=61.***193   loc=JP     ← 住宅出口
+#   ip=61.***193       loc=JP     ← 住宅出口（示例，出口 IP 已打码）
 ```
 
 #### 路线 B 管不住的：Antigravity / `language_server`
@@ -1012,7 +1012,7 @@ sudo pfctl -a com.apple/easyproxy -F rules    # 临时版则清这个
 
 要永久关掉，再删掉 `/etc/pf.conf` 末尾两行（`anchor "com.easyproxy"` 与 `load anchor …`）。
 
-> 经 `127.0.0.1:7865` 的流量不会被拦：Clash 连的是住宅 IP `61.***193`，不在 Anthropic 网段。  
+> 经 `127.0.0.1:7865` 的流量不会被拦：Clash 连的是你在 `residential.yaml` 里填的住宅 IP（示例 `61.***193`），不在 Anthropic 网段。  
 > `pfctl -e` 打印 `pf already enabled` 属正常提示，不是错误。
 
 ### Proxifier（不开 TUN 时 Antigravity 的唯一解）
