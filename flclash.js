@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-15 00:12:02
- * 源文件      : smart.js  sha256:66bd92bb1418  2096 行 / 114369 字节
- * 源码提交    : 36788ff
+ * 构建时间    : 2026-11-15 15:03:52
+ * 源文件      : smart.js  sha256:bed8be38241c  2096 行 / 114469 字节
+ * 源码提交    : d1c45f3
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -263,7 +263,7 @@ const APP_PROXY = {
 //   proxies:
 //     - name: '🏠 住宅-US'          # 名字必须带 🏠 或 IP- 前缀（命中 nodePattern），
 //                                   # 别用「住宅」二字做匹配词（机场自带住宅节点会混进来）
-//       type: socks5                 # 必须是 socks5，不要用 http（见 README「七宗罪」）
+//       type: socks5                 # 必须是 socks5，不要用 http（见 docs/troubleshooting.md 坑 5）
 //       server: x.x.x.x
 //       port: 12345
 //       username: 'xxx'
@@ -363,7 +363,7 @@ const RESIDENTIAL = {
     // 现在显式写亚洲关键词，和地区组的 filter 解耦（改地区组不会影响跳板池）。
     // 只放多字/带国名的关键词，绝不放单字：
     //   「日」会命中尼日利亚、「东」会命中东帝汶、「亚」会命中马来西亚/亚美尼亚，
-    //   「MY」会命中 Myanmar —— 换订阅实测踩过这些坑（见 README 坑 14）。
+    //   「MY」会命中 Myanmar —— 换订阅实测踩过这些坑（见 docs/troubleshooting.md 坑 8）。
     filter: [
       // 日本：原「前置-日本」的全部关键词，保持不动
       '日本|JP|Japan|🇯🇵|東京|东京|大阪|埼玉|川崎|横浜|名古屋',
@@ -1412,7 +1412,7 @@ function main(config) {
       config.proxies = (config.proxies || []).filter((p) => p && p.name !== c.name);
       config.proxies.push({
         name: c.name, // 必须带 🏠 或 IP- 前缀（命中 nodePattern）
-        type: 'socks5', // http + dialer-proxy 连不通（见 README 坑 5）
+        type: 'socks5', // http + dialer-proxy 连不通（见 docs/troubleshooting.md 坑 5）
         server: c.server,
         port: Number(c.port),
         username: c.username,
@@ -1604,10 +1604,10 @@ function main(config) {
   // ── 桌面端：全量覆盖（listen 1053 / respect-rules / arc 缓存 / IP 型 DoH）
   // ── 手机端：**只补最小必要项，绝不碰 `listen`**
   //   1) 为什么不能全量覆盖：桌面这套写死了 `listen: 0.0.0.0:1053`，会和 FlClash 自己的
-  //      DNS/TUN 抢端口 → 内核解析全废 → 所有节点「失效」（实测过，见 README 坑 14）。
+  //      DNS/TUN 抢端口 → 内核解析全废 → 所有节点「失效」（实测过，见 docs/troubleshooting.md 坑 14）。
   //   2) 为什么不能完全不碰：订阅自带的 DNS 是明文 UDP 53
   //      （223.5.5.5 / 119.29.29.29 / 114.114.114.114）。在「阻断海外 UDP 53」的网络里
-  //      （比如家里 Wi-Fi，桌面端就是这么挂的，见坑 15），节点域名解析不了 → 节点全挂，
+  //      （比如家里 Wi-Fi，桌面端就是这么挂的，见 docs/troubleshooting.md 坑 15），节点域名解析不了 → 节点全挂，
   //      国内域名也解析不了 → 直连也打不开。
   //   3) 所以这里只做一件事：**把上游换成 IP 型 DoH（走 443，不受 UDP 53 影响）**，
   //      其余（ipv6 / use-hosts / respect-rules）沿用订阅，端口完全不碰。
@@ -2020,7 +2020,7 @@ function main(config) {
   // 而 proxy-groups / rule-providers 用的却是覆写结果这一套。
   // 于是订阅里的 `RULE-SET,category-ads-all,REJECT`（规则集缺失）和
   // `RULE-SET,overseas-ai,节点选择`（组缺失）都会让内核启动失败
-  // （实测复现，见 README 坑 18）。之前用的订阅都是纯节点（0 条 rules），
+  // （实测复现，见 docs/troubleshooting.md 坑 18）。之前用的订阅都是纯节点（0 条 rules），
   // 所以从没触发；换成带规则的订阅就炸。
   //
   // 本脚本的 rules 末尾是 `MATCH, CATCH` 兜底，订阅规则永远不可达，
