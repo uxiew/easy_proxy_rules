@@ -4,3 +4,9 @@ flclash-private.js
 
 # 真实住宅出口 IP 不进公开仓库（模板见 claude-guard/allowed-exit-ips.example）
 claude-guard/allowed-exit-ips
+
+# 敏感值清单（由 scripts/sync-sensitive.mjs 生成，内容即真实地址/凭据）
+.sensitive-patterns
+
+# 本地仓库备份，别误提交
+*.bundle

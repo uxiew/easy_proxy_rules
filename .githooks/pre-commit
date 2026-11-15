@@ -1,0 +1,6 @@
+#!/bin/sh
+# 提交前：扫描暂存区，命中真实出口地址 / 凭据 / 禁止路径则阻止提交
+# 安装：git config core.hooksPath .githooks
+set -e
+ROOT=$(git rev-parse --show-toplevel)
+exec node "$ROOT/scripts/scan-sensitive.mjs" --staged

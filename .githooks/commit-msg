@@ -1,0 +1,6 @@
+#!/bin/sh
+# 提交信息检查：防止把真实出口地址写进 commit message（这次事故正是栽在这里）
+# 安装：git config core.hooksPath .githooks
+set -e
+ROOT=$(git rev-parse --show-toplevel)
+exec node "$ROOT/scripts/scan-sensitive.mjs" --message "$1"

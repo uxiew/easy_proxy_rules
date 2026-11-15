@@ -1,0 +1,27 @@
+name: guard
+
+# 服务端兜底：本地 hook 可以被 --no-verify 绕过，这里不行。
+# 每次 push / PR 都对全仓文件 + 全部提交信息做一次扫描。
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  sensitive-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # 需要完整历史才能扫提交信息
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 扫描敏感信息
+        env:
+          # 仓库 Secret：把你不想公开的字面值放进去（换行或逗号分隔）
+          # 未配置时脚本会提示，并只做路径 + token 形态检查
+          SENSITIVE_PATTERNS: ${{ secrets.SENSITIVE_PATTERNS }}
+        run: node scripts/scan-sensitive.mjs --all
