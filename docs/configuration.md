@@ -6,7 +6,7 @@
 
 ---
 
-## 关键配置项（`smart.js` 第 0 部分：用户配置区）
+## 七个配置对象与默认值
 
 `smart.js` 开头就是 `// 第 0 部分：用户配置区`，按使用频率排了七个对象，**所有可调项都在这里**（之后的 CDN 源、节点清洗、分组、规则生成属于内部逻辑，日常不用动）：
 
@@ -36,7 +36,7 @@
 | `TRAFFIC.appleDirect`          | `true`          | Apple 全家桶直连（iCloud 同步/App Store 原来走机场，最费流量）                                                          |
 | `WEBRTC_GUARD.enabled`         | `false`         | 拦截常见 STUN 探测：`DST-PORT 3478/5349/19302-19309` + `DOMAIN-KEYWORD,stun` → `REJECT`。**会同时打断 Google Meet、微信语音、游戏语音**，且拦不住「从未进入内核的 UDP」。见下文「WebRTC 探测要不要拦」 |
 
-### DNS：一律用 IP 型 DoH，不要域名型
+## DNS：一律用 IP 型 DoH，不要域名型
 
 `nameserver` / `proxy-server-nameserver` / `nameserver-policy` 里全部写成  
 `https://1.12.12.12/dns-query` 这种**带 IP 的 DoH**，不写 `https://doh.pub/dns-query`。
@@ -49,7 +49,7 @@ IP 型 DoH 不需要任何引导，少一环就少一个死法（详见 [坑 15]
 `default-nameserver` 只负责解析**节点域名**（`jp.jisu16.top` 这类），所以放路由器 DNS 优先、  
 公网 IP 兜底即可。
 
-### WebRTC 探测要不要拦（`WEBRTC_GUARD`）
+## WebRTC 探测要不要拦（`WEBRTC_GUARD`）
 
 浏览器 WebRTC 打洞时直接向 STUN 服务器发 **UDP**，不吃 HTTP 代理，也不一定被 TUN 接管。  
 [`ruleset/webrtc-guard.list`](../ruleset/webrtc-guard.list) 提供一份**默认关闭**的拦截清单：
@@ -81,7 +81,7 @@ const WEBRTC_GUARD = {
 **代价**：会同时打断 Google Meet、微信/QQ 语音、Discord、游戏语音等一切依赖 STUN 打洞的功能。
 宁可不通话也不想被探测时再打开；需要通话就单独放行对应域名/端口，并重新验证——放行即缩小防护范围。
 
-### 住宅链路的上游怎么选（`dialer-proxy`）
+## 住宅链路的上游怎么选（`dialer-proxy`）
 
 出口 IP 由住宅节点决定（恒定），但**中转路径**由上游决定，三种选法：
 
@@ -95,7 +95,7 @@ const WEBRTC_GUARD = {
 > 实测关键点：`REJECT` 放进 `url-test` **不会被抢占**——有活节点时选活节点，  
 > 只有全部失效才落到 REJECT。所以「自动择优」和「fail-closed」可以同时拿到。
 
-### 住宅出口组的成员顺序：`nodeName` → `REJECT` → `AI`
+## 住宅出口组的成员顺序：`nodeName` → `REJECT` → `AI`
 
 `住宅出口` 是 `select` 组，成员 = 动态收编的住宅节点（`filter: 🏠|IP-`）+ 固定兜底项，  
 `smart.js` 里写的是 `proxies: [RESIDENTIAL.nodeName, 'REJECT', 'AI']`（`escapeToAI: false` 时第三项不生成）。
@@ -141,7 +141,7 @@ const WEBRTC_GUARD = {
 **想要「住宅挂了就自动走机场」**：把 `smart.js` 里改成 `proxies: ['AI', 'REJECT']`，  
 代价是「节点从配置里消失」那种情况会静默走机场。不推荐。
 
-### 没有家宽怎么办（`RESIDENTIAL.enabled` 三态开关）
+## 没有家宽怎么办（`RESIDENTIAL.enabled` 三态开关）
 
 **以前没有家宽静态 IP = AI 全被阻断**：`住宅出口` 组只有 `REJECT`，而 `aiStrict` /
 `residential` / Anthropic IP 段 / ChatGPT+Claude 进程规则全都指向它。
@@ -156,7 +156,7 @@ const WEBRTC_GUARD = {
 **`false` 和 `'auto'` 判成「没有家宽」后，行为完全一致**：两组都不生成、住宅链节点移除、
 相关规则全部改投 `AI`、7865 改绑 `AI`。区别只在「这次判定是谁做的」。
 
-#### `'auto'` 还有效吗？——有效，代码没删，但它判的不是「有没有家宽」
+### `'auto'` 还有效吗？——有效，代码没删，但它判的不是「有没有家宽」
 
 判定逻辑仍在 `resolveResidentialEnabled()` 里，2026-11-13 的改动只是把
 「判成无家宽之后做什么」统一成和 `false` 一样，并**没有取消 `auto` 模式**。
@@ -246,7 +246,7 @@ curl -s -H "Authorization: Bearer <secret>" 127.0.0.1:9090/proxies | jq -r '.pro
 curl -s -H "Authorization: Bearer <secret>" 127.0.0.1:9090/rules | jq -r '.rules[]|"\(.type),\(.payload),\(.proxy)"' | grep -c 住宅出口
 ```
 
-### 加第二个住宅节点（切换式，0 行代码）
+## 加第二个住宅节点（切换式，0 行代码）
 
 `住宅出口` 组靠 `filter: 🏠|IP-` 动态收编，新节点加进覆写就自动出现，UI 里手动切换：
 
@@ -258,7 +258,7 @@ curl -s -H "Authorization: Bearer <secret>" 127.0.0.1:9090/rules | jq -r '.rules
 
 > 新 IP 上线前先查一次欺诈评分（如 ip.net.coffee / scamalytics），脏 IP 别拿来登录账号。
 
-### 多出口同时分流（设计预案，**未实现**）
+## 多出口同时分流（设计预案，**未实现**）
 
 上面的切换式是「同一时间只用一个出口」。如果想两个住宅 IP **同时在线**、按服务商分流  
 （如 Claude→日本住宅、OpenAI→美国住宅），需要给 smart.js 加一套多出口机制。  

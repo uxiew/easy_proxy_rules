@@ -6,7 +6,7 @@
 
 ---
 
-## 验证分流是否生效
+最快的两条命令：`ip=` 是住宅 IP，说明「规则 → 组 → 节点」这条链通了。
 
 ```bash
 # 看某个域名实际走了哪个出口（Claude 域名会走住宅）
@@ -35,7 +35,7 @@ curl -s --noproxy '*' --unix-socket "$SOCK" http://localhost/proxies \
   | python3 -c "import sys,json;p=json.load(sys.stdin)['proxies'];print(p['住宅出口']['all'], p['住宅出口']['now'])"
 ```
 
-### 国内直连兜底的三答案验收
+## 国内直连兜底的三答案验收
 
 只看一个页面通不通，判断不了 `GEOIP,CN` 兜底有没有误伤。同一个域名在不同网络下会拿到
 **三类答案**，每类都要单独走一遍「首条命中 → 最终出站」：

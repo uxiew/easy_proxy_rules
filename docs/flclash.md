@@ -45,12 +45,15 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
 生成的文件**顶部自带构建元信息**，拿到任何一份 flclash 配置，看头部就知道它对应哪一版逻辑（以下是某次构建的输出，数值以实际文件头部为准）：
 
 ```
- * 构建时间    : 2026-11-15 15:02:01
+ * 构建时间    : 2026-11-15 15:03:52
  * 源文件      : smart.js  sha256:bed8be38241c  2096 行 / 114469 字节
  * 源码提交    : d1c45f3
  * 构建命令    : node build-flclash.js
- * 住宅节点    : 🏠 住宅-JP  ->  61.***193:7012   (示例，出口 IP 已打码)
+ * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
 ```
+
+（上面是仓库里 `flclash.js` 的实际头部；`flclash-private.js` 同一行会显示真实
+`server:port`，那是整个文件里唯一含凭据的地方。）
 
 `sha256` 是**源指纹**：同一份 `smart.js` 生成的两份产物指纹必须一致；手机上贴的版本与仓库里
 `flclash.js` 的指纹对不上，就说明该重新生成并粘贴了。
@@ -84,7 +87,7 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
 
 ---
 
-### FlClash 模式只改路由与 DNS 上游
+## FlClash 模式：只改路由与 DNS 上游
 
 **FlClash 模式只改路由 + DNS 上游，不动系统级配置**（`FLCLASH_MODE`）。  
 手机上内核跑在 App 的 VPN 服务里，监听端口 / IPv6 策略都由 App 统一管，脚本再覆盖就会打架。
@@ -106,7 +109,7 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
 `https://1.12.12.12:443/dns-query` 解析，日志里零 `UDP 53`、零 `i/o timeout`。
 
 
-### 全局模式是陷阱
+## 全局模式是陷阱
 
 它走内核自建的 `GLOBAL` 组，第一个成员固定是 `DIRECT`。  
 实测新配置启动后 `GLOBAL.now = DIRECT`，也就是说**切全局 = 全部直连，真实 IP 直接暴露**。  
@@ -114,7 +117,7 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
 （末尾 `MATCH, CATCH` 已经兜住所有流量，`CATCH` 默认成员是 `AUTO`）。详见 [坑 16](troubleshooting.md)。
 
 
-### ChatGPT App 报「网络配置问题 / 非预期的 SSL 证书」
+## ChatGPT App 报「网络配置问题 / 非预期的 SSL 证书」
 
 先看「住宅出口」当前选中什么。  
 如果显示 `REJECT`，说明默认选中项没生效（旧版脚本，或桌面端那种没有 `store-selected` 的客户端）。  
@@ -128,7 +131,7 @@ curl -s -m 20 -x http://127.0.0.1:7890 -o /dev/null -w "%{http_code}\n" https://
 现版本 `flclash-private.js` 已把 `住宅出口` 的默认选中项设成注入的住宅节点，重新粘贴即可。
 
 
-### 为什么改成全量规则而非订阅自带规则
+## 为什么改成全量规则而非订阅自带规则
 
 订阅的规则把 `github.com`/`x.com` 路由到它自己的  
 「落云」组，该组的「自动选择」依赖订阅给的成员列表——订阅侧一坏（比如 url-test 选中  
@@ -136,7 +139,7 @@ curl -s -m 20 -x http://127.0.0.1:7890 -o /dev/null -w "%{http_code}\n" https://
 占位节点已剔），和电脑端行为一致。
 
 
-### 代理页看不到 GLOBAL / 全局组
+## 代理页看不到 GLOBAL / 全局组
 
 **手机上代理页看不到「GLOBAL / 全局」组，是正常的。** `GLOBAL` 是内核自建的策略组，  
 不是配置里的组；FlClash 把「全局」做成一个模式开关，规则模式下不渲染它。  
@@ -144,7 +147,7 @@ curl -s -m 20 -x http://127.0.0.1:7890 -o /dev/null -w "%{http_code}\n" https://
 另注意 `forGlobal` 是**规则集名**（走 `AUTO`），和 `GLOBAL` 组无关，见 [坑 17](troubleshooting.md)。
 
 
-### v2rayNG
+## 附：为什么不用 v2rayNG
 
 **v2rayNG** 只能做「订阅 + 域名/IP 分流 + 分应用」，做不到 AI 走住宅——  
 Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且没有自动切换，不值得。

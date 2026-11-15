@@ -6,9 +6,7 @@ Claude Code、启动守卫、常驻会话、pf 硬阻断与 Proxifier 的接法�
 
 ---
 
-## 客户端接入
-
-### Claude Code
+## Claude Code
 
 写进 `~/.claude/settings.json` 的 `env`，让所有 API 请求强制从住宅 IP 出去：
 
@@ -38,7 +36,7 @@ Clash Party 退出后端口消失，客户端拿到的是 `ECONNREFUSED`，**不
 
 > ⚠️ `NO_PROXY` 只写 `localhost,127.0.0.1`，**不要**把 `anthropic.com` 加进去 —— 加一条就让所有代理努力归零。
 
-### 启动守卫与环境体检（`claude-guard`）
+## 启动守卫与环境体检（`claude-guard`）
 
 上面两道闸门 + 只读体检已收进本仓库 [`claude-guard/`](../claude-guard/README.md) 统一管理。  
 `~/.zshrc` 里不再内联两百多行 shell，只剩一段带标记的加载器（由 `claude-guard/install.sh` 幂等维护）。
@@ -71,7 +69,7 @@ source "$_cg_repo/claude-guard/claude-guard.zsh"
 细节（fail-closed 判定顺序、速度约定、`claude-check` 输出解读、故障排查）见
 [`claude-guard/README.md`](../claude-guard/README.md)。
 
-### Claude Code 常驻会话（`~/.claude/remote` 的 ccd-cli）
+## Claude Code 常驻会话（`~/.claude/remote` 的 ccd-cli）
 
 远程 / 常驻会话由守护进程 `~/.claude/remote/srv/<hash>/server` 拉起若干 `ccd-cli` 子进程，  
 每个子进程各自读 `settings.json` 的 `env`，**不需要单独配代理**。它们对 `api.anthropic.com`  
@@ -88,7 +86,7 @@ lsof -nP -a -p <PID> -iTCP -sTCP:ESTABLISHED             # 只应出现 127.0.0.
 - 旧版本（如 `2.1.309`）遗留的会话会一直占着长连接，`kill <PID>` 即可，守护进程和其他会话不受影响。
 - 守护进程本身不联网（只有 unix socket），所以「让它走住宅」实际就是「让每个子进程拿到 `env`」。
 
-### 硬阻断（可选，需要 sudo）
+## 硬阻断（可选，需要 sudo）
 
 想把「万一没走代理」彻底堵死，在 pf 层封掉 Anthropic 网段的直连（本机代理不受影响）。
 
@@ -140,7 +138,7 @@ sudo pfctl -a com.apple/easyproxy -F rules    # 临时版则清这个
 > 经 `127.0.0.1:7865` 的流量不会被拦：Clash 连的是你在 `residential.yaml` 里填的住宅 IP（示例 `61.***193`），不在 Anthropic 网段。  
 > `pfctl -e` 打印 `pf already enabled` 属正常提示，不是错误。
 
-### Proxifier（不开 TUN 时 Antigravity 的唯一解）
+## Proxifier（不开 TUN 时 Antigravity 的唯一解）
 
 > ⚠️ Proxifier 与 Clash 的 **TUN 模式会冲突**（流量被两边重复拦截，容易成环）。两者**二选一**，不要同时开。
 

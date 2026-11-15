@@ -55,8 +55,3 @@ curl -x socks5h://127.0.0.1:7865 https://claude.ai/cdn-cgi/trace | grep -E '^ip=
 - 桌面客户端接入（Claude Code / Proxifier / pf）→ [桌面客户端接入](clients.md)
 - 出问题时 → [踩过的坑](troubleshooting.md)
 - 换了出口 IP 或凭据 → [防泄漏](security.md)
-
-## 其他
-
-- **PAC**：系统代理 → 代理模式 PAC（`PAC.js`）
-- **module**：iOS Shadowrocket 模块（`rules.module`）

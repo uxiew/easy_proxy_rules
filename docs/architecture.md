@@ -147,11 +147,12 @@ const REGION_PRIORITY = {
 改完记得在 Clash Party 里点一次 ↻ 重新生成配置；验证：
 
 ```bash
-curl -s --unix-socket /tmp/mihomo-party-501-58401.sock http://localhost/proxies | \
+SOCK=$(ls -t /tmp/mihomo-party-*.sock | head -1)
+curl -s --noproxy '*' --unix-socket "$SOCK" http://localhost/proxies | \
 python3 -c "import sys,json;d=json.load(sys.stdin)['proxies'];[print(g,d[g]['type'],d[g]['now']) for g in ('AUTO','AI','OT')]"
 # AUTO Fallback JP
 # AI Fallback JP
-# OT URLTest 直连澳洲-jiasu138.top
+# OT URLTest <某个亚洲节点>
 ```
 
 再跑一次真实请求确认出口国家（`https://api.ip.sb/geoip` 会回 `Osaka` 之类）。
@@ -174,14 +175,23 @@ flclash-credentials.json  私有凭据（.gitignore 排除，生成私有版用�
 flclash-private.js        生成的私有版（.gitignore 排除，粘贴到手机）
 ruleset/
 ├── ai-strict.list        AI 服务商精确域名 → 住宅出口（含 Turnstile/auth0/Persona/遥测）
-├── ai.yaml               AI 相关但走机场的部分（宽泛匹配、Google 全量、中转站）
+├── ai.yaml               AI 相关但走机场的部分（forAI：宽泛匹配、Google 全量、中转站）
 ├── residential.list      非 AI 的账号/支付/电商 → 住宅出口
 ├── direct-extra.list     补充直连域名
 ├── auto-extra.list       Google 通用资产 → AUTO
+├── github.yaml           GitHub 域名 → AUTO
+├── global.yaml           国外域名大全（forGlobal，33k 行，走 AUTO）
+├── telegram.yaml         Telegram 网段/域名 → 代理
 ├── webrtc-guard.list     WebRTC/STUN 探测拦截（可选，默认不启用，见 `WEBRTC_GUARD`）
 ├── custom.list           自定义规则
-└── nsfw.list             NSFW 规则
+├── nsfw.list             NSFW 规则
+└── empty.list            FlClash 占位空集（订阅规则引用未知规则集时指向它，避免拒载）
 residential.example.yaml  住宅节点覆写模板（Clash Party 用，只放凭据，不提交）
+PAC.js                    系统代理「代理模式 PAC」用的脚本（浏览器按域名自动选代理）
+rules.module              iOS Shadowrocket 模块
+surge/                    Surge 配置模板（历史产物，与本项目 mihomo 主链路无关）
+hermes.js                 Hermes 相关域名固定走同一条代理的规则片段（独立脚本，未接进 smart.js）
+assets/                   图标资源
 claude-guard/             Claude Code 启动守卫 + 环境体检（详见 [claude-guard/README.md](../claude-guard/README.md)）
 ├── claude-guard.zsh      函数库：~/.zshrc 只 source 这一个文件
 ├── guard.conf            集中配置：端口 / 超时 / 白名单 / node 路径
