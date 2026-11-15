@@ -12,7 +12,7 @@
 #   · fail-closed：端口不活 / 拿不到出口 IP / 白名单缺失或不匹配 → 拒绝启动。
 #
 # 全部可调项集中在同目录 guard.conf；改完执行 claude-guard-reload 或新开终端。
-# 文档：同目录 README.md；仓库总览：../README.md 的「客户端接入 → Claude Code」。
+# 文档：同目录 README.md；仓库总览：../README.md；接入说明：../docs/clients.md。
 # =============================================================================
 
 # ---- 自举：定位本目录（.zshrc 可显式给 CLAUDE_GUARD_DIR，否则由 %x 推导）----
