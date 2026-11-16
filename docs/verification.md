@@ -35,9 +35,9 @@ curl -s --noproxy '*' --unix-socket "$SOCK" http://localhost/proxies \
   | python3 -c "import sys,json;p=json.load(sys.stdin)['proxies'];print(p['住宅出口']['all'], p['住宅出口']['now'])"
 ```
 
-锁定模式（`RESIDENTIAL.pinOnly: true` + 有 `nodeName`）下，`all` 应该**只有两项**：
+锁定模式（`RESIDENTIAL.pinOnly: true` + 有 `primary`）下，`all` 应该**只有两项**：
 `['🏠 住宅-JP', 'REJECT']`，`now` 就是那台住宅。若 `all` 里冒出第二台住宅节点，
-说明锁定没生效——多半是 `nodeName` 和节点名没完全对上（emoji、空格都算），
+说明锁定没生效——多半是 `primary` 和节点名没完全对上（emoji、空格都算），
 脚本退回了「全部可选」，内核日志里会有 `[住宅出口] 锁定节点「…」不在本次节点列表` 这句。
 
 ## 国内直连兜底的三答案验收

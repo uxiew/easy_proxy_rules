@@ -35,7 +35,8 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
    }
    ```
 
-   只有 `primary` 那台会进「住宅出口」，其余注入后**只作备用**（`pinOnly: true`）——
+   只有 `primary` 那台会进「住宅出口」——构建时它的名字会被写进节点的 `RESIDENTIAL.primary`，
+   所以桌面配置和手机凭据用的是同一个词。其余节点注入后**只作备用**（`pinOnly: true`）——
    主力挂了是 `REJECT`，不会自动切到备用 IP。单节点旧写法 `{ "name": ..., "server": ... }`
    仍然有效。详见 [多台住宅 IP](configuration.md)。
 2. `node build-flclash.js` → 得到 `flclash-private.js`（几台节点都会写进头部常量）

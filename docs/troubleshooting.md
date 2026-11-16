@@ -41,7 +41,7 @@
 组没有任何可用成员时，内核塞 `COMPATIBLE` 占位符，等价直连——经它出去的 IP 和本机一致。
 用 `filter` 动态收编节点的组，必须加 `REJECT` 兜底：节点全灭时阻断，而不是静默走真实 IP。
 **`REJECT` 必须在成员列表里**，否则组会变空；但**第一位是「默认选中项」**，
-所以第一位放 `nodeName`（FlClash 自动填）/ 留空回落 `REJECT`（桌面端手动选一次），
+所以第一位放 `primary`（FlClash 自动填）/ 留空回落 `REJECT`（桌面端手动选一次），
 语义见 [住宅出口组：只锁一台，挂了就 `REJECT`](configuration.md)。
 
 ## 坑 7 · 写死节点名 ≠ fail-closed，而是 fail-loud
@@ -72,7 +72,7 @@ FlClash 上订阅自带的「自动选择」选中占位节点后**所有境外�
 很多机场自带「家宽住宅」「住宅IP」节点。用 `住宅` 做 `nodePattern` 时，换订阅后
 实测 18 个机场住宅节点混进了「住宅出口」。现在固定成 `🏠|IP-`，
 自己加的节点名带 🏠 前缀（`🏠 住宅-JP`）或 IP- 前缀（`IP-JP`）都能被识别为住宅节点
-（但 `nodeName` 有值时组里只有那一台，写多台 ≠ 能自动切换，见下文坑 24）。
+（但 `primary` 有值时组里只有那一台，写多台 ≠ 能自动切换，见下文坑 24）。
 
 ## 坑 11 · `select` 组的默认值 = 第一个成员，而 `store-selected` 不一定开着
 
@@ -81,7 +81,7 @@ FlClash 上订阅自带的「自动选择」选中占位节点后**所有境外�
 如果第一位是 `REJECT`，表现就是「AI 站点全挂」：`chatgpt.com` 在 TLS 握手中
 被 10ms 掐断，ChatGPT App 把它翻译成**「网络配置问题 / 非预期的 SSL 证书」**
 （不是被中间人，也不是节点被封）。
-解决：把「默认选中项」显式写进第一位（`RESIDENTIAL.nodeName`，FlClash 构建时自动填）。
+解决：把「默认选中项」显式写进第一位（`RESIDENTIAL.primary`，FlClash 构建时自动填）。
 
 ## 坑 12 · `url-test` 的健康检查会依赖 `dialer-proxy` 指向的组，冷启动有竞态
 
@@ -254,13 +254,13 @@ for _, key := range profileBaseSections {
 `'auto'` 模式一直都在，从没被删掉；2026-11-13 只是把「判成无家宽之后做什么」
 统一成和 `false` 一样（两组都不生成、住宅节点移除、规则改投 `AI`、7865 改绑 `AI`）。
 它的判据是「脚本运行时 `config.proxies` 里有没有名字匹配 `🏠|IP-` 的节点」
-（或 FlClash 私有版注入的 `RESIDENTIAL.nodeName`），**不是**「你有没有配家宽」；
+（或 FlClash 私有版注入的 `RESIDENTIAL.primary`），**不是**「你有没有配家宽」；
 而 Clash Party 是按覆写列表顺序执行的：`residential.yaml` 排在 `smart.js` **之后**时，
 脚本跑到这一步还没见过住宅节点 → 判成无家宽 → 住宅链整条不建，
 AI 流量静默退回机场（出口 IP 从住宅变成机场共享 IP，**不报任何错**）。
 
-所以默认改成 `enabled: true`：`nodeName` 留空时组靠内核级 `include-all-proxies + filter` 收编，
-后置覆写注入的 `🏠 住宅-JP` 照样进组，**排前排后都一样**；`nodeName` 有值（FlClash 构建 /
+所以默认改成 `enabled: true`：`primary` 留空时组靠内核级 `include-all-proxies + filter` 收编，
+后置覆写注入的 `🏠 住宅-JP` 照样进组，**排前排后都一样**；`primary` 有值（FlClash 构建 /
 桌面手写）时组是锁定的，成员只有那一台 + `REJECT`，见 [多台住宅 IP](configuration.md)。
 只有「订阅里自带住宅节点、脚本运行时就能看到」的场景才用 `'auto'`；
 确实没有家宽就用 `false`，别指望 `auto` 替你判断。
@@ -307,10 +307,10 @@ DNS 暴露。原因不在 YAML，也不在构建产物：
 用旧的 `include-all-proxies + filter` 收编时，第一个成员可能就是另一台住宅节点 ——
 出口 IP 从日本悄悄变成美国，内核日志只有一句「已切换」，账号侧看到的是异地登录。
 
-2026-11-16 起默认 `RESIDENTIAL.pinOnly: true`：`nodeName` 有值时组成员封闭成
-`[nodeName, REJECT]`，其它住宅节点根本不进组，指定 IP 挂了/消失只能落 `REJECT`。
-多台 IP 的正确用法是「一台主力 + 若干备用」，换机改 `nodeName`（桌面）或 `primary`
-（手机凭据）后重载，见 [多台住宅 IP](configuration.md)。
+2026-11-16 起默认 `RESIDENTIAL.pinOnly: true`：`primary` 有值时组成员封闭成
+`[primary, REJECT]`，其它住宅节点根本不进组，指定 IP 挂了/消失只能落 `REJECT`。
+多台 IP 的正确用法是「一台主力 + 若干备用」，换机就是把 `primary` 改成另一台的名字
+（桌面改 `smart.js` 配置区，手机改凭据文件里的 `primary`）后重载，见 [多台住宅 IP](configuration.md)。
 
 > 想让节点「被判死后」立刻 `REJECT` 而不是等超时，只有 `fallback[pin, REJECT]`，
 > 但那会把上面的坑 12（冷启动竞态）重新引回来，所以没做。

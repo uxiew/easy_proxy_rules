@@ -47,7 +47,7 @@ mihomo 会同时开几个入口，**用途完全不同**，配错会绕过规则
 | 组                                  | 类型       | 成员                                   | 干嘛的                                                                                                     |
 | ---------------------------------- | -------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------- |
 | `🚀 全部节点`                          | select   | `DIRECT` + 全部节点                      | 手动挑单个节点，绕开所有自动逻辑                                                                                        |
-| `住宅出口`                             | select   | **只有一台** `🏠 住宅-JP` + `REJECT`（`pinOnly: true`；`escapeToAI` 时才多一个 `AI`） | **AI 风控面专用出口**。`nodeName` 有值时组是**封闭**的：其它住宅 IP 只注入、不进组，指定 IP 挂了就落 `REJECT`，不存在「自动换到另一台住宅 IP」的路径；`nodeName` 留空才用 `include-all-proxies` + `filter: 🏠\|IP-` 动态收编（桌面首选手选，`store-selected` 记住） |
+| `住宅出口`                             | select   | **只有一台** `🏠 住宅-JP` + `REJECT`（`pinOnly: true`；`escapeToAI` 时才多一个 `AI`） | **AI 风控面专用出口**。`primary` 有值时组是**封闭**的：其它住宅 IP 只注入、不进组，指定 IP 挂了就落 `REJECT`，不存在「自动换到另一台住宅 IP」的路径；`primary` 留空才用 `include-all-proxies` + `filter: 🏠\|IP-` 动态收编（桌面首选手选，`store-selected` 记住） |
 | `前置-亚洲`                            | url-test | 亚洲机场节点（日/港/台/韩/新/越/马/泰/菲）            | 住宅节点的 `dialer-proxy`，只负责「本机 → 机场亚洲 → 住宅」这一跳；`tolerance: 200` 防抖 |
 | `AUTO`                             | fallback | **全部地区组**按顺序：`JP` → `SG` → `KR` → `HK` → `TW` → `US` → `UK` → `DE` → `FR` → `CA` → `EU` → `OT` | 默认出口。**按国家顺序**取第一个活的（日本优先），国家内部由地区组按延迟挑最快；所有地区组都挂才落到 `OT` |
 | `AI`                               | fallback | 与 `AUTO` 同一批地区组                  | 机场 AI 组（Gemini、Google、中转站），**不含住宅节点**；顺序规则与 `AUTO` 相同 |
@@ -75,11 +75,11 @@ mihomo 会同时开几个入口，**用途完全不同**，配错会绕过规则
   动作是「放行直连」，所以现在是 `REJECT`（默认拦截）/ `DIRECT`（怀疑误杀时放行）。
 - **`CATCH` / `ADS_FILTER` 用 `keepRefs: true` 标记跳过节点展开**（`expandGroup()` 里提前返回），  
   否则成员会被摊平成节点列表，切换能力就没了。这个标记在输出前会被删除，不会漏进 mihomo 配置。
-- **`住宅出口` 默认就是 `REJECT`，这是刻意的契约，不是 bug。** `nodeName` 留空时 `select` 的默认值  
+- **`住宅出口` 默认就是 `REJECT`，这是刻意的契约，不是 bug。** `primary` 留空时 `select` 的默认值  
   落在第一位 = `REJECT`（fail-closed：宁可断网，也不静默换出口）。新装、换配置、清掉 `cache.db`  
   之后，AI 站点会全部不通，**去面板里选一次住宅节点即可**，`profile.store-selected` 会记住；  
   之后内核重启、切换订阅都保持你的选择。想恢复「默认阻断」就再选回 `REJECT`。
-- **`nodeName` 有值时组是「锁死一台」**（`pinOnly: true`）：成员只有 `[nodeName, REJECT]`，
+- **`primary` 有值时组是「锁死一台」**（`pinOnly: true`）：成员只有 `[primary, REJECT]`，
   不再用 `include-all-proxies`，所以面板里看不到第二台住宅节点、也没有「换到另一台 IP」的路径。
   多台住宅 IP 的用法与切换方式见 [多台住宅 IP](configuration.md)。
 
