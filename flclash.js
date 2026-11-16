@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-15 15:03:52
- * 源文件      : smart.js  sha256:bed8be38241c  2096 行 / 114469 字节
- * 源码提交    : d1c45f3
+ * 构建时间    : 2026-11-16 22:02:12
+ * 源文件      : smart.js  sha256:0abfea76e074  2114 行 / 116260 字节
+ * 源码提交    : 7c6775a
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -499,13 +499,19 @@ const NARROW_TUN = {
 // ============================================================
 // ⑥ 地区优先（REGION_PRIORITY）—— AUTO / AI 按国家顺序选出口
 // ============================================================
-// 需求：优先日本 → 新加坡 → 韩国；这三个地区全都没有（或全挂）时，才用其他国家。
+// 需求：优先日本 → 新加坡 → 韩国，然后依次是港/台/美/英/德/法/加/欧洲，
+// 最后才落到「未单列国家」的 OT。也就是说：**AUTO 必须覆盖全部地区组**，
+// 不能只把 JP/SG/KR 串起来、剩下的一起丢进 OT 混着选。
 //
 // 实现方式：把目标组从「全量 url-test」换成「fallback 套地区组」：
-//   AUTO(地区) = fallback[ JP(地区) , SG(地区) , KR(地区) , OT(其它) ]
-//   JP/SG/KR/OT 自己仍是 url-test → 国家内部挑最快的那台
+//   AUTO = fallback[ JP , SG , KR , HK , TW , US , UK , DE , FR , CA , EU , OT ]
+//   每个地区组自己仍是 url-test → 国家内部挑最快的那台
 //   fallback 按书写顺序取第一个「活的」成员 → 国家之间按顺序优先
 // 两者嵌套正好是「先按国家顺序，国家内部挑最快」。
+//
+// ⚠️ 为什么不把所有国家塞进一个 url-test 组（旧 OT 的写法）：
+//    那样「谁快用谁」，出口国家会在港/台/美/英之间乱跳 —— 对 AI 账号就是换国家登录。
+//    OT 现在只收「没有单列的地区」（土耳其、印度、巴西…），永远排最后，不再当第二梯队。
 //
 // 和旧行为（全量 url-test）的差别，用实测数据说：
 //   旧：日本 42ms、新加坡 28ms → 永远挂在新加坡，出口国家在 JP/SG 之间漂移，
@@ -514,20 +520,25 @@ const NARROW_TUN = {
 //
 // ⚠️ fallback 只判断「活/死」，不看延迟。日本节点比新加坡慢 20ms 也仍然选日本 ——
 //    这是刻意的取舍：地域稳定 > 绝对速度。想要回「谁快用谁」，把 enabled 设 false。
-// ⚠️ 地区组之间的健康检查只有一份开销：AUTO 和 AI 引用的是同一批 JP/SG/KR/OT，
+// ⚠️ 地区组之间的健康检查只有一份开销：AUTO 和 AI 引用的是同一批地区组，
 //    不会因为两个目标组各测一遍而翻倍。
+// ⚠️ 加新地区组时**必须同步加进下面两个列表**，否则 build-flclash.js 的自检会直接报错
+//    （断言：AUTO 必须覆盖所有仍然存在的地区组）。
 const REGION_PRIORITY = {
   enabled: true,
 
   // 目标组 → 地区顺序（越靠前越优先）。地区名必须是 smartGroups 里的 key（JP/SG/KR/TW/HK/US/DE...）。
-  // 只写你信任的地区；没写进来的国家会落到下面的 othersGroup。
+  // 全部地区组都要写进来：漏一个，那个地区的节点就只能靠 OT 混着选，
+  // 出口会在国家之间漂移（自检也会拦）。
   targets: {
-    AUTO: ['JP', 'SG', 'KR'],
-    AI: ['JP', 'SG', 'KR'],
+    AUTO: ['JP', 'SG', 'KR', 'HK', 'TW', 'US', 'UK', 'DE', 'FR', 'CA', 'EU'],
+    AI: ['JP', 'SG', 'KR', 'HK', 'TW', 'US', 'UK', 'DE', 'FR', 'CA', 'EU'],
   },
 
-  // 上述地区全不可用时落到哪个组。
-  // '' = 不留逃生口，严格只在列出的国家里选（全挂就等于组空 → 回落到 DIRECT/AUTO 兜底）。
+  // 「其它地区」：只收没有单列国家的节点（土耳其 / 印度 / 巴西…），永远排在地区顺序之后。
+  // 它不是第二梯队，只在上面 11 个地区组全部不可用时才会被选中；
+  // 订阅里没有这类节点时整组会被自动剔除，面板上根本看不到它。
+  // '' = 不留逃生口，严格只在列出的国家里选（全挂就等于组空 → 回落到 AUTO 兜底）。
   othersGroup: 'OT',
 
   // fallback 组自己的检查节奏（它只关心成员活没活，所以比地区组快一点）
@@ -705,6 +716,9 @@ const smartGroups = {
     // 于是 AUTO 和 SPEED 成了成员完全相同的两个 url-test 组，
     // 同一批节点被两套健康检查各测一遍（浪费一倍探测开销），
     // 且 SPEED 没有任何规则引用，纯占面板。现在合并成一个：AUTO 直接吃全量。
+    // ⚠️ 下面这段 filter 只在 ⑥ REGION_PRIORITY 关闭时生效；
+    //    开启时（默认）AUTO 会被 applyRegionPriority() 改写成
+    //    fallback[ JP → SG → KR → … → OT ]，成员完全由地区组顺序决定。
     filter: '.*',
     'exclude-filter': '套餐|剩余|到期|流量|官网', // 住宅节点/占位节点由 getFilterMatchedNodes 统一追加排除
     // interval: 300（每 5 分钟）测一轮，直接取最快且可用的节点。
@@ -728,7 +742,9 @@ const smartGroups = {
     //    订阅里有 SG/US/DE/KR 节点时，可能出现「今天日本、明天新加坡」的国家跳变。
     //    在意账号地域稳定性的话，把上面 type 改回 'fallback' 即可（顺序即优先级）。
     //    当前订阅只剩日本节点，所以实际等价于「日本节点里挑最快」。
-    proxies: ['JP', 'SG', 'US', 'DE', 'KR'],
+    // ⚠️ ⑥ REGION_PRIORITY 开启时（默认），本组会被改写成
+    //    fallback[ JP → SG → KR → … → OT ]，下面的 proxies 只在 ⑥ 关闭时才用。
+    proxies: ['JP', 'SG', 'KR', 'US', 'DE'],
     icon: 'https://github.com/DustinWin/ruleset_geodata/releases/download/icons/ai.png',
   },
   ADS_FILTER: {
@@ -849,9 +865,10 @@ const smartGroups = {
     (k) => smartGroups[k] && smartGroups[k].filter,
   );
 
-  // 1) 其它地区组：全量收编，但把已单列的地区排掉。
-  //    排掉是为了「一个节点只属于一个地区组」——
-  //    否则日本节点同时出现在 JP 和 OT 里，同一台被两套健康检查各测一遍，白烧探测。
+  // 1) 其它地区组：只收「没有单列的国家」，永远排在地区顺序最后一位。
+  //    exclude-filter 把 targets 里所有地区组的 filter 拼起来排掉，
+  //    保证「一个节点只属于一个组」——否则日本节点同时出现在 JP 和 OT 里，
+  //    同一台被两套健康检查各测一遍，白烧探测。
   if (cfg.othersGroup && !smartGroups[cfg.othersGroup]) {
     smartGroups[cfg.othersGroup] = {
       type: 'url-test',
@@ -868,6 +885,7 @@ const smartGroups = {
     const base = smartGroups[name];
     const members = [...(order || []), cfg.othersGroup].filter((k) => k && smartGroups[k]);
     if (!members.length) continue;
+    console.log(`[地区优先] ${name} = fallback[ ${members.join(' → ')} ]（国家之间按顺序，国家内部挑最快）`);
 
     smartGroups[name] = {
       ...base,
