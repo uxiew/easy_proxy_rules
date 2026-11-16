@@ -25,7 +25,7 @@ curl -x http://127.0.0.1:7890 https://claude.ai/cdn-cgi/trace | grep -E '^ip=|^l
 
 > ⚠️ **本脚本会整体替换** `proxy-groups` / `rules` / `rule-providers`。
 > 所有 YAML 覆写必须排在 `smart.js` **之后**，否则规则会被整段丢掉；`proxies` 不受影响。
-> 首次使用若「住宅出口」停在 `REJECT`，去面板里手动选一次住宅节点即可。
+> 首次使用若「住宅出口」停在 `REJECT`，去面板里手动选一次住宅节点即可（手机端构建时已锁定，不用这步）。
 
 更完整的步骤与验证见 [快速开始](docs/getting-started.md) 和 [验证分流是否生效](docs/verification.md)。
 
@@ -85,7 +85,7 @@ curl -x http://127.0.0.1:7890 https://claude.ai/cdn-cgi/trace | grep -E '^ip=|^l
 | 逐项改配置 | [配置项详解](docs/configuration.md) |
 | 接 Claude Code / Proxifier / pf | [桌面客户端接入](docs/clients.md) |
 | 生成手机 FlClash 覆写 | [FlClash 与构建产物](docs/flclash.md) |
-| 排查报错、换订阅后的怪现象 | [踩过的坑（23 条）](docs/troubleshooting.md) |
+| 排查报错、换订阅后的怪现象 | [踩过的坑（24 条）](docs/troubleshooting.md) |
 | 确认某条规则命中了什么 | [验证分流是否生效](docs/verification.md) |
 | 维护出口 IP / 凭据防泄漏 | [防泄漏](docs/security.md) |
 

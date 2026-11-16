@@ -37,7 +37,7 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
 
    只有 `primary` 那台会进「住宅出口」，其余注入后**只作备用**（`pinOnly: true`）——
    主力挂了是 `REJECT`，不会自动切到备用 IP。单节点旧写法 `{ "name": ..., "server": ... }`
-   仍然有效。详见 [多台住宅 IP](configuration.md#多台住宅-ip一台主力--若干备用)。
+   仍然有效。详见 [多台住宅 IP](configuration.md)。
 2. `node build-flclash.js` → 得到 `flclash-private.js`（几台节点都会写进头部常量）
 3. 全文复制 → FlClash → 工具 → 覆写 → 新建 → 类型「脚本」→ 粘贴
 4. 对订阅启用该覆写 → 开 TUN
@@ -141,7 +141,8 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
 curl -s -m 20 -x http://127.0.0.1:7890 -o /dev/null -w "%{http_code}\n" https://chatgpt.com/
 ```
 
-现版本 `flclash-private.js` 已把 `住宅出口` 的默认选中项设成注入的住宅节点，重新粘贴即可。
+现版本 `flclash-private.js` 把 `住宅出口` 锁成注入的**主节点**（`primary`）+ `REJECT`，
+其余住宅节点只在配置里备用、不进组，重新粘贴即可。
 
 
 ## 为什么改成全量规则而非订阅自带规则

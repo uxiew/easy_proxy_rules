@@ -1,6 +1,7 @@
 # 配置项详解
 
-`smart.js` 第 0 部分「用户配置区」的逐项说明，含住宅出口三态、DNS、WebRTC 与未实现的多出口预案。
+`smart.js` 第 0 部分「用户配置区」的逐项说明，含住宅出口三态、住宅锁定与多台 IP、DNS、WebRTC
+与未实现的多出口预案。
 
 > ← [文档索引](README.md) · [仓库首页](../README.md)
 
@@ -99,10 +100,10 @@ const WEBRTC_GUARD = {
 
 ## 住宅出口组：只锁一台，挂了就 `REJECT`
 
-`住宅出口` 是 `select` 组，成员固定两项：
+`住宅出口` 是 `select` 组，成员 = 锁定的那一台 + `REJECT`（仅 `escapeToAI: true` 时再多个 `AI`）：
 
 ```js
-proxies: [RESIDENTIAL.nodeName, 'REJECT']   // escapeToAI: true 时末尾再多一个 'AI'
+proxies: [RESIDENTIAL.nodeName, 'REJECT']   // escapeToAI: true 时 → [nodeName, 'REJECT', 'AI']
 ```
 
 `nodeName` 有值且 `pinOnly: true`（默认）时，组里**只会出现这一台**住宅节点。  
@@ -141,15 +142,17 @@ proxies: [RESIDENTIAL.nodeName, 'REJECT']   // escapeToAI: true 时末尾再多�
 | 不写（空组）                           | `["COMPATIBLE"]`             | `COMPATIBLE` | 直连，真实 IP 泄漏 |
 | `['AI']`                         | `["AI"]`                     | `AI`         | 静默走机场       |
 | `['REJECT']`                     | `["REJECT"]`                 | `REJECT`     | 阻断          |
-| `[nodeName, 'REJECT', 'AI']`（当前） | `["🏠 住宅-JP","REJECT","AI"]` | `🏠 住宅-JP`   | 直接走住宅，无手动步骤 |
+| `[nodeName, 'REJECT', 'AI']`（当年测法，带逃生口） | `["🏠 住宅-JP","REJECT","AI"]` | `🏠 住宅-JP`   | 直接走住宅，无手动步骤 |
+
+现在默认不带 `AI`（`escapeToAI: false`），成员就是前两项，上面几行的结论不变。
 
 再验证「已选中住宅节点、随后节点消失」：`members` 变为 `["REJECT","AI"]`，  
 `now` 回落到 `REJECT`，**不是 `AI`**，也不是 `COMPATIBLE`；此时 `PUT` 切到 `AI`  
 返回 204、`now` 变 `AI`，逃生口确实可用。
 
-**桌面端首次使用**：默认是 `REJECT`，AI 类站点打不开——在面板里把「住宅出口」  
+**桌面端首次使用**（`nodeName` 留空）：默认是 `REJECT`，AI 类站点打不开——在面板里把「住宅出口」  
 切到住宅节点一次即可，`store-selected: true` 会记住。  
-**手机端不需要这一步**（`nodeName` 已由构建脚本填好）。
+**手机端不需要这一步**（构建脚本已把主节点锁定进组）。
 
 **想要「住宅挂了就自动走机场」**：把 `smart.js` 里改成 `proxies: ['AI', 'REJECT']`，  
 代价是「节点从配置里消失」那种情况会静默走机场。不推荐。
@@ -162,7 +165,7 @@ proxies: [RESIDENTIAL.nodeName, 'REJECT']   // escapeToAI: true 时末尾再多�
 
 | `enabled` | 什么时候用 | `住宅出口` | `前置-亚洲` | 规则落点 |
 | --- | --- | --- | --- | --- |
-| `true`（**默认**） | 有家宽 | `[🏠节点, REJECT]`，`filter: 🏠\|IP-` 内核级收编 | `url-test`，`include-all-proxies` 全量收编亚洲节点 | 照旧指向 `住宅出口` |
+| `true`（**默认**） | 有家宽 | `nodeName` 有值 → 锁定 `[🏠节点, REJECT]`；留空 → `[REJECT]` + `filter: 🏠\|IP-` 收编全部 | `url-test`，`include-all-proxies` 全量收编亚洲节点 | 照旧指向 `住宅出口` |
 | `'auto'`（不推荐） | 订阅**自带**住宅节点，且脚本一运行就能看到 | 看得到节点才建，否则不生成 | 同上 | 看得到 → `住宅出口`；看不到 → `AI`（**看不到 ≠ 没有家宽**） |
 | `false` | **没有家宽** | **不生成** | **不生成**（无条件） | 全部改投 `AI` 组 |
 
@@ -206,8 +209,10 @@ proxies: [RESIDENTIAL.nodeName, 'REJECT']   // escapeToAI: true 时末尾再多�
 **之后**时，脚本还没见过住宅节点 → 误判无家宽 → AI 静默走机场共享 IP，**不报任何错**。
 所以：
 
-- 住宅节点来自**后置覆写 YAML** → 用 `true`（组靠内核级 `include-all-proxies + filter`
-  收编，排前排后都能进组，见 [坑 21](troubleshooting.md)）；
+- 住宅节点来自**后置覆写 YAML** → 用 `true`：`nodeName` 留空时组靠内核级
+  `include-all-proxies + filter` 收编，排前排后都能进组（见 [坑 21](troubleshooting.md)）；
+  想同时锁定某一台，得保证那台在脚本运行时已经存在（FlClash 注入满足；桌面后置覆写不满足，
+  会退回「全部可选」并打一行日志）；
 - 住宅节点**订阅自带**、脚本一运行就能看到 → 才用 `'auto'`；
 - 确实没有家宽 → 用 `false`，别指望 `auto` 替你判断。
 
@@ -317,11 +322,15 @@ nodeName: '🏠 住宅-JP',   // 名字必须一字不差（含 emoji），写�
 **备用节点不烧流量、也不参与测速**：它们不在任何组里，`AUTO` / `AI` / 地区组、`前置-亚洲`
 都用 `exclude-filter: 🏠|IP-` 把住宅节点排除了。
 
+**验证锁定有没有生效**：查 `住宅出口` 的 `all` 应该只有 `["🏠 住宅-JP","REJECT"]` 两项，
+冒出第二台住宅节点就是 `nodeName` 没对上、退回了「全部可选」，见
+[验证分流是否生效](verification.md)。
+
 > 新 IP 上线前先查一次欺诈评分（如 ip.net.coffee / scamalytics），脏 IP 别拿来登录账号。
 
 ## 多出口同时分流（设计预案，**未实现**）
 
-上面的切换式是「同一时间只用一个出口」。如果想两个住宅 IP **同时在线**、按服务商分流  
+上面那套「主力 + 备用」是「同一时间只用一个出口」。如果想两个住宅 IP **同时在线**、按服务商分流  
 （如 Claude→日本住宅、OpenAI→美国住宅），需要给 smart.js 加一套多出口机制。  
 方案已经想清楚，记录在此，需要时照此落地（预计 50 行重构 + 一份规则清单 + FlClash 同步）：
 

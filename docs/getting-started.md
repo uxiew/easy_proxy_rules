@@ -33,7 +33,7 @@ curl -x socks5h://127.0.0.1:7865 https://claude.ai/cdn-cgi/trace | grep -E '^ip=
 > 别用 `api.ip.sb` 验证住宅出口——它走 `forGlobal → AUTO`，显示机场 IP 是正常的。
 
 `ip=` 是住宅 IP 就说明链路通了。首次使用若「住宅出口」落在 `REJECT`（AI 站点打不开），
-去面板里手动选一次住宅节点，`store-selected` 会记住；手机端由构建脚本填好，不用这步。
+去面板里手动选一次住宅节点，`store-selected` 会记住；手机端由构建脚本锁定主节点，不用这步。
 更完整的证据链见 [验证分流是否生效](verification.md)。
 
 ## 高频误区速查

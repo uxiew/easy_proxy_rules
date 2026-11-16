@@ -79,6 +79,9 @@ mihomo 会同时开几个入口，**用途完全不同**，配错会绕过规则
   落在第一位 = `REJECT`（fail-closed：宁可断网，也不静默换出口）。新装、换配置、清掉 `cache.db`  
   之后，AI 站点会全部不通，**去面板里选一次住宅节点即可**，`profile.store-selected` 会记住；  
   之后内核重启、切换订阅都保持你的选择。想恢复「默认阻断」就再选回 `REJECT`。
+- **`nodeName` 有值时组是「锁死一台」**（`pinOnly: true`）：成员只有 `[nodeName, REJECT]`，
+  不再用 `include-all-proxies`，所以面板里看不到第二台住宅节点、也没有「换到另一台 IP」的路径。
+  多台住宅 IP 的用法与切换方式见 [多台住宅 IP](configuration.md)。
 
 ### 三种组类型到底怎么切（`select` / `url-test` / `fallback`）
 
