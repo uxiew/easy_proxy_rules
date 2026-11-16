@@ -77,10 +77,34 @@ function maskHost(host) {
 }
 
 function header(cred, m) {
-  const isPublic = cred.server === PLACEHOLDER.server;
+  const raw = Array.isArray(cred.nodes) && cred.nodes.length ? cred.nodes : [cred];
+  // 占位符版的 port 是 0，会被下面的过滤丢掉 —— 那时退回原样，保证模板里有可填的一行
+  const valid = raw.filter((n) => n && n.server && n.port);
+  const nodes = valid.length ? valid : raw;
+  const primary = nodes.filter((n) => n.name === cred.primary)[0] || nodes[0] || cred;
+  const isPublic = primary.server === PLACEHOLDER.server;
   const credLine = isPublic
-    ? `住宅节点    : ${cred.name}  ->  ${PLACEHOLDER.server}:${PLACEHOLDER.port}   (占位符，使用前请填真实凭据)`
-    : `住宅节点    : ${cred.name}  ->  ${maskHost(cred.server)}:${cred.port}`;
+    ? `住宅节点    : ${primary.name}  ->  ${PLACEHOLDER.server}:${PLACEHOLDER.port}   (占位符，使用前请填真实凭据)`
+    : `住宅节点    : ${primary.name}  ->  ${maskHost(primary.server)}:${primary.port}` +
+      (nodes.length > 1 ? `   (+${nodes.length - 1} 台备用，只注入、不参与自动选择)` : '');
+
+  // 逐条写进头部常量。备用节点也标清楚语义，免得以后有人以为「多写几条就能自动容错」。
+  const nodeLines = nodes
+    .map((n, i) => {
+      const tag =
+        n.name === primary.name
+          ? '主力（= primary）→ 住宅出口只锁这一台'
+          : '备用 → 只注入不进组；主力挂了是 REJECT，不会自动切到它';
+      return (
+        `    // ${i + 1}. ${n.name} —— ${tag}\n` +
+        '    { ' +
+        `name: ${JSON.stringify(n.name)}, server: ${JSON.stringify(n.server)}, ` +
+        `port: ${JSON.stringify(Number(n.port))}, ` +
+        `username: ${JSON.stringify(n.username)}, password: ${JSON.stringify(n.password)} },\n`
+      );
+    })
+    .join('')
+    .replace(/\n$/, '');
 
   const title = isPublic
     ? 'FlClash 覆写脚本（占位符版 / 可提交仓库）'
@@ -134,12 +158,13 @@ function header(cred, m) {
  * ================================================================
  */
 // ============ 住宅节点凭据（唯一需要改的地方） ============
+// 多台静态住宅 IP 就往下加一条；primary 决定「住宅出口」锁哪一台，
+// 其余节点只注入、不参与自动选择（smart.js 的 RESIDENTIAL.pinOnly）。
 const FLCLASH_RESIDENTIAL = {
-  name: ${JSON.stringify(cred.name)}, // 必须带 🏠 或 IP- 前缀（命中 smart.js 的 nodePattern）
-  server: ${JSON.stringify(cred.server)},
-  port: ${JSON.stringify(Number(cred.port))},
-  username: ${JSON.stringify(cred.username)},
-  password: ${JSON.stringify(cred.password)},
+  primary: ${JSON.stringify(primary.name)},
+  nodes: [
+${nodeLines}
+  ],
 };
 ${isPublic ? "// 占位符版没有真实凭据：告诉 smart.js 按「没有家宽」处理，AI 走 AI 组\nconst FLCLASH_NO_RESIDENTIAL = true;\n" : ''}// ==========================================================
 
@@ -331,6 +356,23 @@ function inspect(text, options) {
   if (residential && (residential.proxies || []).includes('AI')) {
     problems.push('住宅出口组成员含 AI（会变成能切到机场共享 IP 的普通组）');
   }
+  if (residential) {
+    const members = residential.proxies || [];
+    // fail-closed：REJECT 必须在列，否则节点全挂时组变空 → 内核塞 COMPATIBLE = 直连
+    if (!members.includes('REJECT')) problems.push('住宅出口组没有 REJECT 兜底（节点挂了会组空/直连）');
+    const resiMembers = members.filter((name) => /🏠|IP-/.test(name));
+    if (resiMembers.length > 1) {
+      problems.push(`住宅出口组里有多台住宅节点：${resiMembers.join(', ')}（出口 IP 会在它们之间漂移）`);
+    }
+    if (options.expectPin) {
+      if (members[0] !== options.expectPin) {
+        problems.push(`住宅出口首成员是「${members[0]}」，应为锁定的「${options.expectPin}」`);
+      }
+      if (residential['include-all-proxies']) {
+        problems.push('锁定模式仍带 include-all-proxies（其它住宅节点会被内核收进组，等于没锁）');
+      }
+    }
+  }
   if (upstream && (upstream.proxies || []).includes('DIRECT')) {
     problems.push('前置-亚洲组成员含 DIRECT（等于拆掉跳板、可能裸连住宅 IP）');
   }
@@ -413,12 +455,28 @@ const credPath = path.join(ROOT, 'flclash-credentials.json');
 let privateText = null;
 if (fs.existsSync(credPath) && !process.argv.includes('--public')) {
   const cred = JSON.parse(fs.readFileSync(credPath, 'utf8'));
-  if (!cred.server || !cred.port) {
-    console.error('✗ flclash-credentials.json 缺 server/port');
+  // 支持两种写法：单节点 { name, server, port, ... }，或多节点 { primary, nodes: [...] }
+  const credNodes = (Array.isArray(cred.nodes) && cred.nodes.length ? cred.nodes : [cred]).filter(
+    (n) => n && n.server && n.port,
+  );
+  const badNodes = (Array.isArray(cred.nodes) && cred.nodes.length ? cred.nodes : [cred]).filter(
+    (n) => !n || !n.server || !n.port,
+  );
+  if (!credNodes.length || badNodes.length) {
+    console.error('✗ flclash-credentials.json 里有节点缺 server/port（nodes 数组每一项都要齐全）');
     process.exit(1);
   }
+  const pinName = (credNodes.filter((n) => n.name === cred.primary)[0] || credNodes[0]).name;
+  // 只有 smart.js 里 pinOnly 真的开着时，才断言「锁定」形态：
+  // pinOnly: false 是合法配置（全部住宅节点可选），不该被当成回归拦下来。
+  // 正则锚定行首两空格的**配置行**，避开注释里出现的 "pinOnly: true" 字样。
+  const pinOnlyOn = /^ {2}pinOnly:[ \t]*true\b/m.test(smart);
   privateText = build(cred, m);
-  targets.push({ label: 'flclash-private.js（私有版）', text: privateText });
+  targets.push({
+    label: 'flclash-private.js（私有版）',
+    text: privateText,
+    expectPin: pinOnlyOn ? pinName : '',
+  });
 }
 
 // 先全部校验，再落盘：任何一份不合格都不写出，避免坏产物覆盖上一版可用的文件。

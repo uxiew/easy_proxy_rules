@@ -254,9 +254,18 @@ const RESIDENTIAL = {
   //      要自己把 residential.yaml 里的 +proxies / +rules 删掉。
   enabled: true,
   group: '住宅出口', // 组名，规则引用它；不要在覆写 YAML 里重复定义同名组，否则内核报重名
-  // 组内第一个成员（= select 的默认值）。留空 → 默认 REJECT（需手动选一次）。
-  // FlClash 构建时由钩子自动填成注入的节点名 → 手机开箱即用。
+  // 要锁定的节点名（= 组内唯一的那台住宅）。留空 → 默认 REJECT（需手动选一次）。
+  // FlClash 构建时由钩子自动填成注入的主节点名 → 手机开箱即用。
   nodeName: '',
+  // 【严格锁定】nodeName 有值时，组里**只放这一台**，其它住宅节点一律不进组。
+  //   true（默认）= 指定的 IP 挂了就是 REJECT，绝不会自动、也不会顺手换到另一台住宅 IP。
+  //     理由：出口 IP 从 A 悄悄变成 B，和「悄悄换成机场共享 IP」是同一类事故 ——
+  //     对 AI 账号来说换住宅 IP 等于换城市登录，风控直接触发，比断网更难排查。
+  //   false        = 全部住宅节点都进组，可在面板里手动切换（旧行为）。
+  //   nodeName 为空时本开关无效（没有可锁定对象）→ 仍然是「全部住宅节点可选」。
+  //   ⚠️ 备用住宅节点只注入、不进任何组（地区组/AUTO 也被 nodePattern 排掉），
+  //      换节点必须改 nodeName（手机端改凭据里的 primary）后重载，不会被自动选中。
+  pinOnly: true,
   // 节点名匹配（Go RE2 正则），覆写里的节点名必须能命中这两个前缀之一：
   //   🏠       —— 手工命名，最稳（🏠 住宅-JP / 🏠 住宅-US）
   //   IP-      —— 服务商按 IP 出节点时的命名（IP-JP / IP-1.2.3.4）
@@ -1359,30 +1368,51 @@ function main(config) {
   // 桌面端（Clash Party）不定义它 → typeof 守卫跳过，节点仍由 YAML 覆写注入。
   if (typeof FLCLASH_RESIDENTIAL !== 'undefined' && FLCLASH_RESIDENTIAL) {
     FLCLASH_MODE = true;
-    const c = FLCLASH_RESIDENTIAL; // { name, server, port, username, password }
+    const c = FLCLASH_RESIDENTIAL;
+    // 兼容两种凭据形态：
+    //   单节点  { name, server, port, username, password }            ← 旧写法，仍然有效
+    //   多节点  { primary, nodes: [ {name,server,port,...}, ... ] }   ← 手机端一次注入多台静态 IP
+    // 为什么要支持多节点：手机上没有覆写链，多台 IP 只能靠这里注入 —— 让用户在
+    // flclash-credentials.json 里写几条，构建时一起塞进私有版，不用在手机上手改产物。
+    // 但注入 ≠ 参与选择：只有 primary 那台会进「住宅出口」组（见 RESIDENTIAL.pinOnly），
+    // 其余仅作备用，主节点挂了就是 REJECT，绝不自动顶上。
+    const credNodes = (Array.isArray(c.nodes) && c.nodes.length ? c.nodes : [c]).filter(
+      (n) => n && n.server && n.port,
+    );
+    // primary 可以写节点名（必须是 nodes 里某个 name）；写错 / 不写 → 用第一台
+    const primary = credNodes.filter((n) => n.name === c.primary)[0] || credNodes[0];
     // 显式关掉住宅出口（enabled: false）时不要注入节点：
     // 它的 dialer-proxy 指向「前置-亚洲」，而那一组此时不会建 → proxy not found，
     // 整份配置加载失败（比「AI 走机场」严重得多）。
-    if (c && c.server && c.port && RESIDENTIAL.enabled === false) {
+    if (!credNodes.length) {
+      console.log('[FlClash] 凭据里没有可用住宅节点（缺 server/port），AI 流量走 AI 组');
+    } else if (RESIDENTIAL.enabled === false) {
       console.log('[FlClash] RESIDENTIAL.enabled = false：跳过住宅节点注入，AI 流量走 AI 组');
-    } else if (c && c.server && c.port) {
-      config.proxies = (config.proxies || []).filter((p) => p && p.name !== c.name);
-      config.proxies.push({
-        name: c.name, // 必须带 🏠 或 IP- 前缀（命中 nodePattern）
-        type: 'socks5', // http + dialer-proxy 连不通（见 docs/troubleshooting.md 坑 5）
-        server: c.server,
-        port: Number(c.port),
-        username: c.username,
-        password: c.password,
-        udp: false,
-        'skip-cert-verify': false,
-        'dialer-proxy': RESIDENTIAL.upstream.group,
-      });
-      console.log(`[FlClash] 已注入住宅节点 ${c.name}（dialer-proxy: ${RESIDENTIAL.upstream.group}）`);
-      // 关键：把「住宅出口」的默认选中项设成这个节点。
+    } else {
+      const credNames = {};
+      for (const n of credNodes) credNames[n.name] = true;
+      config.proxies = (config.proxies || []).filter((p) => p && !credNames[p.name]);
+      for (const n of credNodes) {
+        config.proxies.push({
+          name: n.name, // 必须带 🏠 或 IP- 前缀（命中 nodePattern）
+          type: 'socks5', // http + dialer-proxy 连不通（见 docs/troubleshooting.md 坑 5）
+          server: n.server,
+          port: Number(n.port),
+          username: n.username,
+          password: n.password,
+          udp: false,
+          'skip-cert-verify': false,
+          'dialer-proxy': RESIDENTIAL.upstream.group,
+        });
+      }
+      console.log(
+        `[FlClash] 已注入 ${credNodes.length} 台住宅节点，锁定「${primary.name}」` +
+          `（dialer-proxy: ${RESIDENTIAL.upstream.group}）`,
+      );
+      // 关键：把「住宅出口」的默认选中项设成主节点。
       // 否则 select 组默认落在第一位（REJECT），手机上又没有 store-selected，
       // 每次启动 AI 站点全被阻断（ChatGPT App 报「非预期的 SSL 证书」）。
-      RESIDENTIAL.nodeName = c.name;
+      RESIDENTIAL.nodeName = primary.name;
     }
   }
 
@@ -1854,6 +1884,9 @@ function main(config) {
   //   - REJECT 第二 → 手动选中某个住宅节点、该节点后来从订阅里消失时，内核回落到
   //     第一个成员（nodeName）；nodeName 也消失时回落 REJECT = 阻断，
   //     不会静默走机场（出口 IP 悄悄变化比断网更危险）；
+  //   - pinOnly: true（默认）时成员是封闭的 `[nodeName, REJECT]`，其它住宅节点根本不进组：
+  //     指定 IP 挂了 / 消失 = 直接 REJECT，不存在「内地自动换到另一台住宅 IP」这条路径。
+  //     多台住宅 IP 的用法是「一台主力 + 若干备用」，换机 = 改 nodeName / 凭据 primary 后重载。
   //   - AI 只在 RESIDENTIAL.escapeToAI = true 时才进组，默认**不进**：
   //     这一类流量（Claude Code / 订阅制 AI）要的是「住宅或断网」，
   //     留着机场逃生口等于给「悄悄换出口」开了后门。
@@ -1878,17 +1911,36 @@ function main(config) {
       config.profile || {},
     );
 
-    finalGroups.splice(1, 0, {
+    // 【2026-11-16 新增】严格锁定：nodeName 有值且 pinOnly 时，组里只放这一台。
+    // 为什么不能沿用 include-all-proxies：多台住宅 IP 时会全部进组，一旦锁定的那台
+    // 从配置里消失（改名/换订阅/改覆写），内核按「第一个存活成员」回落 → 落到另一台
+    // 住宅节点上，出口 IP 悄悄变了，日志里只有一句「已切换到 xxx」。
+    // 锁定模式把成员写死成 [pin, REJECT]：pin 没了/挂了就是 REJECT，没有第二台可接手。
+    // pin 在本次节点列表里找不到时（比如桌面端手写错了名字）退回旧的全收编模式，
+    // 而不是把不存在的名字写进 proxies —— 那会让内核直接拒载整份配置。
+    const pinName = RESIDENTIAL.pinOnly ? String(RESIDENTIAL.nodeName || '').trim() : '';
+    const pinOk = !!pinName && allProxyNames.indexOf(pinName) >= 0;
+    if (pinName && !pinOk) {
+      console.log(
+        `[住宅出口] 锁定节点「${pinName}」不在本次节点列表（${allProxyNames.length} 个），` +
+          '退回「全部住宅节点可选」模式',
+      );
+    }
+    const resiGroup = {
       name: RESIDENTIAL.group,
       type: 'select',
       // 成员里永远没有 AI：住宅出口只允许「住宅 / 阻断」，escapeToAI 是唯一例外且默认关。
       proxies: [RESIDENTIAL.nodeName, 'REJECT', ...(RESIDENTIAL.escapeToAI ? ['AI'] : [])].filter(Boolean),
-      // 内核级收编：覆写 YAML 排在 smart.js 之后也没关系，节点注入后照样进组
-      'include-all-proxies': true,
-      filter: RESIDENTIAL.nodePattern,
-      'exclude-filter': INFO_NODE_PATTERN,
-      'include-all': false, // 防止内核二次筛选，保持成员完全由 filter 决定
-    });
+    };
+    if (!pinOk) {
+      // 非锁定模式（nodeName 为空 / 找不到 / pinOnly: false）：内核级收编，
+      // 覆写 YAML 排在 smart.js 之后也没关系，节点注入后照样进组。
+      resiGroup['include-all-proxies'] = true;
+      resiGroup.filter = RESIDENTIAL.nodePattern;
+      resiGroup['exclude-filter'] = INFO_NODE_PATTERN;
+      resiGroup['include-all'] = false; // 防止内核二次筛选，保持成员完全由 filter 决定
+    }
+    finalGroups.splice(1, 0, resiGroup);
   }
 
   // 【2026-11-06 改】上游出口组不再用 REJECT 兜底。

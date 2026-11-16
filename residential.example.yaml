@@ -22,7 +22,9 @@
 #         有家宽也会被误判成「没有家宽」→ 两组都不生成、AI 规则改投 AI 组，
 #         行为与 enabled: false 相同（AI 静默走机场共享 IP，不报错）。没有家宽请直接用
 #         enabled: false，别指望 auto 替你判断。
-#   3. 重载配置后到「代理」页，把「住宅出口」组切到 🏠 住宅-xxx
+#   3. 重载配置后到「代理」页，把「住宅出口」组切到 🏠 住宅-xxx 一次（store-selected 会记住）；
+#      也可以把节点名写进 RESIDENTIAL.nodeName —— 那台就自动成为组内唯一成员，
+#      换机也不用去面板点（多台 IP 时只有这一台进组，见文件末尾「第二台住宅 IP」）。
 #
 # ⚠️ 三个必须注意的点：
 #   1. 第一行必须是 `+proxies` 而不是 `proxies`：
@@ -48,6 +50,20 @@
     #            HK/TW/KR/SG/越南/马来/泰/菲 一起备选，全灭则阻断，推荐）
 #            或 AUTO（全机场自动择优，中转会跳美/欧）/ 具体节点名（完全固定）
     dialer-proxy: 前置-亚洲
+
+  # ---------- 第二台住宅 IP（备用，不参与自动选择） ----------
+  # 多台 IP 的正确用法是「一台主力 + 若干备用」：把主力的**完整名字**写进 smart.js 的
+  # RESIDENTIAL.nodeName（pinOnly 默认 true），只有那一台会进「住宅出口」组。
+  # 下面这种没被 nodeName 指向的节点只注入、不进组 —— 主力挂了就是 REJECT，
+  # 绝不会自动切到它（出口 IP 悄悄变了，比断网更难排查）。
+  # - name: '🏠 住宅-US'
+  #   type: socks5
+  #   server: 203.0.113.11
+  #   port: 1080
+  #   username: 'your-username'
+  #   password: 'your-password'
+  #   udp: false
+  #   dialer-proxy: 前置-亚洲
 
   # ---------- 备用写法：SOCKS5 + HTTPS 代理 ----------
   # - name: '🏠 住宅-UK'

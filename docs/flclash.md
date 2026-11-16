@@ -23,9 +23,22 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
 
 生成与安装：
 
-1. 凭据写进 `flclash-credentials.json`（`.gitignore` 已排除），格式：  
-   `{ "name": "🏠 住宅-JP", "server": "...", "port": 7012, "username": "...", "password": "..." }`
-2. `node build-flclash.js` → 得到 `flclash-private.js`
+1. 凭据写进 `flclash-credentials.json`（`.gitignore` 已排除），**支持多台静态 IP**：  
+
+   ```json
+   {
+     "primary": "🏠 住宅-JP",
+     "nodes": [
+       { "name": "🏠 住宅-JP", "server": "...", "port": 7012, "username": "...", "password": "..." },
+       { "name": "🏠 住宅-US", "server": "...", "port": 7013, "username": "...", "password": "..." }
+     ]
+   }
+   ```
+
+   只有 `primary` 那台会进「住宅出口」，其余注入后**只作备用**（`pinOnly: true`）——
+   主力挂了是 `REJECT`，不会自动切到备用 IP。单节点旧写法 `{ "name": ..., "server": ... }`
+   仍然有效。详见 [多台住宅 IP](configuration.md#多台住宅-ip一台主力--若干备用)。
+2. `node build-flclash.js` → 得到 `flclash-private.js`（几台节点都会写进头部常量）
 3. 全文复制 → FlClash → 工具 → 覆写 → 新建 → 类型「脚本」→ 粘贴
 4. 对订阅启用该覆写 → 开 TUN
 

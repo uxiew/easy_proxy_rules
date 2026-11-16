@@ -31,6 +31,8 @@
 | `RESIDENTIAL.dedicatedPort`    | `0`（已迁移）        | **旧字段**，仅兼容用：填非 0 值且 `APP_PROXY.ports` 里没有 `residential-in` 时自动补一条                                   |
 | `RESIDENTIAL.upstream.enabled` | `true`          | 建「前置-亚洲」组：住宅节点的 `dialer-proxy` 指向它                                                                   |
 | `RESIDENTIAL.nodePattern`      | `🏠\|IP-`       | 住宅节点名匹配。**自己加的节点必须带 🏠 前缀或 IP- 前缀**，别用「住宅」二字匹配（机场自带住宅节点会混进来，见 [坑 9](troubleshooting.md)）                                            |
+| `RESIDENTIAL.nodeName`         | `''`            | 要**锁定**的住宅节点名。留空 = 默认 `REJECT`（桌面首次使用在面板里选一次）；FlClash 构建时自动填成注入的主节点 → 手机开箱即用                                |
+| `RESIDENTIAL.pinOnly`          | `true`          | **严格锁定**：`nodeName` 有值时组里只放这一台，其余住宅 IP 只注入、不进组 —— 指定 IP 挂了就是 `REJECT`，**不会**自动换到另一台住宅 IP。`false` = 全部住宅节点可选（旧行为） |
 | `RESIDENTIAL.upstream.filter`  | 显式亚洲关键词         | 跳板池节点名匹配：日/港/台/韩/新/越/马/泰/菲（多字词，见 [坑 8](troubleshooting.md)）。**已与 `smartGroups.JP` 解耦**，改地区组不会连带改跳板池                         |
 | `TRAFFIC.domesticDirect`       | `true`          | 追加 `GEOSITE,cn → DIRECT`（`GEOIP,CN` 对 fake-ip 域名无效）                                                  |
 | `TRAFFIC.appleDirect`          | `true`          | Apple 全家桶直连（iCloud 同步/App Store 原来走机场，最费流量）                                                          |
@@ -95,31 +97,42 @@ const WEBRTC_GUARD = {
 > 实测关键点：`REJECT` 放进 `url-test` **不会被抢占**——有活节点时选活节点，  
 > 只有全部失效才落到 REJECT。所以「自动择优」和「fail-closed」可以同时拿到。
 
-## 住宅出口组的成员顺序：`nodeName` → `REJECT` → `AI`
+## 住宅出口组：只锁一台，挂了就 `REJECT`
 
-`住宅出口` 是 `select` 组，成员 = 动态收编的住宅节点（`filter: 🏠|IP-`）+ 固定兜底项，  
-`smart.js` 里写的是 `proxies: [RESIDENTIAL.nodeName, 'REJECT', 'AI']`（`escapeToAI: false` 时第三项不生成）。
+`住宅出口` 是 `select` 组，成员固定两项：
 
-`select` 组不会自动切换，但**选中的节点消失时内核回落到第一个成员**，所以顺序就是语义：
+```js
+proxies: [RESIDENTIAL.nodeName, 'REJECT']   // escapeToAI: true 时末尾再多一个 'AI'
+```
 
-| 成员              | 作用                                                                                          |
-| --------------- | ------------------------------------------------------------------------------------------- |
-| `nodeName`（第一位） | **默认选中项**。桌面端留空（默认落 `REJECT`，手动选一次，`store-selected` 记住）；FlClash 构建时由钩子填成注入的节点名 → **手机开箱即用** |
-| `REJECT`（第二位）   | 回落哨兵：节点全没了就阻断，不会静默走机场，也不会变空组泄漏真实 IP                                                         |
-| `AI`（第三位）       | 仅作手动逃生口：住宅线路彻底挂了能在面板切过去临时用，不会被自动选中                                                          |
+`nodeName` 有值且 `pinOnly: true`（默认）时，组里**只会出现这一台**住宅节点。  
+其它住宅 IP 照样注入配置，但既不进本组，也被 `🏠|IP-` 排除在 `AUTO` / `AI` / 全部地区组之外 ——  
+它们只是「摆在那里备用」，**不存在被自动选中的路径**。
 
-| 情形                 | 结果                                     |
-| ------------------ | -------------------------------------- |
-| 选中住宅节点、节点正常        | 走住宅 ✅                                  |
-| 选中住宅节点、节点挂了        | 连接失败（`select` 不切，符合 fail-closed）       |
-| 住宅节点从配置里消失（改名/删掉）  | 回落第一位；`nodeName` 也没了就落 `REJECT` → 阻断 ✅ |
-| filter 一个都没匹配到（组空） | 有 `REJECT` 兜底，不会空 ✅                    |
-| 住宅线路彻底挂了，想临时用机场    | 手动选 `AI` 应急 ✅                          |
+| 成员                | 作用                                                            |
+| ----------------- | ------------------------------------------------------------- |
+| `nodeName`（第一位）   | **锁定项 + 默认选中项**。桌面端留空时默认落 `REJECT`（手动选一次，`store-selected` 记住）；FlClash 构建时自动填成注入的主节点 |
+| `REJECT`（第二位）     | 回落哨兵：锁定的那台没了就阻断，不会静默走机场，也不会变空组泄漏真实 IP                        |
+| `AI`（第三位，可选）     | 仅在 `escapeToAI: true` 时存在，作手动逃生口，不会被自动选中                        |
 
-**为什么不用 `url-test` 自动择优**（试过，已回退）：`url-test` 的健康检查要经过  
+| 情形                    | 结果                                    |
+| --------------------- | ------------------------------------- |
+| 锁定的 IP 正常             | 走住宅 ✅                                 |
+| 锁定的 IP 挂了（连不上/超时）     | 连接失败（`select` 不切换，符合 fail-closed）      |
+| 锁定的 IP 从配置里消失（改名/删掉）  | 回落第一个存活成员 = `REJECT` → 阻断 ✅           |
+| 组一个成员都没有              | 有 `REJECT` 兜底，不会空组直连 ✅                 |
+| 想临时用机场                | 手动选 `AI` 应急（需 `escapeToAI: true`）✅    |
+
+**为什么失败时不是「立刻 REJECT」而是「连接失败」**：`select` 不做健康检查，内核会一直把请求发给
+你选中的那台，失败了就是失败 —— 结果同样是「流量没出去」，只是要等超时，而不是被内核主动拒绝。
+想让内核在健康检查判死后主动落到 `REJECT`，只有 `fallback[pin, REJECT]` 这一条路，但那会把
+「冷启动 5 分钟 AI 全挂」重新引回来（见下一段），所以不用。
+
+**为什么不用 `url-test` / `fallback` 自动择优**（试过，已回退）：它们的健康检查要经过  
 `dialer-proxy: 前置-亚洲`，而 `前置-亚洲` 自己也是 `url-test`。冷启动时两者并发，  
-住宅节点的第一次检查在 `前置-亚洲` 还没选出节点时执行 → 判 0ms 失败 → 要等  
-`interval`（300s）才重测。实测开机后 5 分钟内 AI 全挂。所以改成**确定性的默认选中项**。
+住宅节点的第一次检查在 `前置-亚洲` 还没选出节点时执行 → 判 0ms 失败 → `fallback` 会立刻退到
+备选（`REJECT` 或另一台住宅 IP），要等 `interval`（300s）才重测。实测开机后 5 分钟内 AI 全挂。
+所以改成**确定性的默认选中项**：不猜、不测、不改。
 
 **实测（mihomo v1.19.32，同一份配置只改兜底项，且不提供住宅节点）**：
 
@@ -246,15 +259,63 @@ curl -s -H "Authorization: Bearer <secret>" 127.0.0.1:9090/proxies | jq -r '.pro
 curl -s -H "Authorization: Bearer <secret>" 127.0.0.1:9090/rules | jq -r '.rules[]|"\(.type),\(.payload),\(.proxy)"' | grep -c 住宅出口
 ```
 
-## 加第二个住宅节点（切换式，0 行代码）
+## 多台住宅 IP：一台主力 + 若干备用
 
-`住宅出口` 组靠 `filter: 🏠|IP-` 动态收编，新节点加进覆写就自动出现，UI 里手动切换：
+`pinOnly: true`（默认）下，同一时间只有**一台**住宅 IP 参与出口，其余只作备用。
+这是刻意的：出口 IP 从 A 悄悄变成 B，等于账号「换城市登录」，风控代价比断网大得多。
 
-1. 本地覆写的 `+proxies` 列表里加一段节点，**名字带 🏠 前缀或 IP- 前缀**（如 `🏠 住宅-US` / `IP-US`，不能用「住宅」二字当匹配词，见 [坑 10](troubleshooting.md)），`type: socks5`
-2. `dialer-proxy` 可以整行删掉（本机直连 Webshare，非日本节点建议直连，绕日本反而慢）
-3. UI 里把「住宅出口」切到新节点（`store-selected` 会记住）
+**桌面端（Clash Party 覆写 YAML）**：节点写在 `+proxies` 里（都带 🏠 或 IP- 前缀），
+再把 `smart.js` 的 `RESIDENTIAL.nodeName` 写成主力那台的**完整名字**：
 
-不会泄漏到别处：`AUTO`/`AI`/`前置-亚洲` 的排除项都含 `🏠|IP-`。
+```yaml
++proxies:
+  - name: '🏠 住宅-JP'      # ← nodeName 指向这台
+    type: socks5
+    server: 203.0.113.10
+    port: 12345
+    username: 'xxx'
+    password: 'xxx'
+    udp: false
+    dialer-proxy: 前置-亚洲
+  - name: '🏠 住宅-US'      # 备用：注入但不进组
+    type: socks5
+    server: 203.0.113.11
+    port: 1080
+    username: 'xxx'
+    password: 'xxx'
+    udp: false
+    dialer-proxy: 前置-亚洲
+```
+
+```js
+nodeName: '🏠 住宅-JP',   // 名字必须一字不差（含 emoji），写错会退回「全部可选」并打日志
+```
+
+换主力 = 改 `nodeName` 后重载；面板「住宅出口」里只会看到这一台。
+
+> 非日本节点可以整行删掉 `dialer-proxy` 直连 Webshare（绕日本反而慢）；删掉就是「本机 → 住宅 IP」一跳。
+
+**手机端（FlClash 私有版）**：`flclash-credentials.json` 写成数组，`primary` 指定主力：
+
+```json
+{
+  "primary": "🏠 住宅-JP",
+  "nodes": [
+    { "name": "🏠 住宅-JP", "server": "203.0.113.10", "port": 7012, "username": "xxx", "password": "xxx" },
+    { "name": "🏠 住宅-US", "server": "203.0.113.11", "port": 7013, "username": "xxx", "password": "xxx" }
+  ]
+}
+```
+
+`node build-flclash.js` 会把两台都注入私有版，只把 `primary` 那台放进「住宅出口」。  
+换主力 = 改 `primary` → 重新构建 → 重新粘贴；手机上不用手改任何东西。
+旧的单节点写法 `{ "name": ..., "server": ..., ... }` 仍然有效，等价于 `nodes` 只有一项。
+
+**想让面板里能随手切换多台**：把 `pinOnly` 改成 `false`，全部住宅节点都会进组（旧行为）。
+代价是「锁定的那台消失」时内核会回落到另一台住宅 IP —— 只有自己不介意换出口时才用。
+
+**备用节点不烧流量、也不参与测速**：它们不在任何组里，`AUTO` / `AI` / 地区组、`前置-亚洲`
+都用 `exclude-filter: 🏠|IP-` 把住宅节点排除了。
 
 > 新 IP 上线前先查一次欺诈评分（如 ip.net.coffee / scamalytics），脏 IP 别拿来登录账号。
 
