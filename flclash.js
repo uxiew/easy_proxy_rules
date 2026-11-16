@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-16 23:22:34
- * 源文件      : smart.js  sha256:7976af63b1d8  2166 行 / 120162 字节
- * 源码提交    : 9e8a46e
+ * 构建时间    : 2026-11-16 23:51:09
+ * 源文件      : smart.js  sha256:7350306cbb4c  2183 行 / 121346 字节
+ * 源码提交    : 4e95cca
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -290,7 +290,7 @@ const RESIDENTIAL = {
   //   0) FLCLASH_NO_RESIDENTIAL（flclash.js 占位符版头部注入）→ 无条件判无家宽，
   //      覆盖下面所有取值；
   //   1) true / false → 直接采用，不再探测节点；
-  //   2) 'auto' → nodeName 有值（FlClash 私有版注入）判有家宽，否则看 config.proxies
+  //   2) 'auto' → primary 有值（FlClash 私有版注入）判有家宽，否则看 config.proxies
   //      里有没有名字命中 🏠|IP- 的节点。
 // ⚠️ 'auto' 模式一直有效、没有取消；2026-11-13 起「判成无家宽」与 false 走
 //    完全相同的后续处理（见下面四条），只是判定来源不同。判定只发生在 main() 内。
@@ -299,7 +299,7 @@ const RESIDENTIAL = {
 //                    覆写 YAML 排在 smart.js 前 / 后都能用：组靠内核级
 //                    include-all-proxies + filter 收编，后置注入的节点照样进组。
 //   'auto'        —— 仍然有效，但判的是「这次运行时看不看得到住宅节点」，
-//                    **不是**判「你有没有家宽」：看得到（nodeName 已注入，或 proxies
+//                    **不是**判「你有没有家宽」：看得到（primary 已注入，或 proxies
 //                    里有名字命中 🏠|IP- 的节点）才建两组；看不到一律按无家宽处理，
 //                    后续与 false 完全相同。
 //                    ⚠️ 看不到 ≠ 没有家宽：residential.yaml 排在 smart.js **之后**时
@@ -317,17 +317,18 @@ const RESIDENTIAL = {
   //      要自己把 residential.yaml 里的 +proxies / +rules 删掉。
   enabled: true,
   group: '住宅出口', // 组名，规则引用它；不要在覆写 YAML 里重复定义同名组，否则内核报重名
-  // 要锁定的节点名（= 组内唯一的那台住宅）。留空 → 默认 REJECT（需手动选一次）。
-  // FlClash 构建时由钩子自动填成注入的主节点名 → 手机开箱即用。
-  nodeName: '',
-  // 【严格锁定】nodeName 有值时，组里**只放这一台**，其它住宅节点一律不进组。
+  // 主力住宅节点名（= 「住宅出口」锁定的那一台）。留空 → 默认 REJECT（需手动选一次）。
+  // 和 FlClash 凭据里的 primary 同名同义：手机端由构建钩子自动填成注入的主节点 → 开箱即用。
+  // （2026-11-16 前这个字段叫 nodeName，旧写法仍能读一次，但会在内核日志里提示改名）
+  primary: '',
+  // 【严格锁定】primary 有值时，组里**只放这一台**，其它住宅节点一律不进组。
   //   true（默认）= 指定的 IP 挂了就是 REJECT，绝不会自动、也不会顺手换到另一台住宅 IP。
   //     理由：出口 IP 从 A 悄悄变成 B，和「悄悄换成机场共享 IP」是同一类事故 ——
   //     对 AI 账号来说换住宅 IP 等于换城市登录，风控直接触发，比断网更难排查。
   //   false        = 全部住宅节点都进组，可在面板里手动切换（旧行为）。
-  //   nodeName 为空时本开关无效（没有可锁定对象）→ 仍然是「全部住宅节点可选」。
+  //   primary 为空时本开关无效（没有可锁定对象）→ 仍然是「全部住宅节点可选」。
   //   ⚠️ 备用住宅节点只注入、不进任何组（地区组/AUTO 也被 nodePattern 排掉），
-  //      换节点必须改 nodeName（手机端改凭据里的 primary）后重载，不会被自动选中。
+  //      换主力必须改 primary（桌面改这里 / 手机改凭据里的 primary）后重载，不会被自动选中。
   pinOnly: true,
   // 节点名匹配（Go RE2 正则），覆写里的节点名必须能命中这两个前缀之一：
   //   🏠       —— 手工命名，最稳（🏠 住宅-JP / 🏠 住宅-US）
@@ -687,6 +688,20 @@ const isFlClashPlaceholder = () =>
 // 无家宽」，判成无家宽之后的处理与 false 完全一致（不建两组 / 规则改 AI /
 // 节点清理 / 7865 改绑 AI）。它判的是「运行时可见性」，不是「有没有家宽」；
 // 未跑 main() 时 residentialActive 为 null，isResidentialOn() 会把 'auto' 当成 true。
+// 主力住宅节点名 = 「住宅出口」锁定的那一台（pinOnly: false 时只是默认选中项）。
+// 2026-11-16 从 nodeName 改名而来，和 FlClash 凭据里的 primary 对齐：同一个概念一个词。
+// 旧名仍读一次并搬过来 —— 否则老配置会静默退回「全部住宅节点可选」，
+// 而结果（多一台可选）不报错，很难在日志里看出来。
+function primaryNodeName() {
+  const cur = String(RESIDENTIAL.primary || '').trim();
+  if (cur) return cur;
+  const legacy = String(RESIDENTIAL.nodeName || '').trim();
+  if (!legacy) return '';
+  RESIDENTIAL.primary = legacy;
+  console.log('[住宅出口] RESIDENTIAL.nodeName 已改名为 primary，本次沿用旧值，请更新配置');
+  return legacy;
+}
+
 function resolveResidentialEnabled(config) {
   // FlClash 占位符版（build-flclash.js 生成）没有真实凭据、不会注入住宅节点。
   // 构建期标记优先级最高：即使把 enabled 写成 true / 'auto' 也强制判「没有家宽」，
@@ -696,7 +711,7 @@ function resolveResidentialEnabled(config) {
   if (setting === true) return true;
   if (setting === false) return false;
   // 'auto'：只认「运行时真的看得到一个住宅节点」这一种证据
-  if (RESIDENTIAL.nodeName) return true; // FlClash 私有版构建时已注入
+  if (primaryNodeName()) return true; // FlClash 私有版构建时已注入
   return hasResidentialNode(config && config.proxies);
 }
 
@@ -1443,7 +1458,7 @@ function main(config) {
       (n) => n && n.server && n.port,
     );
     // primary 可以写节点名（必须是 nodes 里某个 name）；写错 / 不写 → 用第一台
-    const primary = credNodes.filter((n) => n.name === c.primary)[0] || credNodes[0];
+    const primaryNode = credNodes.filter((n) => n.name === c.primary)[0] || credNodes[0];
     // 显式关掉住宅出口（enabled: false）时不要注入节点：
     // 它的 dialer-proxy 指向「前置-亚洲」，而那一组此时不会建 → proxy not found，
     // 整份配置加载失败（比「AI 走机场」严重得多）。
@@ -1469,13 +1484,14 @@ function main(config) {
         });
       }
       console.log(
-        `[FlClash] 已注入 ${credNodes.length} 台住宅节点，锁定「${primary.name}」` +
+        `[FlClash] 已注入 ${credNodes.length} 台住宅节点，锁定「${primaryNode.name}」` +
           `（dialer-proxy: ${RESIDENTIAL.upstream.group}）`,
       );
       // 关键：把「住宅出口」的默认选中项设成主节点。
       // 否则 select 组默认落在第一位（REJECT），手机上又没有 store-selected，
       // 每次启动 AI 站点全被阻断（ChatGPT App 报「非预期的 SSL 证书」）。
-      RESIDENTIAL.nodeName = primary.name;
+      // 凭据的 primary 和 RESIDENTIAL.primary 是同一个概念，这里就是两者的接缝。
+      RESIDENTIAL.primary = primaryNode.name;
     }
   }
 
@@ -1927,7 +1943,7 @@ function main(config) {
   //
   // 【成员 = [住宅节点(可选)] + REJECT + AI】
   //
-  // 为什么需要「第一个成员」可配置（RESIDENTIAL.nodeName）：
+  // 为什么需要「第一个成员」可配置（RESIDENTIAL.primary）：
   //   select 组的默认值 = 第一个成员。以前第一位固定是 REJECT（fail-closed 回落点），
   //   于是「新设备 / 重装 App / 客户端没有 store-selected」启动后默认就是 REJECT，
   //   AI 站点全部连不上。手机端实测复现：chatgpt.com 在 TLS 握手里被 10ms 掐断，
@@ -1938,18 +1954,19 @@ function main(config) {
   //   「前置-亚洲」已经选好节点，冷启动时两者并发 → 住宅节点被判失败，
   //   要等 interval（300s）才重测，等于开机 5 分钟内 AI 全挂。所以不用自动组。
   //
-  //   FlClash 构建时由钩子把 nodeName 填成实际注入的节点名（自己生成的节点，
+  //   FlClash 构建时由钩子把 primary 填成实际注入的节点名（自己生成的节点，
   //   必然存在）→ 开箱即用、无需健康检查。桌面端留空 → 默认 REJECT，
   //   在面板里选一次（store-selected 记住）。
   //
   // 顺序语义：
-  //   - nodeName 在第一位 → 新配置默认就走住宅；
+  //   - primary 在第一位 → 新配置默认就走住宅；
   //   - REJECT 第二 → 手动选中某个住宅节点、该节点后来从订阅里消失时，内核回落到
-  //     第一个成员（nodeName）；nodeName 也消失时回落 REJECT = 阻断，
+  //     第一个成员（primary）；primary 也消失时回落 REJECT = 阻断，
   //     不会静默走机场（出口 IP 悄悄变化比断网更危险）；
-  //   - pinOnly: true（默认）时成员是封闭的 `[nodeName, REJECT]`，其它住宅节点根本不进组：
-  //     指定 IP 挂了 / 消失 = 直接 REJECT，不存在「内地自动换到另一台住宅 IP」这条路径。
-  //     多台住宅 IP 的用法是「一台主力 + 若干备用」，换机 = 改 nodeName / 凭据 primary 后重载。
+  //   - pinOnly: true（默认）时成员是封闭的 `[primary, REJECT]`，其它住宅节点根本不进组：
+  //     指定 IP 挂了 / 消失 = 直接 REJECT，不存在「内核自动换到另一台住宅 IP」这条路径。
+  //     多台住宅 IP 的用法是「一台主力 + 若干备用」，换机 = 改 primary 后重载
+  //     （桌面改这里，手机改凭据里的 primary，两边是同一个词）。
   //   - AI 只在 RESIDENTIAL.escapeToAI = true 时才进组，默认**不进**：
   //     这一类流量（Claude Code / 订阅制 AI）要的是「住宅或断网」，
   //     留着机场逃生口等于给「悄悄换出口」开了后门。
@@ -1974,18 +1991,18 @@ function main(config) {
       config.profile || {},
     );
 
-    // 【2026-11-16 新增】严格锁定：nodeName 有值且 pinOnly 时，组里只放这一台。
+    // 【2026-11-16 新增】严格锁定：primary 有值且 pinOnly 时，组里只放这一台。
     // 为什么不能沿用 include-all-proxies：多台住宅 IP 时会全部进组，一旦锁定的那台
     // 从配置里消失（改名/换订阅/改覆写），内核按「第一个存活成员」回落 → 落到另一台
     // 住宅节点上，出口 IP 悄悄变了，日志里只有一句「已切换到 xxx」。
-    // 锁定模式把成员写死成 [pin, REJECT]：pin 没了/挂了就是 REJECT，没有第二台可接手。
-    // pin 在本次节点列表里找不到时（比如桌面端手写错了名字）退回旧的全收编模式，
+    // 锁定模式把成员写死成 [primary, REJECT]：指定那台没了/挂了就是 REJECT，没有第二台可接手。
+    // 锁定的名字在本次节点列表里找不到时（比如桌面端手写错了名字）退回旧的全收编模式，
     // 而不是把不存在的名字写进 proxies —— 那会让内核直接拒载整份配置。
-    const pinName = RESIDENTIAL.pinOnly ? String(RESIDENTIAL.nodeName || '').trim() : '';
-    const pinOk = !!pinName && allProxyNames.indexOf(pinName) >= 0;
-    if (pinName && !pinOk) {
+    const primaryName = primaryNodeName(); // 旧名 nodeName 在这里也一并被收编
+    const pinOk = RESIDENTIAL.pinOnly && !!primaryName && allProxyNames.indexOf(primaryName) >= 0;
+    if (RESIDENTIAL.pinOnly && primaryName && !pinOk) {
       console.log(
-        `[住宅出口] 锁定节点「${pinName}」不在本次节点列表（${allProxyNames.length} 个），` +
+        `[住宅出口] 锁定节点「${primaryName}」不在本次节点列表（${allProxyNames.length} 个），` +
           '退回「全部住宅节点可选」模式',
       );
     }
@@ -1993,10 +2010,10 @@ function main(config) {
       name: RESIDENTIAL.group,
       type: 'select',
       // 成员里永远没有 AI：住宅出口只允许「住宅 / 阻断」，escapeToAI 是唯一例外且默认关。
-      proxies: [RESIDENTIAL.nodeName, 'REJECT', ...(RESIDENTIAL.escapeToAI ? ['AI'] : [])].filter(Boolean),
+      proxies: [primaryName, 'REJECT', ...(RESIDENTIAL.escapeToAI ? ['AI'] : [])].filter(Boolean),
     };
     if (!pinOk) {
-      // 非锁定模式（nodeName 为空 / 找不到 / pinOnly: false）：内核级收编，
+      // 非锁定模式（primary 为空 / 找不到 / pinOnly: false）：内核级收编，
       // 覆写 YAML 排在 smart.js 之后也没关系，节点注入后照样进组。
       resiGroup['include-all-proxies'] = true;
       resiGroup.filter = RESIDENTIAL.nodePattern;
