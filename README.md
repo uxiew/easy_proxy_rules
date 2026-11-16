@@ -68,7 +68,7 @@ curl -x http://127.0.0.1:7890 https://claude.ai/cdn-cgi/trace | grep -E '^ip=|^l
 | ③ `TRAFFIC` | 国内直连、Apple 直连 |
 | ④ `AI_STATIC_TO_AI` | AI 静态资源 / 安装包走机场 |
 | ⑤ `NARROW_TUN` | 窄 TUN（只把 Google 段塞进内核） |
-| ⑥ `REGION_PRIORITY` | `AUTO`/`AI` 的国家优先顺序 |
+| ⑥ `REGION_PRIORITY` | `AUTO`/`AI` 的国家优先顺序（全部地区组按序，`OT` 只兜底） |
 | ⑦ `WEBRTC_GUARD` | 可选 STUN 拦截（**默认关**，会打断语音通话） |
 
 逐项默认值与取舍见 [配置项详解](docs/configuration.md)。

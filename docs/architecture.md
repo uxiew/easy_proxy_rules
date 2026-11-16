@@ -49,9 +49,9 @@ mihomo 会同时开几个入口，**用途完全不同**，配错会绕过规则
 | `🚀 全部节点`                          | select   | `DIRECT` + 全部节点                      | 手动挑单个节点，绕开所有自动逻辑                                                                                        |
 | `住宅出口`                             | select   | `REJECT`（默认）→ `🏠 住宅-JP`（默认**不含** `AI`） | **AI 风控面专用出口**，`include-all-proxies` + `filter: 🏠\|IP-` 动态收编住宅节点；默认落在 `REJECT` = fail-closed，手动选一次节点后由 `store-selected` 记住；`escapeToAI: false` 时切不出机场 |
 | `前置-亚洲`                            | url-test | 亚洲机场节点（日/港/台/韩/新/越/马/泰/菲）            | 住宅节点的 `dialer-proxy`，只负责「本机 → 机场亚洲 → 住宅」这一跳；`tolerance: 200` 防抖 |
-| `AUTO`                             | fallback | `JP` → `SG` → `KR` → `OT`            | 默认出口。**按国家顺序**取第一个活的（日本优先），国家内部由地区组按延迟挑最快；三个地区全挂才落到 `OT` |
-| `AI`                               | fallback | `JP` → `SG` → `KR` → `OT`            | 机场 AI 组（Gemini、Google、中转站），**不含住宅节点**；顺序规则与 `AUTO` 相同 |
-| `OT`                               | url-test | 除 `JP/SG/KR` 以外的全部节点                | 「其它地区」兜底，`filter: '.*'` + 排除已单列地区，保证一个节点只属于一个地区组 |
+| `AUTO`                             | fallback | **全部地区组**按顺序：`JP` → `SG` → `KR` → `HK` → `TW` → `US` → `UK` → `DE` → `FR` → `CA` → `EU` → `OT` | 默认出口。**按国家顺序**取第一个活的（日本优先），国家内部由地区组按延迟挑最快；所有地区组都挂才落到 `OT` |
+| `AI`                               | fallback | 与 `AUTO` 同一批地区组                  | 机场 AI 组（Gemini、Google、中转站），**不含住宅节点**；顺序规则与 `AUTO` 相同 |
+| `OT`                               | url-test | 只收**没有单列国家**的节点（土耳其/印度/巴西…）      | 「其它地区」兜底：`filter: '.*'` 再排除全部地区组，保证一个节点只属于一个组；**永远排在最后一位**，订阅里没有这类节点时整组被自动剔除 |
 | `CATCH`                            | select   | `AUTO` / `DIRECT` / `REJECT`         | `MATCH` 兜底 + **手动总闸**                                                                                   |
 | `ADS_FILTER`                       | select   | `REJECT` / `DIRECT`                  | 广告/统计域名开关                                                                                               |
 | `NSFW`                             | fallback | `JP/TW/KR/US/DE`                     | NSFW 规则出口                                                                                               |
@@ -105,14 +105,20 @@ mihomo 会同时开几个入口，**用途完全不同**，配错会绕过规则
 
 ### 国家优先（`REGION_PRIORITY`）
 
-`AUTO` / `AI` 不是「谁快用谁」，而是**先按国家顺序，国家内部再挑最快**：
+`AUTO` / `AI` 不是「谁快用谁」，而是**先按国家顺序，国家内部再挑最快**，而且要把**全部地区组**都串进来：
 
 ```
-AUTO = fallback[ JP(url-test) , SG(url-test) , KR(url-test) , OT(url-test) ]
-                 ↑ 国家内部挑最快    ↑ 国家之间按书写顺序取第一个活的
+AUTO = fallback[ JP , SG , KR , HK , TW , US , UK , DE , FR , CA , EU , OT ]
+                  ↑ 每个地区组自己仍是 url-test：国家内部挑最快
+                  ↑ fallback 按书写顺序取第一个「活的」：国家之间按顺序优先
 ```
 
-效果：只要日本还有一台活的就待在日本；日本全挂 → 新加坡 → 韩国 → 其它地区。
+效果：只要日本还有一台活的就待在日本；日本全挂 → 新加坡 → 韩国 → 港台 → 美英德法加 → 欧洲其它
+→ 最后才是 `OT`（土耳其/印度这类没有单列的国家）。
+
+**只串 `JP/SG/KR`、把其余国家一起丢进 `OT` 混着选是不行的**：`OT` 是 `url-test`，
+它会按延迟在港/台/美/英之间跳，出口国家随之漂移 —— 对 AI 账号来说就是「换国家登录」。
+所以现在的分工是「每个国家一个档位，`OT` 只收没单列的国家」。
 
 改顺序 / 换国家只动配置区（`smart.js` 第 0 部分 ⑥）：
 
@@ -120,10 +126,11 @@ AUTO = fallback[ JP(url-test) , SG(url-test) , KR(url-test) , OT(url-test) ]
 const REGION_PRIORITY = {
   enabled: true,
   targets: {
-    AUTO: ['JP', 'SG', 'KR'],   // 越靠前越优先
-    AI:   ['JP', 'SG', 'KR'],   // 可以和 AUTO 不同，比如 AI 只要 ['JP','US']
+    // 越靠前越优先。全部地区组都要写进来，漏一个自检会直接报错
+    AUTO: ['JP', 'SG', 'KR', 'HK', 'TW', 'US', 'UK', 'DE', 'FR', 'CA', 'EU'],
+    AI:   ['JP', 'SG', 'KR', 'HK', 'TW', 'US', 'UK', 'DE', 'FR', 'CA', 'EU'],  // 可以和 AUTO 不同，比如只要 ['JP','US']
   },
-  othersGroup: 'OT',            // '' = 不留逃生口，全挂就断（严格锁定三国）
+  othersGroup: 'OT',            // 未单列国家的兜底；'' = 不生成（这些节点只能在「全部节点」里手选）
   interval: 120,
 };
 ```
@@ -134,15 +141,18 @@ const REGION_PRIORITY = {
 
 三点要知道：
 
-- **`OT` 只是兜底，不是第二梯队。** 它是 `filter: '.*'` 再排除 `JP/SG/KR` 的节点，保证「一个节点只属于一个
-  地区组」，不会出现同一台被两套健康检查重复测。加新地区（比如想优先 `US`）就在 `targets` 里写
-  `['JP','SG','KR','US']`，`OT` 会自动把 `US` 也排除掉，不用改 `OT`。
+- **`OT` 只是最后的兜底，不是第二梯队。** 它的成员是「没有单列国家的节点」，永远排在地区顺序之后；
+  加新地区就把它加进 `targets`，`OT` 会自动把该地区排除掉，不用改 `OT`。
+  订阅里全是常见国家时 `OT` 会变成空组并被自动剔除，**面板上根本看不到它**，这是正常的。
 - **`lazy: false` 是必须的。** `groupBaseOption` 默认 `lazy: true`（第一次用到才测速），
   `fallback` 在没有任何健康数据时只能按内部顺序盲猜，冷启动第一波请求会落到错的地区 ——
   和 `前置-亚洲` 当初踩的是同一个坑。
 - **订阅里没有某个地区时不会报错。** `keepRefs` 组在组装阶段会剔除「因为零节点被删掉的组」
   （如订阅只剩日本 → `AUTO` 自动变成 `fallback[JP]`），否则内核报 `proxy group AUTO: proxy KR not found`，
   整份配置加载失败。
+
+「`AUTO` 必须覆盖全部地区组」已经写成构建期断言（`build-flclash.js` 的 `REGION_KEYS`）：
+漏掉某个地区组、或者顺序被改乱，`node build-flclash.js` 会直接失败并指出缺了谁。
 
 改完记得在 Clash Party 里点一次 ↻ 重新生成配置；验证：
 

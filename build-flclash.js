@@ -190,6 +190,10 @@ const MIN_ENTRIES = {
   'ruleset/auto-extra.list': 2, // 当前 3
   'ruleset/webrtc-guard.list': 10, // 当前 11
 };
+// 地区组白名单（smart.js 里带 filter 的那批固定 key）。
+// 用途：断言「AUTO 覆盖全部地区组」——只串 JP/SG/KR 而把其余丢进 OT 混选，
+// 出口国家就会在港/台/美/英之间漂移。加新地区组时必须同步这里和 smart.js 的 targets。
+const REGION_KEYS = ['JP', 'SG', 'KR', 'HK', 'TW', 'US', 'UK', 'DE', 'FR', 'CA', 'EU'];
 
 function readList(file) {
   const full = path.join(ROOT, file);
@@ -332,6 +336,30 @@ function inspect(text, options) {
   }
   if (options.expectNoResidential && residential) {
     problems.push('无家宽构建仍生成了「住宅出口」组');
+  }
+
+  // AUTO / AI 的成员必须是「所有仍然存在的地区组，按国家顺序 + OT 收尾」
+  for (const name of ['AUTO', 'AI']) {
+    const group = groups.find((g) => g.name === name);
+    if (!group) {
+      problems.push(`缺少 ${name} 组`);
+      continue;
+    }
+    if (group.type !== 'fallback') {
+      problems.push(`${name} 的类型是 ${group.type}，应为 fallback（国家顺序即优先级）`);
+      continue;
+    }
+    const members = group.proxies || [];
+    const missing = REGION_KEYS.filter((k) => nameSet.has(k) && !members.includes(k));
+    if (missing.length) problems.push(`${name} 未覆盖地区组：${missing.join(', ')}（出口会在国家之间漂移）`);
+    const present = REGION_KEYS.filter((k) => nameSet.has(k));
+    const ordered = members.filter((m) => present.includes(m));
+    if (ordered.join(',') !== present.join(',')) {
+      problems.push(`${name} 的地区成员顺序与 REGION_KEYS 不一致：${ordered.join(' → ')}`);
+    }
+    if (members.includes(name)) problems.push(`${name} 的成员里含自身`);
+    const ot = members.indexOf('OT');
+    if (ot >= 0 && ot !== members.length - 1) problems.push(`${name} 里的 OT 不在最后一位（会抢占地区组）`);
   }
 
   // 规则集条目数下限（静态）

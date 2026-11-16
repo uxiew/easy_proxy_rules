@@ -17,7 +17,7 @@
 | ③  | `TRAFFIC`         | 省流量：国内直连、Apple 直连                  |
 | ④  | `AI_STATIC_TO_AI` | AI 静态资源 / 安装包 → 机场 AI 组            |
 | ⑤  | `NARROW_TUN`      | 窄 TUN：只把 Google 段塞进内核（救 `language_server`） |
-| ⑥  | `REGION_PRIORITY` | `AUTO`/`AI` 的国家优先顺序（JP → SG → KR → 其它） |
+| ⑥  | `REGION_PRIORITY` | `AUTO`/`AI` 的国家优先顺序（全部地区组：JP → SG → KR → 港台 → 美英德法加 → 欧洲 → OT 兜底） |
 | ⑦  | `WEBRTC_GUARD`    | 可选：拦截常见 STUN 探测（默认关，会打断语音通话，见下） |
 
 | 配置                             | 默认              | 作用                                                                                                   |
