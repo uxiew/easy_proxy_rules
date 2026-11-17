@@ -433,3 +433,60 @@ primary: '住宅-JP',         // 或者名字里的稳定片段
 
 > 这类订阅的节点名常带动态速度标记（`🇮🇹 025 | ⬇️ 379KB/s`），每次更新订阅都在变。
 > 抄短片段比抄全名耐用；片段太长反而容易因为速度标记变化而失配。
+
+## 坑 30 · 住宅端口「连得上但一握手就被 reset」：是住宅商拒了，不是配置错
+
+自备住宅节点（`+proxies` 里手写的那台）最常见的失效方式：TCP 能连上（`nc -z` 显示 OPEN），
+但 SOCKS5 第一步就断。三个地方同时出现就是同一个原因：
+
+```bash
+# 1) 面板延迟测试：不再是 timeout，而是一句 error
+curl -s --noproxy '*' --unix-socket "$SOCK" \
+  "http://localhost/proxies/<节点名 URL 编码>/delay?url=http%3A%2F%2Fwww.gstatic.com%2Fgenerate_204&timeout=6000"
+# {"message":"An error occurred in the delay test"}
+
+# 2) 住宅专用端口直接 502（内核对上游握手失败）
+curl -s -m 10 -x http://127.0.0.1:7865 http://www.gstatic.com/generate_204 -o /dev/null -w '%{http_code}\n'
+
+# 3) 内核日志：本机 → 住宅端口，读的第一下就被 reset
+grep 'dial 住宅出口.*error' <内核日志>
+# ... error: read tcp 192.168.31.24:56094->203.0.113.10:7012: read: connection reset by peer
+```
+
+**能连上 ≠ 能用**。握手阶段被 reset 只有四种原因，全在住宅商那侧：
+
+| 原因 | 复核方式 |
+| --- | --- |
+| 地址 / 端口 / 账号密码轮换了（换了出口 IP、换了子账号） | 回面板抄一份新的端点 |
+| 来源 IP 不在白名单（家里是动态 IP，换过一次就断） | 白名单里补上当前公网 IP，或改用账号密码认证 |
+| 套餐到期 / 子账号被删 | 面板里看余额和账号状态 |
+| 那条其实不是 SOCKS5 代理（`type` 写错） | 服务商给的是 HTTPS 代理就写 `type: http` |
+
+脚本这边不用改：组里依旧是 `[住宅节点, REJECT]`，节点名不变时 `primary` 也不用动，
+把 `+proxies` 里的 `server` / `port` / `username` / `password` 换成新的、重载配置即可。
+
+> 这也是 `pinOnly` 的价值：住宅挂了组里没有第二个成员能接手，`Claude` 那几个域名是
+> **直接阻断**而不是悄悄从机场出去 —— 症状是「AI 全连不上」，而不是「出口 IP 悄悄变了」。
+
+## 坑 31 · 全局模式下规则整份失效：`住宅出口` 一次都不会被用到
+
+Clash Party 的「全局 / Global」模式会让内核绕过 `rules`，所有连接都投给 `GLOBAL` 组。
+于是 `住宅出口`、`AI`、`前置-亚洲` 全部空转，日志里看不到任何 `using 住宅出口`：
+
+```bash
+# 当前模式 + GLOBAL 选中的是谁
+curl -s --noproxy '*' --unix-socket "$SOCK" http://localhost/configs \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['mode'])"        # global ← 就是它
+curl -s --noproxy '*' --unix-socket "$SOCK" http://localhost/proxies/GLOBAL \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['now'])"
+
+# 证据：今天所有连接都走 GLOBAL，住宅出口 0 条
+grep -c 'using GLOBAL' <内核日志>       # 7096
+grep -c 'using 住宅出口' <内核日志>      # 0
+```
+
+`GLOBAL` 落到 `DIRECT` 时表现最迷惑：整机直连、`claude.ai` / `api.openai.com` 全超时，
+看起来像「住宅节点坏了」，其实是分流压根没跑。
+
+**这条路把 fail-closed 契约整个关掉了**：全局模式里没有「住宅或阻断」，只有
+「GLOBAL 里选了谁」。切回「规则」模式，再用上面两条命令确认 `mode=rule`、住宅组有命中。

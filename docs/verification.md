@@ -54,6 +54,30 @@ curl -s --noproxy '*' --unix-socket "$SOCK" http://localhost/proxies \
   | python3 -c "import sys,json;p=json.load(sys.stdin)['proxies'];print(p['前置-亚洲'].get('now'), len(p['前置-亚洲']['all']))"
 ```
 
+## 住宅节点本身活没活
+
+组里只有一台住宅（`pinOnly`），它一挂，AI 侧就是「全阻断」而不是「变慢」。所以先分清
+是**分流没跑到**还是**节点自己死了**——两步：
+
+```bash
+# 1) 分流跑没跑：mode 必须是 rule，否则后面全是白测
+curl -s --noproxy '*' --unix-socket "$SOCK" http://localhost/configs \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['mode'])"
+
+# 2) 节点活没活：住宅专用端口打一次，期望 204 / 住宅 IP
+curl -s -m 10 -x http://127.0.0.1:7865 http://www.gstatic.com/generate_204 -o /dev/null -w '%{http_code}\n'
+curl -s -m 10 -x socks5h://127.0.0.1:7865 https://claude.ai/cdn-cgi/trace | grep -E '^ip=|^loc='
+```
+
+结果对照：
+
+| 现象 | 结论 | 去哪 |
+| --- | --- | --- |
+| `7865` 返回 204、`ip=` 是住宅 IP | 链通了，慢就是节点/线路本身 | — |
+| `7865` 返回 **502**，面板延迟测试报 `An error occurred in the delay test` | 内核对**上游**握手失败：住宅商的端点/账号轮换，或来源 IP 不在白名单 | [坑 30](troubleshooting.md) |
+| `7865` 返回 502，日志里 `using GLOBAL` 而不是 `using 住宅出口` | 内核在全局模式，规则没跑 | [坑 31](troubleshooting.md) |
+| 组里只剩 `['REJECT']` | 节点名对不上，`primary` 锁不上 | 上方表格第 1 行 |
+
 ## 国内直连兜底的三答案验收
 
 只看一个页面通不通，判断不了 `GEOIP,CN` 兜底有没有误伤。同一个域名在不同网络下会拿到
