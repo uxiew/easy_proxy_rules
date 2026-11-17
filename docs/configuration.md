@@ -291,6 +291,7 @@ proxies: [RESIDENTIAL.primary, 'REJECT']   // escapeToAI: true 时 → [primary,
 | includes | `'住宅-JP'` | 名字里含这段，且**恰好命中 1 台** |
 
 解析顺序：完整匹配 → includes 唯一命中 → 都不行就按 `pinMiss` 处理（默认阻断）。
+写成对象（`{ ip }` / `{ server }`）会被当作锁定失败，不会静默忽略。
 
 ```js
 primary: '🏠 住宅-JP',   // 完整名
