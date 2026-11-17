@@ -8,25 +8,25 @@
 
 ## 应用级分流（指定应用走指定组）
 
-把「某个程序」直接按到「某个组 / 节点」，不依赖域名规则。**配置只有一处**：`smart.js` 开头「第 0 部分：用户配置区」里的 `APP_PROXY`。
+把「某个程序」直接按到「某个组 / 节点」，不依赖域名规则。**配置只有一处**：
+`DEFAULT_CONFIG.appProxy`（[默认值](../smart.js)），平时用 `x-smart` 覆盖：
 
-```js
-const APP_PROXY = {
-  // 方式一：专用端口（仅桌面端）
-  ports: [
-    { name: 'residential-in', port: 7865, proxy: '住宅出口' },   // 默认启用
-    // { name: 'ai-in', port: 7866, proxy: 'AI' },
-    // { name: 'us-in', port: 7867, proxy: 'US' },
-  ],
-  // 方式二：进程名 / 路径 / 路径正则 / 包名 / UID（桌面 + Android 通用）
-  processes: [
-    // { value: 'Telegram', proxy: 'US' },
-    // { value: '/Applications/Cursor.app/Contents/MacOS/Cursor', type: 'path', proxy: 'AI' },
-    // { value: '^/Applications/Claude\\.app/', type: 'path-regex', proxy: '住宅出口' },  // Electron 整个 App
-    // { value: 'org.telegram.messenger', proxy: 'US' },   // Android 包名
-  ],
-};
+```yaml
+x-smart:
+  appProxy:
+    # 方式一：专用端口（仅桌面端）
+    ports:
+      - { name: residential-in, port: 7865, proxy: 住宅出口 }   # 默认启用
+      - { name: ai-in, port: 7866, proxy: AI }
+    # 方式二：进程名 / 路径 / 路径正则 / 包名 / UID（桌面 + Android 通用）
+    processes:
+      - { value: Telegram, proxy: US }
+      - { value: '/Applications/Cursor.app/Contents/MacOS/Cursor', type: path, proxy: AI }
+      - { value: '^/Applications/Claude\.app/', type: path-regex, proxy: 住宅出口 }  # Electron 整个 App
+      - { value: org.telegram.messenger, proxy: US }   # Android 包名
 ```
+
+> 数组是**整体替换**：写了 `ports` 就等于换掉默认那条 7865，想保留就一起写上。
 
 ### 方式一：专用端口（桌面端）
 
@@ -73,10 +73,10 @@ Android 上是**三层**机制，别混：
 | 层               | 在哪配                       | 决定什么                                  |
 | --------------- | ------------------------- | ------------------------------------- |
 | ① 哪些 App 进 VPN  | FlClash → 应用 页            | 没选中的 App 直接走物理网络，连内核都不进               |
-| ② 进内核后走哪个组      | `APP_PROXY.processes`（包名） | 同一个 VPN 内，Telegram 走 US、Chrome 走 AUTO |
+| ② 进内核后走哪个组      | `appProxy.processes`（包名） | 同一个 VPN 内，Telegram 走 US、Chrome 走 AUTO |
 | ③ 同一 App 内按域名细分 | `rules`                   | 例如 Chrome 里 claude.ai 走住宅、其余走 AUTO    |
 
-> **仓库默认已启用 6 条**（见 `smart.js` 的 `APP_PROXY.processes`）：
+> **仓库默认已启用 6 条**（见 `smart.js` 的 `appProxy.processes`）：
 >
 > | 规则 | 目标 | 生效端 |
 > |---|---|---|
@@ -184,20 +184,27 @@ TCP [2409:...]:56056->[2001:4860:4845:400::]:443       (SYN_SENT)   ← Google I
 思路很简单：TUN 不接管 `0.0.0.0/1`，只接管 `language_server` 实际会连的那几个 Google 段。
 局域网、Tailscale、内网服务、国内站点**完全不经过内核**，默认路由仍是路由器。
 
-脚本里已经内置，改 `smart.js` 第 0 部分的 ⑤ `NARROW_TUN` 即可：
+脚本里已经内置，改 `narrowTun` 即可（`x-smart` 覆盖）：
 
-```js
-const NARROW_TUN = {
-  enabled: true,                 // false = 恢复「面板说了算」
-  routeAddress: [
-    '142.250.0.0/15', '172.217.0.0/16', '172.253.0.0/16',
-    '216.58.0.0/16', '74.125.0.0/16', '108.177.0.0/17',
-    '64.233.160.0/19', '72.14.192.0/18', '173.194.0.0/16',
-    '209.85.128.0/17',
-    '2001:4860::/32', '2404:6800::/32', '2607:f8b0::/32',
-  ],
-  stack: 'Mixed',
-};
+```yaml
+x-smart:
+  narrowTun:
+    enabled: true              # false = 恢复「面板说了算」
+    routeAddress:
+      - 142.250.0.0/15
+      - 172.217.0.0/16
+      - 172.253.0.0/16
+      - 216.58.0.0/16
+      - 74.125.0.0/16
+      - 108.177.0.0/17
+      - 64.233.160.0/19
+      - 72.14.192.0/18
+      - 173.194.0.0/16
+      - 209.85.128.0/17
+      - '2001:4860::/32'
+      - '2404:6800::/32'
+      - '2607:f8b0::/32'
+    stack: Mixed
 ```
 
 生效后 `netstat` 里只会多出这些路由，默认路由纹丝不动：
@@ -232,7 +239,7 @@ lsof -nP -a -p $(pgrep -f "Resources/bin/language_server" | head -1) -iTCP | gre
 
 ##### AI 客户端长连接（`includeAI`，2026-11-07）
 
-`NARROW_TUN.includeAI` 解决另一类直连：ChatGPT 桌面端的 Remote Control / Codex enrollment
+`narrowTun.includeAI` 解决另一类直连：ChatGPT 桌面端的 Remote Control / Codex enrollment
 由后台进程建常驻 WebSocket，它**不读 macOS 系统代理**，自己用系统 DNS 解析 → 拿到被污染的
 假 IP（实测 `chatgpt.com` → `108.160.169.174`）→ 直连超时，桌面端报
 `Pairing code unavailable: Remote control failed to connect`，配对码/二维码都生成不出来。
@@ -288,7 +295,7 @@ netstat -rn -f inet | grep utun1500       # 有 198.18/16、223.5.5.5，没有 0
 ```
 
 > ⚠️ Clash Party 面板的 TUN 开关会写回 `mihomo.yaml` 的 `tun.enable`，与脚本输出不一致。
-> 三处要同时对齐：`smart.js` 的 `NARROW_TUN`、`override/19eecbc78fc.js` 副本、
+> 三处要同时对齐：`smart.js` 的 `narrowTun`、`override/19eecbc78fc.js` 副本、
 > `mihomo.yaml` 的 `tun.enable`。只改脚本会被面板覆盖成 `false`。
 
 ###### 同一站点的「页面」和「登录态」必须同出口
@@ -360,7 +367,7 @@ Talkatone 实测现场：`进程 com.talkatone.android(10410)` / `规则 Match` 
 
 | 步骤 | 做什么                             | 作用                                                 |
 | -- | ------------------------------- | -------------------------------------------------- |
-| ①  | `APP_PROXY.processes` 写包名 / 进程名 | 唯一能按住「纯 IP 连接」的手段，域名规则救不了                          |
+| ①  | `appProxy.processes` 写包名 / 进程名 | 唯一能按住「纯 IP 连接」的手段，域名规则救不了                          |
 | ②  | FlClash 开「DNS 劫持 / Fake-IP」     | 裸 53 被内核接管 → 返回 fake-ip → 连接重新带上域名，规则恢复可用          |
 | ②′ | 开不了劫持：加 `DST-PORT,53,US`        | 仍走机场，但解析地区与出口对齐，避免拿到亚洲边缘                           |
 | ③  | 语音类别指望住宅                        | 住宅 socks5 不支持 UDP，**别**去开 `udp: true`，多数住宅商开了直接连不上 |

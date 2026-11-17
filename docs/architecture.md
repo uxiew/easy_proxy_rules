@@ -16,7 +16,7 @@ mihomo 会同时开几个入口，**用途完全不同**，配错会绕过规则
 | 7891     | SOCKS5               | ✅ 按规则匹配    | 同上                                      | 只支持 SOCKS5 的程序                  |
 | 7892     | HTTP                 | ✅ 按规则匹配    | 同上                                      | 只支持 HTTP 代理的程序                  |
 | **7865** | mixed（HTTP + SOCKS5） | ❌ **不走规则** | **强制「住宅出口」组**（静态住宅 IP）                  | Proxifier、Claude Code、不走系统代理的程序 |
-| 7866+    | mixed                | ❌ 不走规则     | 由 `APP_PROXY.ports` 指定                  | 自建，见 [应用级分流](traffic-entry.md)                     |
+| 7866+    | mixed                | ❌ 不走规则     | 由 `appProxy.ports` 指定                  | 自建，见 [应用级分流](traffic-entry.md)                     |
 | ~~9090~~ | HTTP                 | —          | 控制 API（`external-controller`，默认留空关闭）    | 调试 / 面板                         |
 
 ### 7865 和 7890 的区别（最容易搞混）
@@ -33,9 +33,9 @@ mihomo 会同时开几个入口，**用途完全不同**，配错会绕过规则
 - **7865**：不管访问什么域名，全部从静态住宅 IP 出去。给那些「不走系统代理」的程序用  
   （Electron 应用、游戏客户端、终端工具、Claude Code），配合 Proxifier 指向 `127.0.0.1:7865` 即可。
 
-> 端口由 `smart.js` 顶部的 `APP_PROXY.ports` 控制（默认只有 7865 → 住宅出口），  
+> 端口由 `smart.js` 顶部的 `appProxy.ports` 控制（默认只有 7865 → 住宅出口），  
 > 删掉/注释那一条即关闭。主入口端口（7890/7891/7892）由 Clash Party 的 `mihomo.yaml` 控制，本脚本不改。  
-> 旧的 `RESIDENTIAL.dedicatedPort` 仍兼容，但只作为「补一条 residential-in」的兜底。
+> 旧的 `residential.dedicatedPort` 仍兼容，但只作为「补一条 residential-in」的兜底。
 
 
 ---
@@ -106,7 +106,7 @@ mihomo 会同时开几个入口，**用途完全不同**，配错会绕过规则
 > `NSFW`（顺序有意义、抖动无所谓）和 `AUTO`/`AI`（**国家顺序有意义**，见下节）。  
 > 不要把 `住宅出口` 改成 `url-test`——它会为了几十毫秒的延迟差反复换出口 IP，直接触发账号风控。
 
-### 国家优先（`REGION_PRIORITY`）
+### 国家优先（`regionPriority`）
 
 `AUTO` / `AI` 不是「谁快用谁」，而是**先按国家顺序，国家内部再挑最快**，而且要把**全部地区组**都串进来：
 
@@ -123,19 +123,17 @@ AUTO = fallback[ JP , SG , KR , HK , TW , US , UK , DE , FR , CA , EU , OT ]
 它会按延迟在港/台/美/英之间跳，出口国家随之漂移 —— 对 AI 账号来说就是「换国家登录」。
 所以现在的分工是「每个国家一个档位，`OT` 只收没单列的国家」。
 
-改顺序 / 换国家只动配置区（`smart.js` 第 0 部分 ⑥）：
+改顺序 / 换国家只动配置（默认值在 `DEFAULT_CONFIG.regionPriority`，推荐用 `x-smart` 覆盖）：
 
-```js
-const REGION_PRIORITY = {
-  enabled: true,
-  targets: {
-    // 越靠前越优先。全部地区组都要写进来，漏一个自检会直接报错
-    AUTO: ['JP', 'SG', 'KR', 'HK', 'TW', 'US', 'UK', 'DE', 'FR', 'CA', 'EU'],
-    AI:   ['JP', 'SG', 'KR', 'HK', 'TW', 'US', 'UK', 'DE', 'FR', 'CA', 'EU'],  // 可以和 AUTO 不同，比如只要 ['JP','US']
-  },
-  othersGroup: 'OT',            // 未单列国家的兜底；'' = 不生成（这些节点只能在「全部节点」里手选）
-  interval: 120,
-};
+```yaml
+x-smart:
+  regionPriority:
+    targets:
+      # 越靠前越优先。全部地区组都要写进来，漏一个自检会直接报错
+      AUTO: [JP, SG, KR, HK, TW, US, UK, DE, FR, CA, EU]
+      AI:   [JP, SG, KR, HK, TW, US, UK, DE, FR, CA, EU]   # 可以和 AUTO 不同，比如只要 [JP, US]
+    othersGroup: OT      # 未单列国家的兜底；'' = 不生成（这些节点只能在「全部节点」里手选）
+    interval: 120
 ```
 
 为什么不再用全量 `url-test`：实测日本 42ms、新加坡 28ms 时，全量 url-test **永远**挂在新加坡，
@@ -179,7 +177,7 @@ python3 -c "import sys,json;d=json.load(sys.stdin)['proxies'];[print(g,d[g]['typ
 
 覆盖 `proxy-groups` 之后还会再扫一遍所有节点的 `dialer-proxy`：指向不存在的名字时
 改指 `前置-亚洲`，连 `前置-亚洲` 都没建就删掉该字段 —— 宁可退回本机直连，
-也不留一条让内核起不来的引用。开关是顶部的 `KEEP_SUB_GROUPS`。
+也不留一条让内核起不来的引用。开关是顶部的 `keepSubGroups`。
 
 ---
 
@@ -205,7 +203,7 @@ ruleset/
 ├── github.yaml           GitHub 域名 → AUTO
 ├── global.yaml           国外域名大全（forGlobal，33k 行，走 AUTO）
 ├── telegram.yaml         Telegram 网段/域名 → 代理
-├── webrtc-guard.list     WebRTC/STUN 探测拦截（可选，默认不启用，见 `WEBRTC_GUARD`）
+├── webrtc-guard.list     WebRTC/STUN 探测拦截（可选，默认不启用，见 `webrtcGuard`）
 ├── custom.list           自定义规则
 ├── nsfw.list             NSFW 规则
 └── empty.list            FlClash 占位空集（订阅规则引用未知规则集时指向它，避免拒载）

@@ -34,564 +34,240 @@
  * 结论：所有 YAML 覆写都必须排在 smart.js **后面**，多写几个文件也不会互相覆盖，
  *       只要每个文件都用 `+` 前缀（`+proxies` / `+rules` / `+proxy-groups`）。
  *
- * 【想改配置？】不用翻文件：紧跟着的「第 0 部分：用户配置区」就是全部可调项，
- * 四个对象从上到下，每个都自带注释和模板，取消注释即生效：
- *   ① APP_PROXY        应用级分流：专用端口 / 进程名 / Android 包名   ← 最常改
- *   ② RESIDENTIAL      住宅出口：总开关、组名、跳板组、专用端口
- *   ③ TRAFFIC          省流量：国内直连、Apple 直连
- *   ④ AI_STATIC_TO_AI  AI 静态资源 / 安装包 → 机场 AI 组（不烧住宅流量）
+ * 【想改配置？】紧跟着的「第 0 部分」就是全部可调项，只有两个对象：
+ *   DEFAULT_CONFIG  九个顶层键的默认值（residential / appProxy / traffic / narrowTun …）
+ *   USER_CONFIG     你的覆盖项，只写要改的键，对象逐字段合并
  * 再往下才是 CDN 源、节点清洗、分组、规则生成 —— 日常不用看。
  *
- * 【更推荐：不碰本文件】下面那个 USER_CONFIG（桌面端用覆写 YAML 的 x-smart，
- * 键名一样）能覆盖第 0 部分的所有字段。远程引用本脚本时改这里才不会被下次更新冲掉，
- * 完整键表和示例见 docs/custom-config.md。
+ * 【更推荐：不碰本文件】桌面端写覆写 YAML 的 x-smart，手机端写
+ * flclash-credentials.json 的 config 段（构建时注入到 flclash.js 顶部），
+ * 键名与 DEFAULT_CONFIG 完全一致。远程引用本脚本时改这里才不会被下次更新冲掉，
+ * 完整键表、合并规则与校验行为见 docs/custom-config.md。
  */
 
 // ============================================================
-// 第 0 部分：用户配置区（日常只改这里，往下全是逻辑）
+// 第 0 部分：配置（默认值 + 你的覆盖）
 // ============================================================
+// 只有两样东西：
+//   DEFAULT_CONFIG —— 全部默认值，键名与 x-smart 完全一致（一般不用改）
+//   USER_CONFIG    —— 你的覆盖项，只写要改的（三个入口里优先级最低的一个）
+//
+// 改配置不必动本文件，按机器分开写更省事：
+//   桌面端：覆写 YAML 里的 x-smart（要排在 smart.js 之前）
+//   手机端：flclash-credentials.json 的 config 段，构建时注入到 flclash.js 顶部
+//   单文件：直接改下面的 USER_CONFIG
+// 键表 / 合并规则 / 校验行为见 docs/custom-config.md，桌面模板见 x-smart.example.yaml。
+//
+// 九个顶层键：
+//   residential     住宅出口：锁哪一台、锁不上怎么办、跳板组
+//   appProxy        应用级分流：专用端口 / 进程名 / 包名          ← 最常改
+//   traffic         省流量：国内直连、Apple 直连
+//   aiStaticToAI    AI 静态资源 / 安装包 → 机场（不烧住宅流量）
+//   narrowTun       窄 TUN：只把 Google 网段塞进内核
+//   regionPriority  AUTO / AI 按国家顺序选出口
+//   webrtcGuard     拦 STUN 探测（默认关）
+//   keepSubGroups   保留订阅自带策略组
+//   modeGuard       内核被切成全局/直连时改回规则模式
+
+const DEFAULT_CONFIG = {
+  // ------------------------------------------------------------
+  // 住宅出口：本机 → 机场亚洲节点 → 住宅 IP
+  // 凭据不在这里 —— 节点写在覆写 YAML 的 +proxies，脚本只负责建组和写规则。
+  // 组内兜底默认只有 [住宅节点, REJECT]：节点挂了就阻断，不会静默走机场。
+  // ------------------------------------------------------------
+  residential: {
+    // true 建住宅链 / false 不建（AI 规则改投 AI 组）/ 'auto' 看运行时有没有住宅节点
+    enabled: true,
+    group: '住宅出口', // 组名，规则引用它；别在覆写 YAML 里重复定义同名组
+    // 锁哪一台：只写节点名。完整匹配优先，没命中再按 includes（须恰好命中 1 台）。
+    // 留空 = 不锁（全部住宅节点都进组，默认选第一台）。
+    primary: '',
+    pinOnly: true, // 锁定后组里只放这一台：出口 IP 悄悄换一个，比断网更难排查
+    pinMiss: 'reject', // 锁不上时：'reject' 只剩 REJECT / 'collect' 全收（旧行为）
+    prefer: '', // 没锁定时默认选哪国（JS 正则，如 'JP'）；只重排不淘汰
+    // 哪些节点名算住宅。只能写 Go RE2 ∩ JS RegExp 的交集：不能写 (?i)，大小写用字符类
+    nodePattern: '🏠|IP-|家宽|住宅|静态|[Rr]esi|RESI|[Ss]tatic|STATIC|[Ii][Ss][Pp]',
+    escapeToAI: false, // 应急口：true 时组里多一个 AI，可在面板切到机场
+    aiStrict: true, // AI 服务商官方域名走住宅（ruleset/ai-strict.list）
+    allAI: false, // 整个 ai.yaml 走住宅：会带上 googlevideo，几 GB 烧额度，默认关
+    dedicatedPort: 0, // 旧字段；端口统一由 appProxy.ports 管，填非 0 会自动补一条
+    // 上游跳板：住宅节点的 dialer-proxy 指向这个组
+    upstream: {
+      enabled: true,
+      group: '前置-亚洲',
+      // 订阅自带住宅节点上的 dialer-proxy 怎么处理：
+      //   true / 'fill'  只补没有的（本机在国内，需要机场当跳板）
+      //   'strip'        全删掉（本机与住宅同国，直连最快）
+      //   'override'     全改指 group（订阅把前置写成了手选组）
+      //   false          一个字都不碰
+      inject: true,
+      allowHttp: true, // override 时是否也改写 type: http 的节点（v1.19.32 实测可通）
+      // 只放多字 / 带国名的关键词：单字会误中（「日」→ 尼日利亚，「MY」→ Myanmar）
+      filter: [
+        '日本|JP|Japan|🇯🇵|東京|东京|大阪|埼玉|川崎|横浜|名古屋',
+        '港|HK|Hong|🇭🇰',
+        '台|TW|Tai|🇹🇼',
+        '韩|韓|首|爾|春川|🇰🇷|KR|Korea',
+        '新加坡|SG|坡|狮城|🇸🇬|Singapore',
+        '越南|VN|Viet|🇻🇳',
+        '马来|Malaysia|🇲🇾', // 不要写 MY：会误中 Myanmar（缅甸）
+        '泰国|TH|Thai|🇹🇭',
+        '菲律宾|PH|Philippin|🇵🇭',
+      ].join('|'),
+    },
+  },
+
+  // ------------------------------------------------------------
+  // 应用级分流：不靠域名规则，直接把某个程序的流量按到指定出口
+  // 两种手段，按「应用能不能自己填代理」来选：
+  //   ports      专用端口（仅桌面）：进这个端口的流量完全跳过 rules
+  //   processes  进程名 / 路径 / 包名（桌面 + Android）：插在 rules 最前面
+  // 常见坑（App 自己解析 DNS、UDP 走不通、Electron 子进程）：docs/custom-config.md
+  // ------------------------------------------------------------
+  appProxy: {
+    // name / port 都不能重复，否则内核起不来
+    ports: [
+      { name: 'residential-in', port: 7865, proxy: '住宅出口' }, // 默认开：住宅专用入口
+      // { name: 'ai-in', port: 7866, proxy: 'AI' },   // 固定走机场 AI 组
+      // { name: 'us-in', port: 7867, proxy: 'US' },   // 固定走美国组
+    ],
+    // type 省略 = 进程名；'path' = 绝对路径；'path-regex' = 路径正则；
+    // 'name-regex' = 进程名正则；'uid' = Android
+    // ⚠️ 名字写错不会报错，只会永不命中。Android 上进程名就是包名。
+    processes: [
+      { value: 'com.whatsapp', proxy: '住宅出口' },
+      { value: 'com.talkatone.android', proxy: '住宅出口' },
+      { value: 'com.openai.chatgpt', proxy: '住宅出口' },
+      { value: 'com.anthropic.claude', proxy: '住宅出口' },
+      // 桌面端 Electron：真正建连的是 Helper 子进程，用路径正则匹配整个 .app
+      { value: '^/Applications/Claude\\.app/', type: 'path-regex', proxy: '住宅出口' },
+      { value: '^/Applications/ChatGPT\\.app/', type: 'path-regex', proxy: '住宅出口' },
+      { value: '^/Applications/Antigravity\\.app/', type: 'path-regex', proxy: '住宅出口' },
+      { value: '/opt/homebrew/bin/agy', type: 'path', proxy: '住宅出口' },
+    ],
+  },
+
+  // ------------------------------------------------------------
+  // 省流量：机场按 GB 计费，这两类改直连
+  // ------------------------------------------------------------
+  traffic: {
+    // GEOSITE,cn → DIRECT：GEOIP,CN 是 IP 规则，对 fake-ip 域名无效
+    domesticDirect: true,
+    // Apple 全家桶（iCloud / App Store / 系统更新）直连，有本地 CDN
+    appleDirect: true,
+  },
+
+  // ------------------------------------------------------------
+  // AI 静态资源 / 安装包 → 机场（不烧住宅流量）
+  // 只挪「静态 + 安装包 + 图片 CDN」；主站不能动，*usercontent.com 和人机验证也不能动
+  // ------------------------------------------------------------
+  aiStaticToAI: [
+    'DOMAIN-SUFFIX,oaistatic.com', // ChatGPT 前端资源
+    'DOMAIN-SUFFIX,downloads.claude.ai', // Claude 桌面端安装包
+    'DOMAIN-SUFFIX,downloads.cursor.com', // Cursor 安装包
+    'DOMAIN-SUFFIX,openaicom.imgix.net', // OpenAI 图片 CDN
+  ],
+
+  // ------------------------------------------------------------
+  // 窄 TUN：只把 Google 网段塞进内核
+  // 为什么需要：language_server（Go + gRPC）不读系统代理，没有 TUN 时一直 SYN_SENT
+  // ------------------------------------------------------------
+  narrowTun: {
+    enabled: true, // false = 完全不动 tun，交给面板
+    includeAI: true, // 额外接管「系统 DNS + fake-ip 段」，收进 ChatGPT 后台常驻连接
+    aiRouteAddress: [
+      '223.5.5.5/32', // 系统 DNS
+      '119.29.29.29/32', // 备用 DNS，兜住路由器下发的 ISP DNS
+      '198.18.0.0/16', // fake-ip 段，域名流量进内核的入口
+    ],
+    // 实测见过的 Google 段（并集，不是官方完整列表）；换了后端就用 lsof 看它连哪
+    routeAddress: [
+      '142.250.0.0/15', // Google 主力段
+      '172.217.0.0/16', // Google 前端 / gstatic
+      '172.253.0.0/16', // googleapis VIP 段
+      '216.58.0.0/16', // www.google.com
+      '74.125.0.0/16', // Gmail / googleapis
+      '108.177.0.0/17', // Google 账号体系
+      '64.233.160.0/19',
+      '72.14.192.0/18',
+      '173.194.0.0/16',
+      '209.85.128.0/17',
+      '2001:4860::/32', // IPv6
+      '2404:6800::/32', // IPv6 亚洲
+      '2607:f8b0::/32', // IPv6
+    ],
+    stack: 'Mixed', // macOS 上 Mixed 实测可用；启动异常依次试 System → gvisor
+  },
+
+  // ------------------------------------------------------------
+  // AUTO / AI = fallback[地区组…]：国家之间按顺序，国家内部挑最快
+  // 想回「谁快用谁」把 enabled 设 false。加新地区组必须同步加进 targets（构建自检会拦）
+  // ------------------------------------------------------------
+  regionPriority: {
+    enabled: true,
+    targets: {
+      AUTO: ['JP', 'SG', 'KR', 'HK', 'TW', 'US', 'UK', 'DE', 'FR', 'CA', 'EU'],
+      AI: ['JP', 'SG', 'KR', 'HK', 'TW', 'US', 'UK', 'DE', 'FR', 'CA', 'EU'],
+    },
+    othersGroup: 'OT', // 只收没单列的国家，永远排最后；'' = 不留逃生口
+    interval: 120,
+  },
+
+  // ------------------------------------------------------------
+  // 拦 STUN 探测（默认关）：REJECT 3478/5349/19302-19309 + 域名含 stun
+  // 会同时打断 Meet / 微信语音 / Discord / 游戏语音，只在不用语音时打开
+  // ------------------------------------------------------------
+  webrtcGuard: {
+    enabled: false,
+  },
+
+  // ------------------------------------------------------------
+  // 两个顶层开关
+  // ------------------------------------------------------------
+  keepSubGroups: true, // 保留订阅自带组：节点 dialer-proxy 可能引用它们，丢了内核会拒载
+  modeGuard: true, // 全局 / 直连模式会绕过整份 rules
+};
 
 // ------------------------------------------------------------
-// ⓿ USER_CONFIG —— 覆盖下面所有配置（三处来源共用一套键名）
+// 你的覆盖项：只写要改的键（对象逐字段合并，数组整体替换）
 // ------------------------------------------------------------
-// 这里写的东西会覆盖 ①~⑦ 的默认值，**不用改那几段**。
-// 三个来源，优先级从低到高（后面的覆盖前面的，对象逐字段合并）：
-//
-//   1) 本文件这个 USER_CONFIG          —— 自己 fork 的脚本 / 手机单文件改这里
-//   2) FlClash 构建期注入的 config 段   —— flclash-credentials.json 的 config，重建不丢
-//   3) 覆写 YAML 里的 x-smart          —— 桌面端推荐，remote 引用也能改
-//
-// ⚠️ 键名必须和第 0 部分里的一致（驼峰）：residential / appProxy / traffic /
-//    narrowTun / regionPriority / webrtcGuard / aiStaticToAI + 顶层 keepSubGroups /
-//    modeGuard。写错不会被当成新配置默默生效，日志里会给一条「忽略未知项」。
-//
-// 例子（桌面端等价的 YAML 写法见 x-smart.example.yaml）：
 //   const USER_CONFIG = {
-//     residential: { primary: '🏠IP-JP', upstream: { inject: 'strip' }, prefer: 'JP' },
-//     appProxy: { ports: [{ name: 'residential-in', port: 7865, proxy: '住宅出口' }] },
-//     narrowTun: { enabled: false },
+//     residential: { primary: '🏠IP-JP', upstream: { inject: 'strip' } },
+//     appProxy: { ports: [{ name: 'ai-in', port: 7866, proxy: 'AI' }] },
 //   };
 const USER_CONFIG = {};
 
 // ------------------------------------------------------------
-// ① APP_PROXY —— 应用级分流（最常用：指定某个 App 走哪个组/节点）
+// 内部别名：下面所有逻辑读这些名字；DEFAULT_CONFIG 是唯一的默认值来源，
+// 覆盖由 applyUserConfig() 就地合并进来。
 // ------------------------------------------------------------
-// 目标：不依赖域名规则，直接把某个程序的流量按到指定出口。
-// 两种手段，按「应用能不能自己填代理」来选：
-//
-//   方式一 ports（专用端口）—— 桌面端首选
-//     mihomo 的 listeners 把某个端口整体绑到一个组/节点，进这个端口的流量
-//     **完全跳过 rules 匹配**。应用里把代理填成 127.0.0.1:<端口> 就行。
-//     优点：确定、可预测、零规则；缺点：应用得支持自定义代理（Telegram / Slack /
-//     终端工具 / Proxifier 都支持）。
-//     ⚠️ 仅桌面端生效。FlClash（Android）会跳过 listeners，两个原因：
-//        1) 手机应用基本不提供「自定义代理」入口，都是走 VpnService；
-//        2) Android 上多绑一个端口，一旦被占用内核会直接起不来，手机上排查成本极高。
-//
-//   方式二 processes（进程 / 包名）—— 桌面 + Android 通用
-//     生成 PROCESS-NAME / PROCESS-PATH / UID 规则，插在 rules 最前面（先于任何域名规则）。
-//     桌面端：进程名（Telegram、Discord）或可执行文件绝对路径（Electron 多进程用 path 更准）。
-//             Electron 类 App（Claude / ChatGPT / Cursor / VS Code）真正的网络连接往往由
-//             `Xxx Helper` 子进程发出，进程名精确匹配会漏 → 用 path-regex 匹配整个 .app。
-//     Android：进程名就是**包名**，例如 org.telegram.messenger、com.android.chrome。
-//     前提①：流量必须**先进内核**。桌面端只有两条路：应用把代理填成系统代理/专用端口，
-//            或者开 TUN 虚拟网卡。不读系统代理的应用（Go/Rust 写的 language_server、agy，
-//            以及用 Network.framework 的 App）不开 TUN 时连接直接走物理网卡，
-//            规则一条都匹配不到，表现为「规则写对了但一直转圈」。
-//     前提②：内核能拿到进程信息 —— 桌面端靠 find-process-mode（mihomo.yaml 已设 strict）
-//            + TUN 的 socket 归属查询；Android 靠内核的 UID→包名映射。
-//
-// 【怎么改】只改下面这个对象，不用碰规则和分组逻辑：
-//   1. 加端口：往 ports 里加一条（name 不能重复、port 不能重复，否则内核起不来）
-//   2. 加应用：往 processes 里加一条，proxy 填**组名**（JP/HK/US/AI/AUTO/住宅出口…）
-//      或节点名；填组名更稳，因为订阅更新后节点会改名。
-//   3. 不想用某种方式：把对应数组清空（[]）即可。
-const APP_PROXY = {
-  // ---------- 方式一：专用端口（仅桌面端）----------
-  // proxy 可以写组名，也可以写节点名；写节点名时注意换订阅会失效。
-  ports: [
-    // 默认启用：住宅专用入口。Claude Code / Proxifier 指向 127.0.0.1:7865 即整体走住宅。
-    { name: 'residential-in', port: 7865, proxy: '住宅出口' },
-
-    // 以下为模板，取消注释即生效（改完要重载配置）：
-    // { name: 'ai-in', port: 7866, proxy: 'AI' }, // 固定走机场 AI 组（不烧住宅带宽）
-    // { name: 'us-in', port: 7867, proxy: 'US' }, // 固定走美国组里最快的节点
-    // { name: 'node-in', port: 7868, proxy: '[日本]₇' }, // 固定单个节点（换订阅易失效）
-  ],
-
-  // ---------- 方式二：进程 / 包名 / UID ----------
-  // type 省略      = PROCESS-NAME        进程名精确匹配（macOS 上会被截断到 16 字符）
-  // type: 'path'   = PROCESS-PATH        可执行文件绝对路径精确匹配
-  // type: 'path-regex' = PROCESS-PATH-REGEX  路径正则（Go RE2），匹配整个 .app 目录最省事
-  // type: 'name-regex' = PROCESS-NAME-REGEX  进程名正则（覆盖 Helper 子进程时用）
-  // type: 'uid'    = UID                 Android 用
-  // ⚠️ 写错的后果是「规则永不命中」，内核**不会报错**，所以务必先核对名字/包名。
-  processes: [
-    // ===== 已启用（改完需在 Clash Party / FlClash 里重载）=====
-    // Android 包名：内核看到的进程名就是包名。桌面端同名应用请看下面用 PROCESS-NAME / PROCESS-PATH。
-    // ⚠️ 这几条只**管得住 TCP**：WhatsApp / ChatGPT 的语音视频是 UDP，住宅节点 udp:false
-    //    过不去，会落到 MATCH → CATCH → AUTO（见下方【常见坑】），属预期。
-    { value: 'com.whatsapp', proxy: '住宅出口' },          // WhatsApp：信令走住宅（媒体仍走机场，见下）
-    { value: 'com.talkatone.android', proxy: '住宅出口' }, // Talkatone：整体住宅；它自带 DNS，纯 IP 连接只能靠这条兜
-    { value: 'com.openai.chatgpt', proxy: '住宅出口' },    // ChatGPT：AI 风控面，出口用住宅 IP
-    { value: 'com.anthropic.claude', proxy: '住宅出口' },  // Claude：同上
-    // { value: 'com.whatsapp.w4b', proxy: '住宅出口' },   // WhatsApp Business，需要时打开
-
-    // ===== 已启用：桌面端 AI 客户端 → 住宅出口 =====
-    // Claude 桌面端 / ChatGPT 桌面端都是 Electron：主进程叫 Claude / ChatGPT，
-    // 但真正建连的常常是 `Xxx Helper`（network.mojom.NetworkService）子进程。
-    // macOS 的进程名会被截断到 16 字符，精确匹配 Helper 不现实，所以用**路径正则**匹配
-    // 整个 .app 包（主进程 + 所有 Helper 一次覆盖）。
-    // ⚠️ App 装在别的目录（如 ~/Applications）时这里匹配不到，改成对应前缀。
-    // ⚠️ 命中这条 = 该 App 的**全部** TCP 流量走住宅，包括图片/静态资源；
-    //    UDP（语音/视频）会被导向 udp:false 的住宅节点 → 直接失败，属预期。
-    //    要保持「语音走机场」就得对 UDP 单独放行，当前不这么做（见下方【常见坑】③）。
-    { value: '^/Applications/Claude\\.app/', type: 'path-regex', proxy: '住宅出口' },  // Claude 桌面端
-    { value: '^/Applications/ChatGPT\\.app/', type: 'path-regex', proxy: '住宅出口' }, // ChatGPT 桌面端
-
-    // ----- Google Antigravity（AI IDE）+ 配套 CLI → 住宅出口 -----
-    // 原来靠 Proxifier 规则「Antigravity / Antigravity Helper* / language_server* / agy / agentapi」
-    // 走 Chain Clash-Static，现在等价迁到这里，Proxifier 可以退出。
-    // Antigravity.app 也是 Electron：主进程 Antigravity + Antigravity Helper*，
-    // 外加它自带的 language_server（在 Contents/Resources/bin/ 里，属于 App 包内），
-    // 一条路径正则全部覆盖。
-    // agy 是独立的 Homebrew 命令行工具（177MB 单文件），不在 App 包内，单独一条。
-    { value: '^/Applications/Antigravity\\.app/', type: 'path-regex', proxy: '住宅出口' },
-    { value: '/opt/homebrew/bin/agy', type: 'path', proxy: '住宅出口' },
-    // 未安装 / 不在 PATH，先留模板；装上后取消注释即可：
-    // { value: '^/Applications/Gemini\\.app/', type: 'path-regex', proxy: '住宅出口' },
-    // { value: '^/Applications/Antigravity IDE\\.app/', type: 'path-regex', proxy: '住宅出口' },
-    // { value: 'agentapi', proxy: '住宅出口' },
-
-    // --- 桌面端：进程名 ---
-    // { value: 'Telegram', proxy: 'US' },
-    // { value: 'Discord', proxy: 'AUTO' },
-    // --- 桌面端：Electron 多进程，用绝对路径更准 ---
-    // { value: '/Applications/Cursor.app/Contents/MacOS/Cursor', type: 'path', proxy: 'AI' },
-    // --- Android：包名（进程名就是包名）---
-    // { value: 'org.telegram.messenger', proxy: 'US' },
-    // { value: 'com.android.chrome', proxy: 'AUTO' },
-    // { value: 'com.tencent.mm', proxy: 'DIRECT' }, // 微信直连，避免出口 IP 变化触发风控
-
-    // --- 示例：WhatsApp（自带 DNS、媒体走 UDP 的典型，照这个抄就行）---
-    // 桌面端进程名就叫 WhatsApp；Android 是包名，商务版为 com.whatsapp.w4b。
-    // ⚠️ 指定到这里只**管得住 TCP**（信令 443/5222）：语音/视频是 UDP，
-    //    住宅节点 udp:false 过不去，会落到 MATCH → CATCH → AUTO（见下方【常见坑】）。
-    //    所以语音类 App 若把 proxy 填「住宅出口」，实际是「信令住宅 + 媒体机场」的混线。
-    // { value: 'WhatsApp', proxy: '住宅出口' },        // macOS 桌面端
-    // { value: 'com.whatsapp', proxy: '住宅出口' },    // Android（已在上面启用）
-    // { value: 'com.whatsapp.w4b', proxy: '住宅出口' },// WhatsApp Business
-
-    // --- Android：内核拿不到包名时，退回 UID ---
-    // { value: '10234', type: 'uid', proxy: 'US' },
-  ],
-};
+let RESIDENTIAL = DEFAULT_CONFIG.residential;
+let APP_PROXY = DEFAULT_CONFIG.appProxy;
+let TRAFFIC = DEFAULT_CONFIG.traffic;
+let AI_STATIC_TO_AI = DEFAULT_CONFIG.aiStaticToAI;
+let NARROW_TUN = DEFAULT_CONFIG.narrowTun;
+let REGION_PRIORITY = DEFAULT_CONFIG.regionPriority;
+let WEBRTC_GUARD = DEFAULT_CONFIG.webrtcGuard;
+let KEEP_SUB_GROUPS = DEFAULT_CONFIG.keepSubGroups;
+let MODE_GUARD = DEFAULT_CONFIG.modeGuard;
 
 // ------------------------------------------------------------
-// 【常见坑】App 自己解析域名 / 直接连 IP —— 为什么规则对它不生效
+// 模式守卫：把内核钉在「规则」模式
 // ------------------------------------------------------------
-// 现场（2026-11-05 Talkatone 实测，FlClash 连接详情）：
-//   进程 com.talkatone.android(10410) / 规则 `Match` / 目标 `8.8.8.8:53`
-//   代理链 CATCH → AUTO → 机场节点。App 其它流量都走住宅，唯独这条不走。
-//
-// 三个原因叠在一起，缺一个都不会出现这个现象：
-//   1) App 内部硬编码了 DNS（Talkatone 查 8.8.8.8；不少游戏、银行、VoIP App 同款），
-//      系统的 DNS 劫持接不住它，于是拿到的是**真实 IP**而不是 fake-ip；
-//   2) 之后它连的是 IP，连接里没有域名 → 所有 DOMAIN-* 规则天然失配（面板显示 `Match`）；
-//   3) 那条裸 DNS 是 UDP:53，而住宅节点 `udp: false`（socks5 住宅基本不支持 UDP），
-//      注定只能落到 CATCH → AUTO，跟「有没有给它指定住宅」无关。
-//
-// 以后再遇到同类 App，按这个顺序处理（WhatsApp / Telegram / Discord 都一样）：
-//   ① 出口只能靠 processes 指定 —— 域名规则救不了纯 IP 连接（示例见上面 WhatsApp 段）；
-//   ② DNS 交给内核：FlClash 开「DNS 劫持 / Fake-IP」，裸 53 会被接管并返回 fake-ip，
-//      连接重新带上域名，规则恢复可用，`8.8.8.8` 那条连接也会消失；
-//      开不了劫持就退一步，加一条 `DST-PORT,53,<同国组>`（仍走机场，但解析地区与出口对齐）；
-//   ③ 语音/视频媒体是 UDP，住宅永远接不住。二选一：接受「信令住宅 + 媒体机场」，
-//      或让整个 App 走机场；**不要**为了统一去开住宅节点的 `udp: true`
-//      （多数住宅商不支持 UDP，开了直接连不上，还得回滚）。
-//
-// 怎么确认已经生效 —— 看连接详情的「规则」一栏：
-//   PROCESS-NAME / PROCESS-PATH / UID → processes 生效，按你指定的出口走
-//   Match                             → 没命中任何规则，正在走 CATCH（多数是纯 IP 连接）
-
-// ------------------------------------------------------------
-// ② RESIDENTIAL —— 住宅出口（本机 → 机场亚洲节点 → 住宅 IP）
-// ------------------------------------------------------------
-// 为什么这么拆：住宅代理的账号密码属于敏感信息，不能进会公开的 smart.js。
-// 所以这里只做「建组 + 写规则」，连接信息全部由覆写 YAML 提供。
-//
-// 链路：本地 → 机场节点(dialer-proxy) → 住宅 IP → 目标站点
-//   机场负责「跑得快」，住宅 IP 负责「脸干净」，这也是住宅代理在国内最稳的用法
-//   （从国内直连海外住宅 IP 通常又慢又不稳，别省掉跳板）。
-//
-// 覆写 YAML 里要写的东西（示例见仓库 residential.example.yaml）：
-//   proxies:
-//     - name: '🏠 住宅-US'          # 名字必须带 🏠 或 IP- 前缀（命中 nodePattern），
-//                                   # 别用「住宅」二字做匹配词（机场自带住宅节点会混进来）
-//       type: socks5                 # 必须是 socks5，不要用 http（见 docs/troubleshooting.md 坑 5）
-//       server: x.x.x.x
-//       port: 12345
-//       username: 'xxx'
-//       password: 'xxx'
-//       dialer-proxy: 前置-亚洲       # 关键：用亚洲机场节点当跳板
-//       udp: false                   # 住宅代理基本不支持 UDP
-//   proxy-groups 不需要你写，本脚本会建「住宅出口」组并自动收编上面这个节点。
-//
-// 组内兜底：默认只有 `['住宅节点…', 'REJECT']` —— 节点失效时该组回落到阻断，
-// **不会**静默走机场（出口 IP 悄悄变化比断网更危险）。
-// 「根本没配住宅节点」是另一回事：enabled 设 false（或 auto 判定确实没有节点），
-// 整条链不建、AI 规则改投 AI 组，而不是让 AI 全被 REJECT 卡死。两种判法后续行为完全一致。
-// ⚠️ 成员里永远不写 AI 组：住宅出口只允许「住宅 / 阻断」两种结果，
-//    一旦把 AI 塞进来，面板上它就成了一个能切到机场共享 IP 的普通组。
-// 机场逃生口（AI）默认不进组，要应急得手动把 RESIDENTIAL.escapeToAI 改 true。
-// 所以配好节点后，要在 Clash Party「代理」页把「住宅出口」切到 🏠 住宅-xxx 一次
-// （store-selected 会记住）。
-const RESIDENTIAL = {
-  // 【三态开关】决定这次要不要建「住宅出口 / 前置-亚洲」这条链。
-  // 判定只在 main() 的 resolveResidentialEnabled(config) 做一次，规则/建组/listeners 共读结果。
-  // 优先级（先命中先生效）：
-  //   0) FLCLASH_NO_RESIDENTIAL（flclash.js 占位符版头部注入）→ 无条件判无家宽，
-  //      覆盖下面所有取值；
-  //   1) true / false → 直接采用，不再探测节点；
-  //   2) 'auto' → primary 有值（FlClash 私有版注入）判有家宽，否则看 config.proxies
-  //      里有没有名字命中 🏠|IP- 的节点。
-// ⚠️ 'auto' 模式一直有效、没有取消；2026-11-13 起「判成无家宽」与 false 走
-//    完全相同的后续处理（见下面四条），只是判定来源不同。判定只发生在 main() 内。
-//
-//   true（默认）  —— 有家宽：建完整住宅链，行为和这套改造之前完全一致。
-//                    覆写 YAML 排在 smart.js 前 / 后都能用：组靠内核级
-//                    include-all-proxies + filter 收编，后置注入的节点照样进组。
-//   'auto'        —— 仍然有效，但判的是「这次运行时看不看得到住宅节点」，
-//                    **不是**判「你有没有家宽」：看得到（primary 已注入，或 proxies
-//                    里有名字命中 🏠|IP- 的节点）才建两组；看不到一律按无家宽处理，
-//                    后续与 false 完全相同。
-//                    ⚠️ 看不到 ≠ 没有家宽：residential.yaml 排在 smart.js **之后**时
-//                    照样误判成无家宽，AI 静默走机场（不报错）；占位符版还会被
-//                    FLCLASH_NO_RESIDENTIAL 无条件覆盖。仅适合「订阅自带住宅节点」，
-//                    且必须跑完整 main()（模块/纯数据提取路径下 auto 等同 true，不探测）。
-//   false         —— 【没有家宽就用这个】强制无家宽，不探测节点。
-  //
-  // 判成无家宽时（false / auto 判无 / 占位符版）统一做这四件事，其它一字不改：
-  //   ① 「住宅出口」「前置-亚洲」两组都不生成（不为兜引用偷偷把组建回来）；
-  //   ② 相关规则落点全部改投 AI 组；
-  //   ③ 7865 改绑 AI（不删端口，避免已填 127.0.0.1:7865 的应用 connection refused）；
-  //   ④ 移除脚本能看见的住宅链节点（🏠|IP- 或 dialer-proxy 指向住宅链），防悬空引用。
-  //   ⚠️ 排在 smart.js **之后**才注入的覆写节点/规则脚本看不到，用无家宽模式时
-  //      要自己把 residential.yaml 里的 +proxies / +rules 删掉。
-  enabled: true,
-  group: '住宅出口', // 组名，规则引用它；不要在覆写 YAML 里重复定义同名组，否则内核报重名
-  // 主力住宅节点（= 「住宅出口」锁定的那一台）。留空 → 组里只有 REJECT（需手动选一次）。
-  // 只认节点名，两种匹配方式：
-  //   完整匹配  primary: '🏠 住宅-JP'        —— 一字不差（含 emoji、全角）
-  //   includes  primary: '住宅-JP'           —— 名字里含这段就算，但必须**恰好命中 1 台**
-  // 先用完整匹配，没命中才退回 includes；命中 0 台或多台都按 pinMiss 处理（默认 REJECT）。
-  // 为什么不按序号/端点锁定：序号由订阅下发顺序决定，端点会被「几百个 IP 共用一个网关」的订阅一网打尽。
-  // 出口 IP 只能由「名字」唯一确定，锁不上就阻断 —— 这是本仓库唯一的取舍。
-  // 和 FlClash 凭据里的 primary 同名同义：手机端由构建钩子自动填成注入的主节点 → 开箱即用。
-  primary: '',
-  // 【严格锁定】primary 有值时，组里**只放这一台**，其它住宅节点一律不进组。
-  //   true（默认）= 指定的 IP 挂了就是 REJECT，绝不会自动、也不会顺手换到另一台住宅 IP。
-  //     理由：出口 IP 从 A 悄悄变成 B，和「悄悄换成机场共享 IP」是同一类事故 ——
-  //     对 AI 账号来说换住宅 IP 等于换城市登录，风控直接触发，比断网更难排查。
-  //   false        = 全部住宅节点都进组，可在面板里手动切换（旧行为）。
-  //   primary 为空时本开关无效（没有可锁定对象）→ 仍然是「全部住宅节点可选」。
-  //   ⚠️ 备用住宅节点只注入、不进任何组（地区组/AUTO 也被 nodePattern 排掉），
-  //      换主力必须改 primary（桌面改这里 / 手机改凭据里的 primary）后重载，不会被自动选中。
-  pinOnly: true,
-  // primary 写错、或订阅改名/换 IP 导致「锁不上」时的行为（只在本开关为 true 且 primary 有值时生效）：
-  //   'reject'（默认）= 组成员只剩 [REJECT]：AI 类站点直接打不开，日志里有醒目提示。
-  //      这就是这套配置想要的语义 —— 出口 IP 不确定就别出去，比「悄悄落到另一台住宅/机场」安全。
-  //   'collect'       = 退回旧行为：全部命中 nodePattern 的住宅节点进组，默认选中第一个
-  //      （= 订阅给的顺序，可能任何一国）。只有「这些住宅 IP 随便换都无所谓」时才用。
-  pinMiss: 'reject',
-  // 【2026-11-17 新增】没锁定（primary 留空 / pinOnly: false）时，「住宅出口」的默认项按国家排。
-  // 留空 = 保持订阅下发的顺序（第一位是什么国家就选什么）。
-  // 有的订阅是「一台本地 + 两百台海外」，不排的话默认很可能从别的洲出去，
-  // 而本机在另一个国家 —— Claude 看到的就是「换国家登录」。
-  // 写法是 JS 正则（只在脚本侧用，不进内核 filter），建议只写国家码/城市：
-  //   'JP' / '日本|东京' / 'US' / '新加坡'
-  // ⚠️ 只重排不淘汰：没命中的住宅节点仍在组里（排在 REJECT 之后），面板里可以手动切。
-  // ⚠️ 真正要「出口确定」请用 primary 锁一台 —— prefer 只解决「默认选谁」。
-  prefer: '',
-  // 【节点名匹配】两端共用的正则，只能写 Go RE2 ∩ JS RegExp 的交集：
-  //   不能写 (?i) —— JS 的 RegExp 不支持内联旗标，写了直接抛异常（脚本侧整体失效）；
-  //   所以英文关键词的大小写只能靠字符类逐个覆盖：[Rr]esi|RESI / [Ss]tatic|STATIC / [Ii][Ss][Pp]。
-  // 覆盖范围：
-  //   🏠 、IP-              —— 自己写的节点（最稳，见下）
-  //   家宽 / 住宅 / 静态      —— 订阅自带住宅节点的常见命名（静态｜ISP｜家宽 01、住宅IP-美国）
-  //   Resi / RESI / Static / ISP —— 英文与缩写变体（含全大写：机场很爱写 RESIDENTIAL-US）
-  // ⚠️ 「匹配宽」≠「出口乱」：pinOnly: true 且 primary 锁住一台时，多命中几个只是候选池变大，
-  //    它们进不了「住宅出口」组；被排除出地区组 / AUTO / 前置组正是我们想要的
-  //    （住宅节点本来就不该拿去当跳板）。
-  // ⚠️ 但 pinOnly: false 时必须把这里收窄回 '🏠|IP-'：那时全部命中项都能被选中，
-  //    机场自带的「家宽住宅」节点会把出口变成共享 IP（坑 10 的原始事故）。
-  // 为什么写 `IP-` 而不是裸 `IP`：裸 IP 会命中 IPLC / IPV6 /「IPLC 专线」这类节点名；
-  // 为什么不加「原生」：机场的「原生解锁」是流媒体节点，收进来等于把好跳板排掉。
-  nodePattern: '🏠|IP-|家宽|住宅|静态|[Rr]esi|RESI|[Ss]tatic|STATIC|[Ii][Ss][Pp]',
-  // 【逃生口】住宅线路彻底挂掉时，是否允许在面板把「住宅出口」切到 AI（机场）应急。
-  //   false（默认）= 组成员只有 住宅节点 + REJECT，**切不出机场** —— 要么住宅、要么断网。
-  //   这正是 Claude Code 这类「宁可断开也不许换 IP」的场景需要的语义：
-  //   出口 IP 悄悄从 61.***193 变成机场共享 IP，比直接报错危险得多。
-  //   真要应急：改成 true → 重载 → 面板切到 AI → 用完改回 false。
-  escapeToAI: false,
-  // ⚠️ 命名约定：自己加的住宅节点建议带 🏠 前缀（如 🏠 住宅-JP / 🏠 住宅-US）
-  //   或 IP- 前缀（如 IP-JP / IP-住宅-US）。命中 nodePattern 即可，前缀不是硬要求。
-  //   订阅自带的「家宽 / 住宅 / 静态 / ISP」节点同样命中——这正是「订阅已带家宽」的用法；
-  //   老版本文档里「别用『住宅』两个字」的说法已作废：真正的护栏是 pinOnly 锁一台，
-  //   而不是把匹配收窄（收窄的后果是订阅自带的家宽节点一个都认不出来 → 住宅出口只剩 REJECT）。
-
-  // 【方案 A｜当前采用】AI 服务商官方域名走住宅
-  // ai-strict.list 里只放「有账号体系、会风控」的服务商（Claude / OpenAI / Grok / Perplexity …），
-  // 连同它们的人机验证、登录托管、遥测域名一起走住宅——主站和验证必须同 IP，否则照样被拦。
-  // 中转站、镜像站、API 代理不在这个文件里，继续走普通 AI 组（机场），不浪费住宅带宽。
-  aiStrict: true,
-
-  // 住宅专用入口端口 ——【已迁移】统一由文件顶部的 APP_PROXY.ports 管理，这里留 0。
-  // 兼容：若这里填了非 0 值、且 APP_PROXY.ports 里没有 residential-in，脚本会自动补一条。
-  // 想彻底关掉 7865：把 APP_PROXY.ports 里那条注释掉即可。
-  dedicatedPort: 0,
-
-  // 【上游出口】住宅节点 dialer-proxy 指向的组：任意亚洲节点自动择优，全灭则阻断。
-  // 为什么只收「亚洲」而不是全机场 AUTO：
-  //   - AUTO 是 url-test 全量收编，中转可能跳到美/欧——出口 IP 没变，
-  //     但中转路径的 ASN 和延迟特征每次都在变，对风控不友好；
-  //   - 早先只收日本，好处是最短路径，坏处是「所有日本节点一起挂」时整条 AI 链路断掉；
-  //   - 现在收亚洲：HK/TW/KR/SG 到日本住宅都在几十毫秒量级，越南/马来/泰/菲稍远，
-  //     但都还在同一个「亚洲近场」里，跳板池从 6 个变成 30+ 个。
-  // 为什么是「按洲/按国」而不是「按七大洲铺开」：见 docs/configuration.md 的
-  // 「上游要不要按大洲拆」一节 —— 结论是**按住宅所在国建一个就够了**，
-  // 多出来的洲级空组只会变成 url-test 无成员 → COMPATIBLE/DIRECT 泄漏源。
-  // 节点名必须含 filter 关键词；订阅改名后若一个都匹配不到，该组用 REJECT 兜底，
-  // 把 filter 改成新关键词即可恢复（写 REJECT 而不是 DIRECT：宁可断，不裸连住宅 IP）。
-  // 覆写 YAML 里的住宅节点写 dialer-proxy: 前置-亚洲 即可。
-  upstream: {
-    enabled: true,
-    group: '前置-亚洲', // 组名，覆写 YAML 的 dialer-proxy 引用它；别重复定义同名组
-    // 【订阅自带住宅节点：dialer-proxy 怎么处理】四个值，按「本机在哪」选：
-    //   true / 'fill'（默认）—— 只补没有 dialer-proxy 的；已有的一律尊重，不动。
-    //      适合「本机在国内、需要机场当跳板才能连上住宅网关」。
-    //   'strip'  —— 把住宅节点上的 dialer-proxy **删掉**，变成「本机 → 住宅网关」一跳。
-    //      适合「本机与住宅在同一国」——多绕一个机场反而是两次长途。
-    //      判据只有一条：本机到住宅网关直连是否稳定。稳定就 strip，不稳才挂前置。
-    //   'override' —— 不管有没有，全改成 upstream.group（前置-亚洲）。
-    //      适合「订阅把前置写成了一个手选组、默认选了别的洲」的情形。
-    //      改写 type: http 需要 allowHttp: true（老版本内核上 http + 跳板不通，见坑 5）。
-    //   false   —— 一个字都不碰（连下面「悬空修复」也不做，出问题自己担）。
-    // 任何非 false 的模式都会顺带修「悬空」：dialer-proxy 指向一个本次配置里
-    // 根本不存在的组/节点时（典型：订阅写了 前置-机场，而那个组在本配置里没有），
-    // 内核会报 `dialer-proxy [X] not found` 并让该节点不可用 —— 这里按模式补上或删掉。
-    inject: true,
-    // override 模式下是否也改写 type: http 的住宅节点。
-    // 【2026-11-17 实测修正】旧文档（坑 5）说「http + 跳板连不通」，实测 v1.19.32 上
-    // **是通的**：mihomo 的 http 出站同样走 dialer 链，`dialer-proxy` 指向节点或
-    // url-test 组都能生效（本地起假前置抓到了 CONNECT）。住宅商给的多是 http，
-    // 所以默认 true —— 设 false 只用于「旧版本内核 http 跳板确实不通」的情况。
-    allowHttp: true,
-    // 【2026-11-05 改】原来留空 = 复用 smartGroups.JP 的 filter（只收日本）。
-    // 现在显式写亚洲关键词，和地区组的 filter 解耦（改地区组不会影响跳板池）。
-    // 只放多字/带国名的关键词，绝不放单字：
-    //   「日」会命中尼日利亚、「东」会命中东帝汶、「亚」会命中马来西亚/亚美尼亚，
-    //   「MY」会命中 Myanmar —— 换订阅实测踩过这些坑（见 docs/troubleshooting.md 坑 8）。
-    filter: [
-      // 日本：原「前置-日本」的全部关键词，保持不动
-      '日本|JP|Japan|🇯🇵|東京|东京|大阪|埼玉|川崎|横浜|名古屋',
-      // 港台韩新：到日本住宅这一跳都在几十毫秒
-      '港|HK|Hong|🇭🇰',
-      '台|TW|Tai|🇹🇼',
-      '韩|韓|首|爾|春川|🇰🇷|KR|Korea',
-      '新加坡|SG|坡|狮城|🇸🇬|Singapore',
-      // 东南亚：比日本远一点，作为「日本全挂」时的备选够用
-      '越南|VN|Viet|🇻🇳',
-      '马来|Malaysia|🇲🇾', // 不要写 MY：会误中 Myanmar（缅甸）
-      '泰国|TH|Thai|🇹🇭',
-      '菲律宾|PH|Philippin|🇵🇭',
-    ].join('|'),
-  },
-
-  // 【方案 B｜已关闭】整个 RULE-SET,forAI 走住宅
-  // 为什么关掉：ai.yaml 是个大杂烩，除了 AI 服务商还塞了 Apple 全家桶、
-  // DOMAIN-KEYWORD,google、DOMAIN-REGEX,google.*、sentry/datadog/auth0 等通用服务商。
-  // 整段丢给住宅的后果：googlevideo.com（YouTube 视频流）也会命中 DOMAIN-REGEX,google.*，
-  // 几 GB 流量按住宅计费，一小时烧掉一个月额度。
-  // 想回到「一刀切」就把 aiStrict 设 false、这里设 true。
-  allAI: false,
-
-  // 走住宅出口的域名清单已迁出到 ruleset/（一行一个 DOMAIN-SUFFIX），
-  //   ruleset/ai-strict.list   → AI 服务商及其验证/遥测依赖
-  //   ruleset/residential.list → 非 AI 的账号/支付/电商
-  // 以后增删站点直接改那两个文件，不用碰脚本。
-};
-
-// ------------------------------------------------------------
-// ③ TRAFFIC —— 省流量开关（国内直连 / Apple 直连）
-// ------------------------------------------------------------
-// 机场流量是按 GB 算的，下面两类规则会把大量本该直连的流量送进代理，这里统一收口。
-const TRAFFIC = {
-  // GEOSITE,cn → DIRECT。原来只靠 RULE-SET,ChinaDomain/direct + GEOIP,CN 兜底，
-  // 而 GEOIP,CN 是 IP 规则，对 fake-ip 域名无效，漏网的国内站会掉进 tld-not-cn → AUTO 白烧流量。
-  domesticDirect: true,
-  // Apple 全家桶（iCloud 同步 / App Store / 系统更新）原来是 RULE-SET,apple → AI、
-  // RULE-SET,icloud → AUTO，等于把几个 GB 的更新包全走机场。国内/日本直连 Apple 都有 CDN，
-  // 改成 DIRECT 是这份配置里最省流量的一刀。
-  appleDirect: true,
-};
-
-// ------------------------------------------------------------
-// ④ AI_STATIC_TO_AI —— AI 静态资源/安装包走机场（不烧住宅流量）
-// ------------------------------------------------------------
-// 起因：ai-strict.list 是按「服务商后缀」整块收编的，`claude.ai` 这条后缀会顺带把
-// `downloads.claude.ai`（桌面端安装包）一起拖进住宅出口。2026-11-04 实测一天住宅跑了
-// 17.4 GB，其中纯下载/静态就占了一半：
-//     persistent.oaistatic.com   4.3 GB（ChatGPT 前端资源）
-//     downloads.claude.ai        2.8 GB（Claude 桌面端安装包）
-//     downloads.cursor.com       1.4 GB（Cursor 安装包）
-// 这些请求不带 Cookie、不带登录态、不参与 IP 画像 —— 风控看的是会话面，不是 CDN。
-// 所以把它们挪到机场，住宅只留「真正会被判定地区/会话一致性」的域名。
-//
-// ⚠️ 三条边界，别越线：
-//   1. 只挪「静态 + 安装包 + 图片 CDN」，主站（claude.ai / chatgpt.com）一个都不能动；
-//   2. 不挪 *usercontent.com（附件下载的签名 URL 有极小概率绑 IP，挪了可能 404）；
-//   3. 不挪 challenges.cloudflare.com / withpersona.com（人机验证与 KYC 必须和主站同 IP）。
-// 这些规则由 getRules() 插在 RULE-SET,aiStrict 之前，先命中即生效，与规则集内容无关。
-const AI_STATIC_TO_AI = [
-  'DOMAIN-SUFFIX,oaistatic.com', // ChatGPT JS/CSS/字体/更新包
-  'DOMAIN-SUFFIX,downloads.claude.ai', // Claude 桌面端安装包
-  'DOMAIN-SUFFIX,downloads.cursor.com', // Cursor 安装包
-  'DOMAIN-SUFFIX,openaicom.imgix.net', // OpenAI 图片 CDN
-];
-
-// ------------------------------------------------------------
-// ⑤ NARROW_TUN —— 窄 TUN：只把 Google 网段塞进内核
-// ------------------------------------------------------------
-// 为什么需要它：Antigravity 的 language_server（Go + gRPC）不读系统代理，
-//   也不吃 HTTPS_PROXY（grpc-go 不做 env proxy 解析），没有 TUN 时它直连
-//   172.217.x / 142.251.x，状态永远是 SYN_SENT，界面「一直加载中」。
-// 全量 TUN 能解决，但会把整机流量都塞进内核。这里只挂 Google 的段：
-//   其余流量（包括默认路由）完全不进内核，对局域网 / Tailscale / 内网服务零影响。
-//
-// 判定成功的标志：
-//   netstat -rn -f inet | grep utun1500     → 只列出下面这些段，没有 0.0.0.0/1
-//   lsof -nP -a -p $(pgrep -f language_server) -iTCP | grep -v LISTEN
-//                                           → 源地址是 198.18.0.1、状态 ESTABLISHED
-//   Clash 连接页里该进程的链路 → 🏠 住宅出口
-//
-// ⚠️ 段要维护：它是「实测见过的 Google 段」的并集，不是官方完整列表。
-//    某天 Antigravity 换了后端、连接卡在 SYN_SENT，就用 lsof 看它连到哪个段再补。
-// ⚠️ 与「全量 TUN」互斥：如果你在 Clash Party 里手动开了全量 TUN，
-//    这里设 true 只是把路由范围缩小，不会叠加出两套。
-const NARROW_TUN = {
-  // 只接管下面这些网段。false = 完全不动 tun 配置（保持 Clash Party 面板的开关说了算）。
-  enabled: true,
-
-  // ---- AI 客户端长连接（2026-11-07 新增，可单独关）----
-  // ChatGPT 桌面端的 Remote Control / Codex enrollment 由后台进程建常驻 WebSocket，
-  // 它不读 macOS 系统代理，自己用系统 DNS 解析 → 拿到被污染的假 IP → 直连超时，
-  // 桌面端报 "Pairing code unavailable: Remote control failed to connect"。
-  // 打开后额外接管「系统 DNS + fake-ip 段」：
-  //   DNS 进内核被 dns-hijack 劫持 → Clash 返回 fake-ip(198.18.x.x)
-  //   → 应用连 fake-ip 进内核 → 命中现有 PROCESS-PATH-REGEX / RULE-SET,aiStrict
-  //   → 住宅出口。默认路由仍是 192.168.31.1，局域网 / Tailscale / 纯 IP 直连不受影响。
-  // 关掉（includeAI: false）= 恢复「只接管 Google 段」的旧行为。
-  //
-  // ⚠️ 边界（契约）：这里只是把「域名解析后的连接」收进内核，**不是全量 TUN**。
-  //    默认路由、局域网、纯 IP 直连都不动；出站仍按规则分流。
-  //    不要因为这个开关去把 routeAddress 改成 0.0.0.0/0。
-  includeAI: true,
-  aiRouteAddress: [
-    '223.5.5.5/32', // 系统 DNS（本机 scutil --dns 实测只有这一台）
-    // default-nameserver 里的备用项，同时兜住「换网络后路由器 DHCP 下发的 ISP DNS」
-    '119.29.29.29/32',
-    '198.18.0.0/16', // fake-ip-range，域名流量进内核的入口
-  ],
-
-  // 想恢复整机 TUN：把 routeAddress 整个删掉（或改成 ['0.0.0.0/0'] 由面板控制）。
-  routeAddress: [
-    '142.250.0.0/15', // Google 主力段（142.250–142.251），language_server 最常连这里
-    '172.217.0.0/16', // Google 前端 / gstatic
-    '172.253.0.0/16', // googleapis 的 VIP 段（实测 172.253.120.x 会漏，必须单列）
-    '216.58.0.0/16', // www.google.com
-    '74.125.0.0/16', // Gmail / googleapis
-    '108.177.0.0/17', // Google 账号体系
-    '64.233.160.0/19', // Google 后端
-    '72.14.192.0/18', // Google 后端
-    '173.194.0.0/16', // Google 后端
-    '209.85.128.0/17', // Google 后端
-    '2001:4860::/32', // Google IPv6
-    '2404:6800::/32', // Google IPv6（亚洲）
-    '2607:f8b0::/32', // Google IPv6
-  ],
-  // macOS 上 Mixed 实测可用；启动异常时依次试 System → gVisor
-  stack: 'Mixed',
-};
-
-// ============================================================
-// ⑥ 地区优先（REGION_PRIORITY）—— AUTO / AI 按国家顺序选出口
-// ============================================================
-// 需求：优先日本 → 新加坡 → 韩国，然后依次是港/台/美/英/德/法/加/欧洲，
-// 最后才落到「未单列国家」的 OT。也就是说：**AUTO 必须覆盖全部地区组**，
-// 不能只把 JP/SG/KR 串起来、剩下的一起丢进 OT 混着选。
-//
-// 实现方式：把目标组从「全量 url-test」换成「fallback 套地区组」：
-//   AUTO = fallback[ JP , SG , KR , HK , TW , US , UK , DE , FR , CA , EU , OT ]
-//   每个地区组自己仍是 url-test → 国家内部挑最快的那台
-//   fallback 按书写顺序取第一个「活的」成员 → 国家之间按顺序优先
-// 两者嵌套正好是「先按国家顺序，国家内部挑最快」。
-//
-// ⚠️ 为什么不把所有国家塞进一个 url-test 组（旧 OT 的写法）：
-//    那样「谁快用谁」，出口国家会在港/台/美/英之间乱跳 —— 对 AI 账号就是换国家登录。
-//    OT 现在只收「没有单列的地区」（土耳其、印度、巴西…），永远排最后，不再当第二梯队。
-//
-// 和旧行为（全量 url-test）的差别，用实测数据说：
-//   旧：日本 42ms、新加坡 28ms → 永远挂在新加坡，出口国家在 JP/SG 之间漂移，
-//       AI 站点会因此反复触发「异常活动」验证（这也是 AI 组 tolerance 调到 200 的原因）。
-//   新：只要日本还有一台活的就待在日本；日本全挂 → 新加坡 → 韩国 → 其它。
-//
-// ⚠️ fallback 只判断「活/死」，不看延迟。日本节点比新加坡慢 20ms 也仍然选日本 ——
-//    这是刻意的取舍：地域稳定 > 绝对速度。想要回「谁快用谁」，把 enabled 设 false。
-// ⚠️ 地区组之间的健康检查只有一份开销：AUTO 和 AI 引用的是同一批地区组，
-//    不会因为两个目标组各测一遍而翻倍。
-// ⚠️ 加新地区组时**必须同步加进下面两个列表**，否则 build-flclash.js 的自检会直接报错
-//    （断言：AUTO 必须覆盖所有仍然存在的地区组）。
-const REGION_PRIORITY = {
-  enabled: true,
-
-  // 目标组 → 地区顺序（越靠前越优先）。地区名必须是 smartGroups 里的 key（JP/SG/KR/TW/HK/US/DE...）。
-  // 全部地区组都要写进来：漏一个，那个地区的节点就只能靠 OT 混着选，
-  // 出口会在国家之间漂移（自检也会拦）。
-  targets: {
-    AUTO: ['JP', 'SG', 'KR', 'HK', 'TW', 'US', 'UK', 'DE', 'FR', 'CA', 'EU'],
-    AI: ['JP', 'SG', 'KR', 'HK', 'TW', 'US', 'UK', 'DE', 'FR', 'CA', 'EU'],
-  },
-
-  // 「其它地区」：只收没有单列国家的节点（土耳其 / 印度 / 巴西…），永远排在地区顺序之后。
-  // 它不是第二梯队，只在上面 11 个地区组全部不可用时才会被选中；
-  // 订阅里没有这类节点时整组会被自动剔除，面板上根本看不到它。
-  // '' = 不留逃生口，严格只在列出的国家里选（全挂就等于组空 → 回落到 AUTO 兜底）。
-  othersGroup: 'OT',
-
-  // fallback 组自己的检查节奏（它只关心成员活没活，所以比地区组快一点）
-  interval: 120,
-};
-
-// ------------------------------------------------------------
-// ⑦ WEBRTC_GUARD —— 拦截常见 STUN 探测（可选，默认关）
-// ------------------------------------------------------------
-// 目的：浏览器 WebRTC 会直接向 STUN 服务器发 UDP，不走 HTTP 代理。
-//   这条 UDP 若没进内核（系统代理模式 / App 自己发 / 节点不支持 UDP），
-//   探测页就会拿到真实公网 IP。规则层能做的只有「拒绝这些探测」，
-//   拦不住「根本没进内核的 UDP」——那是平台边界，不是规则能修的。
-//
-// 代价（所以默认关）：
-//   REJECT 3478/5349/19302-19309 + 域名含 stun，会同时打断 Google Meet、
-//   微信/QQ 语音、Discord、游戏语音等一切依赖 STUN 打洞的功能。
-//   只要「Claude 网页不出卖我的 IP」且不用网页通话时，再打开。
-//
-// 覆盖不到：自定义端口的 STUN、TURN 中继（常见 3478 之外的私有端口）、
-//   域名没被内核嗅探出来的纯 IP 探测、以及从未进入内核的 UDP。
-// 清单见 ruleset/webrtc-guard.list。
-const WEBRTC_GUARD = {
-  enabled: false,
-};
+// 「全局」和「直连」会让内核绕过整份 rules：住宅出口 / AI / 前置-亚洲 全部空转，
+// 日志里只剩 `using GLOBAL`，看起来像「住宅节点坏了」。
+// 这个开关把模式改回 rule，并在日志里说清楚为什么。想交还面板控制就把 modeGuard 设 false。
+function enforceRuleMode(config) {
+  if (!MODE_GUARD) return;
+  const cur = config.mode;
+  if (!cur || cur === 'rule') return;
+  config.mode = 'rule';
+  console.log(
+    `[模式守卫] 内核原来是「${cur}」模式 → 已改回 rule：` +
+      `全局/直连会绕过全部规则，「${RESIDENTIAL.group}」一次都不会被命中，` +
+      'AI 的「住宅或阻断」等于关闭',
+  );
+}
 
 // ============================================================
 // 以下为内部实现：CDN 源、自定义关键词、节点清洗、分组、规则生成
@@ -620,42 +296,6 @@ const CDN_BASE = CDN_BASE_CN;
 
 // 本仓库规则集专用源：要即时生效，不能被 CDN 缓存拖住
 const RAW_BASE = 'https://raw.githubusercontent.com/uxiew/easy_proxy_rules/refs/heads/main/ruleset';
-
-// =========== 兼容订阅自带策略组 ===========
-// 本脚本会重建 proxy-groups，而订阅自带的组可能正被**节点**引用：
-// 典型是订阅自带住宅节点 —— 几百个节点写着 `dialer-proxy: 前置-机场`，
-// 那个组是订阅自己建的。重建时把它丢掉，这些节点就全部悬空（内核日志
-// `proxy [X] dialer-proxy [前置-机场] not found`），面板上却看不出异常，
-// 只表现为「选了住宅节点，Claude 打不开」。
-// true  = 名字不冲突的订阅组一律保留（成员清洗成「本配置里真实存在的名字」）
-// false = 只保留本脚本建的组（旧行为；订阅把 dialer-proxy 指向自家组时会全断）
-let KEEP_SUB_GROUPS = true;
-
-// =========== 模式守卫：把内核钉在「规则」模式 ===========
-// 「全局 / Global」和「直连 / Direct」两种模式会让内核**绕过整份 rules**：
-//   - 全局：所有连接投给内建的 GLOBAL 组（成员是 DIRECT + REJECT + 全部节点，
-//           默认选 DIRECT），住宅出口 / AI / 前置-亚洲 全部空转；
-//   - 直连：所有连接直接出门。
-// 结果就是「住宅或阻断」这条契约被一键关掉，而且日志里只剩 `using GLOBAL`，
-// 看起来像「住宅节点坏了」（实测踩过：全局 + GLOBAL 选 DIRECT，整机裸连，
-// Claude / OpenAI 全超时）。
-// 这个开关把模式钉回 rule：面板上再点「全局」也会在下一次重载时被改回来，
-// 并在日志里说清楚为什么。想交还面板控制就改成 false。
-// ⚠️ 不钉的话，别人把「全局」当「更省事」随手一点，AI 就可能悄悄换了出口。
-// 改这里，或用 USER_CONFIG.modeGuard / x-smart 的 modeGuard 覆盖
-let MODE_GUARD = true;
-
-function enforceRuleMode(config) {
-  if (!MODE_GUARD) return;
-  const cur = config.mode;
-  if (!cur || cur === 'rule') return;
-  config.mode = 'rule';
-  console.log(
-    `[模式守卫] 内核原来是「${cur}」模式 → 已改回 rule：` +
-      `全局/直连会绕过全部规则，「${RESIDENTIAL.group}」一次都不会被命中，` +
-      'AI 的「住宅或阻断」等于关闭',
-  );
-}
 // ===========================
 // 第一部分：自定义关键词和规则
 // ======= 自定义关键词 =======
@@ -1558,6 +1198,22 @@ function describeValue(v) {
   if (typeof v === 'string') return '字符串';
   return typeof v;
 }
+// 类型写错时不能「一律保留默认值」的键：保留默认值会让语义**相反**。
+// 只有 residential.primary 属于这一类：默认值是 ''（不锁 → 收编全部住宅节点），
+// 用户写了个对象（旧写法 { ip } / 拼错的字段）本意是「锁那一台」，
+// 静默退回 '' 就成了「随便哪台住宅都行」——出口 IP 可能落到别的国家。
+// 这里改成写入一个非法值，让 primaryNameSetting() 判成「锁定失败」→ 组里只剩 REJECT。
+const CONFIG_GUARDS = {
+  'residential.primary': (v, target, k, sink) => {
+    if (typeof v === 'string') return false; // 正常字符串交给通用逻辑
+    target[k] = { invalid: describeValue(v) };
+    sink.bad.push(
+      `residential.primary 只接受节点名（字符串），收到${describeValue(v)} ` +
+        '—— 已按锁定失败处理（住宅出口只剩 REJECT）',
+    );
+    return true;
+  },
+};
 // 类型对不上就拒绝：`pinOnly: 'true'`（字符串）在 JS 里是 truthy，会悄悄按 true 跑，
 // 下次写 `'false'` 也一样 truthy —— 这类坑只能靠严格校验挡住。
 function sameKind(cur, v) {
@@ -1579,6 +1235,9 @@ function applyConfigFields(path, target, patch, sink) {
       applyConfigFields(here, cur, v, sink);
       continue;
     }
+    // 语义不能「保留默认值」的键先判（见 CONFIG_GUARDS）
+    const guard = CONFIG_GUARDS[here];
+    if (guard && guard(v, target, k, sink)) continue;
     // 枚举先判：`upstream.inject` 的默认值是布尔 true，但合法的写法是 'fill' / 'strip' /
     // 'override' / false —— 按「默认值类型」校验会把 'strip' 当成类型错误挡掉。
     const allowed = CONFIG_ENUMS[here];
@@ -1646,7 +1305,7 @@ function applyConfigLayer(label, src) {
   if (sink.applied.length) console.log(`[配置覆写] ${label}：已应用 ${sink.applied.join(' / ')}`);
   if (sink.unknown.length) console.log(`[配置覆写] ${label}：忽略未知项 ${sink.unknown.join('；')}`);
   if (sink.bad.length) {
-    console.log(`[配置覆写] ${label}：${sink.bad.join('；')} —— 已保留脚本默认值`);
+    console.log(`[配置覆写] ${label}：${sink.bad.join('；')} —— 已忽略上述项（其余照常）`);
   }
 }
 
@@ -2785,4 +2444,6 @@ function main(config) {
 // Node.js 环境支持
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = main;
+  // 供 build-flclash.js 把默认值渲染到 flclash.js 顶部（只读快照，改了不影响运行）
+  module.exports.DEFAULT_CONFIG = DEFAULT_CONFIG;
 }

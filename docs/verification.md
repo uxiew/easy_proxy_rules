@@ -35,7 +35,7 @@ curl -s --noproxy '*' --unix-socket "$SOCK" http://localhost/proxies \
   | python3 -c "import sys,json;p=json.load(sys.stdin)['proxies'];print(p['住宅出口']['all'], p['住宅出口']['now'])"
 ```
 
-锁定模式（`RESIDENTIAL.pinOnly: true` + 有 `primary`）下，`all` 应该**只有两项**：
+锁定模式（`residential.pinOnly: true` + 有 `primary`）下，`all` 应该**只有两项**：
 `['🏠 住宅-JP', 'REJECT']`，`now` 就是那台住宅。三种异常各自对应一句话：
 
 | `all` 实际内容                          | 含义                                                     | 去看哪                                                                    |

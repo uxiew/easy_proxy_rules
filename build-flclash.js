@@ -76,7 +76,20 @@ function maskHost(host) {
   return `${s.slice(0, 3)}***${s.slice(-3)}`;
 }
 
+// 把 DEFAULT_CONFIG 渲染成一段可直接取消注释的注释块。
+// 为什么要放：手机上没法像桌面那样用覆写链，用户打开文件第一眼就该看到
+// 「有哪些键、当前默认值是什么」，而不是去翻 2000 行 smart.js。
+function renderConfigComment(obj) {
+  return JSON.stringify(obj, null, 2)
+    .split('\n')
+    .map((l) => `// ${l}`)
+    .join('\n');
+}
+
+const DEFAULTS = require('./smart.js').DEFAULT_CONFIG || {};
+
 function header(cred, m) {
+  const defaultsComment = renderConfigComment(DEFAULTS);
   const raw = Array.isArray(cred.nodes) && cred.nodes.length ? cred.nodes : [cred];
   // 占位符版的 port 是 0，会被下面的过滤丢掉 —— 那时退回原样，保证模板里有可填的一行
   const valid = raw.filter((n) => n && n.server && n.port);
@@ -168,16 +181,27 @@ ${nodeLines}
 };
 
 // ============ 配置项（可选，与桌面端 x-smart 同一套键名） ============
-// 来源：flclash-credentials.json 的 "config" 段。留空 = 全用 smart.js 的默认值。
-// 手机上没法用覆写链，这里是唯一「重新构建也不会丢」的配置入口；
-// 也可以直接改 smart.js 顶部的 USER_CONFIG（但重建会覆盖，别在里面放只在本机有用的东西）。
-// 键名：residential / appProxy / traffic / narrowTun / regionPriority / webrtcGuard /
-//       aiStaticToAI + keepSubGroups / modeGuard，详见 docs/custom-config.md
+// 手机上没法用覆写链，这里是唯一「重新构建也不会丢」的配置入口。
+// 只写要改的键即可（对象逐字段合并，数组整体替换）；留空 = 全用下面的默认值。
+//
+// 可选键（9 个）：residential / appProxy / traffic / aiStaticToAI / narrowTun /
+//                regionPriority / webrtcGuard / keepSubGroups / modeGuard
+// 键表、合并规则、校验行为：docs/custom-config.md
+//
+// 例：
+//   const FLCLASH_USER_CONFIG = {
+//     residential: { primary: '🏠IP-JP', upstream: { inject: 'strip' } },
+//   };
+//
+// 下面这份是本次构建时 smart.js 的 DEFAULT_CONFIG 快照，只作参考 ——
+// 不要整段取消注释（那不是完整语句），要改哪项就在 FLCLASH_USER_CONFIG 里写哪项：
+//
+${defaultsComment}
 const FLCLASH_USER_CONFIG = ${JSON.stringify(
     cred && typeof cred.config === 'object' && cred.config ? cred.config : {},
     null,
     2,
-  ).split('\n').join('\n')};
+  )};
 ${isPublic ? "// 占位符版没有真实凭据：告诉 smart.js 按「没有家宽」处理，AI 走 AI 组\nconst FLCLASH_NO_RESIDENTIAL = true;\n" : ''}// ==========================================================
 
 // ================= smart.js 全文（勿手改） =================

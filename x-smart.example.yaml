@@ -30,7 +30,7 @@ x-smart:
     prefer: 'JP'
 
     # 订阅自带住宅的 dialer-proxy 怎么处理：
-    #   'fill'   = 只给空的补「前置-亚洲」（默认，本机在国内时用）
+    #   true / 'fill' = 只给空的补「前置-亚洲」（默认，本机在国内时用）
     #   'strip'  = 删掉，本机直连住宅网关（本机与住宅同国，少一跳）
     #   'override' = 全部改指「前置-亚洲」
     #   false    = 不碰
@@ -90,7 +90,8 @@ x-smart:
 # 不注入就把整段删掉。字段说明见 residential.example.yaml。
 # +proxies:
 #   - name: '🏠IP-JP'
-#     type: socks5
+#     type: http        # ⚠️ 按服务商给的协议填：HTTP 代理写 http，SOCKS5 才写 socks5
+#                       #    写错的表现是「TCP 能连上、一握手就 reset」，很难查（见 troubleshooting 坑 30）
 #     server: 203.0.113.10
 #     port: 7012
 #     username: 'user'

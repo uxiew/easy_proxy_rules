@@ -43,7 +43,7 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
    **重新构建不会丢**（手机上改 `USER_CONFIG` 会被下次构建覆盖）。键表见
    [自定义配置](custom-config.md)。
 
-   只有 `primary` 那台会进「住宅出口」——构建时它的名字会被写进节点的 `RESIDENTIAL.primary`，
+   只有 `primary` 那台会进「住宅出口」——构建时它的名字会被写进节点的 `residential.primary`，
    所以桌面配置和手机凭据用的是同一个词。其余节点注入后**只作备用**（`pinOnly: true`）——
    主力挂了是 `REJECT`，不会自动切到备用 IP。单节点旧写法 `{ "name": ..., "server": ... }`
    仍然有效。详见 [多台住宅 IP](configuration.md)。
@@ -56,12 +56,12 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
 
 > `flclash.js` 占位符版头部带 `FLCLASH_NO_RESIDENTIAL = true`（没有凭据可注入），
 > 会**强制**判成「没有家宽」→ 不建住宅链、AI 规则改投 `AI` 组，粘上去就能用。
-> 这个标记优先级高于 `RESIDENTIAL.enabled`：公共版里把 `enabled` 改成 `true` 或 `'auto'`
+> 这个标记优先级高于 `residential.enabled`：公共版里把 `enabled` 改成 `true` 或 `'auto'`
 > 也不会建住宅链（判定顺序见 [没有家宽怎么办](configuration.md)）。
 > `flclash-private.js` 有真实凭据，走完整住宅链。
 
 > **手机上「指定某个 App 走某个组」**：`listeners` 在 FlClash 模式会被跳过（手机没有自填代理端口这条路），  
-> 用 `APP_PROXY.processes` 写**包名**，例如 `{ value: 'org.telegram.messenger', proxy: 'US' }`。  
+> 用 `appProxy.processes` 写**包名**，例如 `{ value: 'org.telegram.messenger', proxy: 'US' }`。  
 > 详见 [应用级分流](traffic-entry.md#应用级分流指定应用走指定组)。最外层「哪些 App 进 VPN」由 FlClash 的「应用」页控制。
 
 生成的文件**顶部自带构建元信息**，拿到任何一份 flclash 配置，看头部就知道它对应哪一版逻辑（以下是某次构建的输出，数值以实际文件头部为准）：
@@ -176,4 +176,4 @@ curl -s -m 20 -x http://127.0.0.1:7890 -o /dev/null -w "%{http_code}\n" https://
 Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且没有自动切换，不值得。
 
 7865 专用端口（listeners）在手机上没有用途（没有 Proxifier/Claude Code），  
-但保留无害；`RESIDENTIAL.dedicatedPort` 设 0 可关。
+但保留无害；`residential.dedicatedPort` 设 0 可关。

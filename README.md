@@ -28,7 +28,7 @@
    ```
    https://raw.githubusercontent.com/uxiew/easy_proxy_rules/main/smart.js
    ```
-2. 设为**全局覆写**。模式用「**规则**」：脚本会把「全局 / 直连」自动改回来（`MODE_GUARD`），
+2. 设为**全局覆写**。模式用「**规则**」：脚本会把「全局 / 直连」自动改回来（`modeGuard`），
    因为那两种模式会绕过整份规则。
 3. 有家宽要接：再建一个本地 YAML 覆写，参考 [`residential.example.yaml`](residential.example.yaml)；
    **顺序必须是「住宅 YAML → smart.js → 其他 YAML」**。
@@ -70,9 +70,9 @@ x-smart:                 # ← 不带 +
 
 | 开关 | 默认 | 作用 |
 | --- | --- | --- |
-| `RESIDENTIAL.aiStrict` | `true` | AI 服务商 + Anthropic IP 段 + Claude/ChatGPT 进程 → `住宅出口` |
-| `RESIDENTIAL.pinOnly` | `true` | 组里只放 `primary` 那一台；其余住宅 IP 只注入、不进组 |
-| `RESIDENTIAL.escapeToAI` | `false` | 住宅挂了是否允许手动切机场。关着 = 只能住宅或断网 |
+| `residential.aiStrict` | `true` | AI 服务商 + Anthropic IP 段 + Claude/ChatGPT 进程 → `住宅出口` |
+| `residential.pinOnly` | `true` | 组里只放 `primary` 那一台；其余住宅 IP 只注入、不进组 |
+| `residential.escapeToAI` | `false` | 住宅挂了是否允许手动切机场。关着 = 只能住宅或断网 |
 
 `primary` 只写**节点名**：先完整匹配，再按 includes 匹配（必须恰好命中 1 台）。
 命中 0 台或多台 → 按 `pinMiss: 'reject'`（默认）只留 `REJECT`，日志有提示。
@@ -91,7 +91,7 @@ primary: '住宅-JP',      // 或者名字里稳定的一段
 | **7890** | ✅ 按域名分流 | 系统代理、浏览器、日常默认 |
 | **7865** | ❌ 跳过规则，全部走住宅出口 | Proxifier、Claude Code、不读系统代理的程序 |
 
-另有 7891（SOCKS5）、7892（HTTP）、7866+（`APP_PROXY.ports` 自建）。完整表见
+另有 7891（SOCKS5）、7892（HTTP）、7866+（`appProxy.ports` 自建）。完整表见
 [端口、分组与文件结构](docs/architecture.md)。
 
 ---
@@ -120,7 +120,7 @@ x-smart:                      # 键名不要带 +
 
 ## 没有家宽静态 IP？
 
-改 `RESIDENTIAL.enabled` 一个值，**其余规则、顺序都不变**：
+改 `residential.enabled` 一个值，**其余规则、顺序都不变**：
 
 | 值 | 用在 | 结果 |
 | --- | --- | --- |
@@ -132,17 +132,23 @@ x-smart:                      # 键名不要带 +
 
 ## 配置区看哪里
 
-`smart.js` 开头「第 0 部分：用户配置区」是唯一需要日常改动的地方：
+`smart.js` 第 0 部分只有两个对象：`DEFAULT_CONFIG`（全部默认值）与 `USER_CONFIG`（你的覆盖），
+九个顶层键与 `x-smart` 完全一致：
 
-| 对象 | 管什么 |
+| 键 | 管什么 |
 | --- | --- |
-| ① `APP_PROXY` | 应用级分流：专用端口 / 进程名 / 路径正则 / Android 包名 |
-| ② `RESIDENTIAL` | 住宅出口：总开关、`nodePattern`、`primary`、`pinOnly` / `pinMiss`、跳板组 |
-| ③ `TRAFFIC` | 国内直连、Apple 直连 |
-| ④ `AI_STATIC_TO_AI` | AI 静态资源 / 安装包走机场（省住宅流量） |
-| ⑤ `NARROW_TUN` | 窄 TUN（只把 Google 段塞进内核） |
-| ⑥ `REGION_PRIORITY` | `AUTO` / `AI` 的国家优先顺序 |
-| ⑦ `WEBRTC_GUARD` | 可选 STUN 拦截（默认关，会打断语音通话） |
+| `residential` | 住宅出口：锁定哪台、锁不上怎么办、跳板组 |
+| `appProxy` | 应用级分流：专用端口 / 进程名 / 路径正则 / Android 包名 |
+| `traffic` | 国内直连、Apple 直连 |
+| `aiStaticToAI` | AI 静态资源 / 安装包走机场（省住宅流量） |
+| `narrowTun` | 窄 TUN（只把 Google 段塞进内核） |
+| `regionPriority` | `AUTO` / `AI` 的国家优先顺序 |
+| `webrtcGuard` | 可选 STUN 拦截（默认关，会打断语音通话） |
+| `keepSubGroups` | 保留订阅自带策略组 |
+| `modeGuard` | 内核被切成全局/直连时改回规则模式 |
+
+改配置**不用动脚本**：桌面端写覆写 YAML 的 `x-smart`，手机端写
+`flclash-credentials.json` 的 `config` 段。见 [自定义配置](docs/custom-config.md)。
 
 ---
 

@@ -1,61 +1,69 @@
 # 配置项详解
 
-`smart.js` 第 0 部分「用户配置区」的逐项说明，含住宅出口三态、住宅锁定与多台 IP、DNS、WebRTC
+`smart.js` 第 0 部分配置的逐项说明，含住宅出口三态、住宅锁定与多台 IP、DNS、WebRTC
 与未实现的多出口预案。
 
 > ← [文档索引](README.md) · [仓库首页](../README.md)
 
 ---
 
-## 七个配置对象与默认值
+## 顶层键与默认值
 
-`smart.js` 开头就是 `// 第 0 部分：用户配置区`，按使用频率排了七个对象，**所有可调项都在这里**（之后的 CDN 源、节点清洗、分组、规则生成属于内部逻辑，日常不用动）：
+`smart.js` 第 0 部分只有两个对象：`DEFAULT_CONFIG`（全部默认值）与 `USER_CONFIG`（你的覆盖）。
+九个顶层键，键名与 `x-smart` 完全一致：
 
-| 顺序 | 对象                | 管什么                                |
-| -- | ----------------- | ---------------------------------- |
-| ①  | `APP_PROXY`       | 应用级分流：专用端口 / 进程名 / 路径正则 / Android 包名（最常改） |
-| ②  | `RESIDENTIAL`     | 住宅出口：总开关、组名、跳板组、专用端口               |
-| ③  | `TRAFFIC`         | 省流量：国内直连、Apple 直连                  |
-| ④  | `AI_STATIC_TO_AI` | AI 静态资源 / 安装包 → 机场 AI 组            |
-| ⑤  | `NARROW_TUN`      | 窄 TUN：只把 Google 段塞进内核（救 `language_server`） |
-| ⑥  | `REGION_PRIORITY` | `AUTO`/`AI` 的国家优先顺序（全部地区组：JP → SG → KR → 港台 → 美英德法加 → 欧洲 → OT 兜底） |
-| ⑦  | `WEBRTC_GUARD`    | 可选：拦截常见 STUN 探测（默认关，会打断语音通话，见下） |
+| 键 | 管什么 |
+| --- | --- |
+| `residential` | 住宅出口：锁定哪台、锁不上怎么办、跳板组 |
+| `appProxy` | 应用级分流：专用端口 / 进程名 / 路径正则 / Android 包名（最常改） |
+| `traffic` | 省流量：国内直连、Apple 直连 |
+| `aiStaticToAI` | AI 静态资源 / 安装包 → 机场（不烧住宅流量） |
+| `narrowTun` | 窄 TUN：只把 Google 段塞进内核（救 `language_server`） |
+| `regionPriority` | `AUTO` / `AI` 的国家优先顺序（JP → SG → KR → 港台 → 美英德法加 → 欧洲 → OT 兜底） |
+| `webrtcGuard` | 可选：拦 STUN 探测（默认关，会打断语音） |
+| `keepSubGroups` | 保留订阅自带策略组（节点的 `dialer-proxy` 可能引用它们） |
+| `modeGuard` | 内核被切成全局/直连时改回「规则」模式 |
+
+默认值都在 `DEFAULT_CONFIG` 里，**推荐用 `x-smart` 覆盖而不是改脚本**：
+[自定义配置](custom-config.md) 有完整键表、优先级与校验行为。
+
+### 逐个键的默认值与作用
 
 | 配置                             | 默认              | 作用                                                                                                   |
 | ------------------------------ | --------------- | ---------------------------------------------------------------------------------------------------- |
-| `RESIDENTIAL.enabled`          | `true`          | 住宅出口三态开关：`true` = 有家宽（默认）；`false` = **没有家宽**（两组不生成、住宅节点移除、规则改投 `AI`）；`'auto'` = **仍有效但不推荐**，只判「运行时看不看得到住宅节点」而非「有没有家宽」，看不到即按无家宽处理（有覆写顺序陷阱，且占位符版会被强制覆盖）。见下文「没有家宽怎么办」 |
-| `RESIDENTIAL.aiStrict`         | `true`          | AI 服务商走住宅（推荐）                                                                                        |
-| `RESIDENTIAL.allAI`            | `false`         | 整个 `forAI` 走住宅——**别开**，`ai.yaml` 里有 `DOMAIN-REGEX,google.*`，会连 `googlevideo.com`（YouTube 视频流）一起烧住宅流量 |
-| `APP_PROXY.ports`              | `[7865 → 住宅出口]` | 专用端口列表：端口整体绑到指定组/节点，跳过规则。见 [应用级分流](traffic-entry.md)                                                                    |
-| `APP_PROXY.processes`          | `[]`（全注释）       | 进程/包名规则，插在 `rules` 最前。桌面写进程名，Android 写包名                                                             |
-| `RESIDENTIAL.escapeToAI`       | `false`         | 是否把 `AI` 放进「住宅出口」当手动逃生口。默认 `false` = 住宅挂了只能阻断，不会静默换机场 IP                                             |
-| `RESIDENTIAL.dedicatedPort`    | `0`（已迁移）        | **旧字段**，仅兼容用：填非 0 值且 `APP_PROXY.ports` 里没有 `residential-in` 时自动补一条                                   |
-| `RESIDENTIAL.upstream.enabled` | `true`          | 建「前置-亚洲」组：住宅节点的 `dialer-proxy` 指向它                                                                   |
-| `RESIDENTIAL.upstream.inject`  | `true`          | 订阅自带住宅节点的 `dialer-proxy` 怎么处理：`'fill'`（默认，只补空的）/ `'strip'`（删掉，直连网关）/ `'override'`（全改 `前置-亚洲`）/ `false`（不碰）。前置组匹配不到节点时自动降级 `strip`。见下文「订阅自带住宅怎么接」 |
-| `RESIDENTIAL.nodePattern`      | `🏠\|IP-\|家宽\|住宅\|静态\|[Rr]esi\|RESI\|[Ss]tatic\|STATIC\|[Ii][Ss][Pp]` | 住宅节点名匹配。既认自己命名的 `🏠`/`IP-` 前缀，也认**订阅自带**的「家宽 / 住宅 / 静态 / ISP / RESI」变体。匹配宽不危险——`pinOnly` 会锁死一台；但 `pinOnly: false` 时必须收窄回 `🏠\|IP-`。见下文「家宽节点怎么认」 |
-| `RESIDENTIAL.primary`          | `''`            | **主力**住宅节点 = 组内锁定的那一台。**只写节点名**：先完整匹配，再按 includes 匹配（须恰好命中 1 台）。留空 = 用 `prefer` 排第一台。FlClash 构建时自动填成注入的主节点。见下文「锁哪一台」 |
-| `RESIDENTIAL.pinOnly`          | `true`          | **严格锁定**：`primary` 有值时组里只放这一台，其余住宅 IP 只注入、不进组 —— 指定 IP 挂了就是 `REJECT`，**不会**自动换到另一台住宅 IP。`false` = 全部住宅节点可选（旧行为） |
-| `RESIDENTIAL.pinMiss`          | `'reject'`      | 锁**不上**时（`primary` 命中 0 台或多台）：`'reject'` = 成员只剩 `REJECT`，AI 直接打不开；`'collect'` = 退回收编（默认选中订阅排序的第一台） |
-| `RESIDENTIAL.prefer`           | `''`            | 没配 `primary` 时，把指定国家的住宅节点排到组首（`'JP'` / `'日本\|东京'`）。只重排不淘汰 |
-| `KEEP_SUB_GROUPS`（顶层）        | `true`          | 保留订阅自带的策略组（名字不冲突时）。节点的 `dialer-proxy` 可能指向订阅自家组，丢掉它 = 内核 `Parse config error`，见 [坑 28](troubleshooting.md) |
-| `MODE_GUARD`（顶层）             | `true`          | 把内核钉在「规则」模式：面板上被切成「全局 / 直连」时自动改回 `rule` 并记日志。那两种模式会绕过整份规则，`住宅出口` 一次都不会命中，见 [坑 31](troubleshooting.md) |
-| `RESIDENTIAL.upstream.filter`  | 显式亚洲关键词         | 跳板池节点名匹配：日/港/台/韩/新/越/马/泰/菲（多字词，见 [坑 8](troubleshooting.md)）。**已与 `smartGroups.JP` 解耦**，改地区组不会连带改跳板池                         |
-| `TRAFFIC.domesticDirect`       | `true`          | 追加 `GEOSITE,cn → DIRECT`（`GEOIP,CN` 对 fake-ip 域名无效）                                                  |
-| `TRAFFIC.appleDirect`          | `true`          | Apple 全家桶直连（iCloud 同步/App Store 原来走机场，最费流量）                                                          |
-| `WEBRTC_GUARD.enabled`         | `false`         | 拦截常见 STUN 探测：`DST-PORT 3478/5349/19302-19309` + `DOMAIN-KEYWORD,stun` → `REJECT`。**会同时打断 Google Meet、微信语音、游戏语音**，且拦不住「从未进入内核的 UDP」。见下文「WebRTC 探测要不要拦」 |
+| `residential.enabled`          | `true`          | 住宅出口三态开关：`true` = 有家宽（默认）；`false` = **没有家宽**（两组不生成、住宅节点移除、规则改投 `AI`）；`'auto'` = **仍有效但不推荐**，只判「运行时看不看得到住宅节点」而非「有没有家宽」，看不到即按无家宽处理（有覆写顺序陷阱，且占位符版会被强制覆盖）。见下文「没有家宽怎么办」 |
+| `residential.aiStrict`         | `true`          | AI 服务商走住宅（推荐）                                                                                        |
+| `residential.allAI`            | `false`         | 整个 `forAI` 走住宅——**别开**，`ai.yaml` 里有 `DOMAIN-REGEX,google.*`，会连 `googlevideo.com`（YouTube 视频流）一起烧住宅流量 |
+| `appProxy.ports`              | `[7865 → 住宅出口]` | 专用端口列表：端口整体绑到指定组/节点，跳过规则。见 [应用级分流](traffic-entry.md)                                                                    |
+| `appProxy.processes`          | 8 条（WhatsApp / Talkatone / ChatGPT / Claude / Antigravity / agy） | 进程/包名规则，插在 `rules` 最前。桌面写进程名，Android 写包名 |
+| `residential.escapeToAI`       | `false`         | 是否把 `AI` 放进「住宅出口」当手动逃生口。默认 `false` = 住宅挂了只能阻断，不会静默换机场 IP                                             |
+| `residential.dedicatedPort`    | `0`（已迁移）        | **旧字段**，仅兼容用：填非 0 值且 `appProxy.ports` 里没有 `residential-in` 时自动补一条                                   |
+| `residential.upstream.enabled` | `true`          | 建「前置-亚洲」组：住宅节点的 `dialer-proxy` 指向它                                                                   |
+| `residential.upstream.inject`  | `true`          | 订阅自带住宅节点的 `dialer-proxy` 怎么处理：`'fill'`（默认，只补空的）/ `'strip'`（删掉，直连网关）/ `'override'`（全改 `前置-亚洲`）/ `false`（不碰）。前置组匹配不到节点时自动降级 `strip`。见下文「订阅自带住宅怎么接」 |
+| `residential.nodePattern`      | `🏠\|IP-\|家宽\|住宅\|静态\|[Rr]esi\|RESI\|[Ss]tatic\|STATIC\|[Ii][Ss][Pp]` | 住宅节点名匹配。既认自己命名的 `🏠`/`IP-` 前缀，也认**订阅自带**的「家宽 / 住宅 / 静态 / ISP / RESI」变体。匹配宽不危险——`pinOnly` 会锁死一台；但 `pinOnly: false` 时必须收窄回 `🏠\|IP-`。见下文「家宽节点怎么认」 |
+| `residential.primary`          | `''`            | **主力**住宅节点 = 组内锁定的那一台。**只写节点名**：先完整匹配，再按 includes 匹配（须恰好命中 1 台）。留空 = 用 `prefer` 排第一台。FlClash 构建时自动填成注入的主节点。见下文「锁哪一台」 |
+| `residential.pinOnly`          | `true`          | **严格锁定**：`primary` 有值时组里只放这一台，其余住宅 IP 只注入、不进组 —— 指定 IP 挂了就是 `REJECT`，**不会**自动换到另一台住宅 IP。`false` = 全部住宅节点可选（旧行为） |
+| `residential.pinMiss`          | `'reject'`      | 锁**不上**时（`primary` 命中 0 台或多台）：`'reject'` = 成员只剩 `REJECT`，AI 直接打不开；`'collect'` = 退回收编（默认选中订阅排序的第一台） |
+| `residential.prefer`           | `''`            | 没配 `primary` 时，把指定国家的住宅节点排到组首（`'JP'` / `'日本\|东京'`）。只重排不淘汰 |
+| `keepSubGroups`（顶层）        | `true`          | 保留订阅自带的策略组（名字不冲突时）。节点的 `dialer-proxy` 可能指向订阅自家组，丢掉它 = 内核 `Parse config error`，见 [坑 28](troubleshooting.md) |
+| `modeGuard`（顶层）             | `true`          | 把内核钉在「规则」模式：面板上被切成「全局 / 直连」时自动改回 `rule` 并记日志。那两种模式会绕过整份规则，`住宅出口` 一次都不会命中，见 [坑 31](troubleshooting.md) |
+| `residential.upstream.filter`  | 显式亚洲关键词         | 跳板池节点名匹配：日/港/台/韩/新/越/马/泰/菲（多字词，见 [坑 8](troubleshooting.md)）。**已与 `smartGroups.JP` 解耦**，改地区组不会连带改跳板池                         |
+| `traffic.domesticDirect`       | `true`          | 追加 `GEOSITE,cn → DIRECT`（`GEOIP,CN` 对 fake-ip 域名无效）                                                  |
+| `traffic.appleDirect`          | `true`          | Apple 全家桶直连（iCloud 同步/App Store 原来走机场，最费流量）                                                          |
+| `webrtcGuard.enabled`         | `false`         | 拦截常见 STUN 探测：`DST-PORT 3478/5349/19302-19309` + `DOMAIN-KEYWORD,stun` → `REJECT`。**会同时打断 Google Meet、微信语音、游戏语音**，且拦不住「从未进入内核的 UDP」。见下文「WebRTC 探测要不要拦」 |
 
-## 模式守卫（`MODE_GUARD`）
+## 模式守卫（`modeGuard`）
 
 「全局」和「直连」两种模式会让内核**绕过整份 `rules`**：全局把一切投给内建的 `GLOBAL`
 （成员是 `DIRECT` + `REJECT` + 全部节点，默认就选 `DIRECT`），直连则直接出门。此时
 `住宅出口` / `AI` / `前置-亚洲` 全都空转，日志里只剩 `using GLOBAL` —— 看起来像
 「住宅节点坏了」，实际是分流没跑。
 
-默认 `MODE_GUARD = true`：检测到 `mode: global` / `direct` 就改回 `rule`，并打一条日志说明
+默认 `modeGuard = true`：检测到 `mode: global` / `direct` 就改回 `rule`，并打一条日志说明
 原因。面板上再点「全局」，下一次重载也会被改回来。
 
 ```js
-const MODE_GUARD = false;   // 想交还面板控制时改成 false
+const modeGuard = false;   // 想交还面板控制时改成 false
 ```
 
 > 为什么要钉死：AI 那条契约是「只走住宅，否则阻断」。全局模式一开，这条约束就静默失效，
@@ -74,7 +82,7 @@ IP 型 DoH 不需要任何引导，少一环就少一个死法（详见 [坑 15]
 `default-nameserver` 只负责解析**节点域名**（`jp.jisu16.top` 这类），所以放路由器 DNS 优先、  
 公网 IP 兜底即可。
 
-## WebRTC 探测要不要拦（`WEBRTC_GUARD`）
+## WebRTC 探测要不要拦（`webrtcGuard`）
 
 浏览器 WebRTC 打洞时直接向 STUN 服务器发 **UDP**，不吃 HTTP 代理，也不一定被 TUN 接管。  
 [`ruleset/webrtc-guard.list`](../ruleset/webrtc-guard.list) 提供一份**默认关闭**的拦截清单：
@@ -83,7 +91,7 @@ IP 型 DoH 不需要任何引导，少一环就少一个死法（详见 [坑 15]
 开关在 `smart.js` 第 0 部分 ⑦：
 
 ```js
-const WEBRTC_GUARD = {
+const webrtcGuard = {
   enabled: false, // true = 拦截；会打断网页通话，见下
 };
 ```
@@ -109,7 +117,7 @@ const WEBRTC_GUARD = {
 ## 家宽节点怎么认（`nodePattern`）
 
 住宅链能不能建起来，第一步是「脚本认不认得出哪个节点是家宽」。认不出来 = `住宅出口` 里只剩
-`REJECT` = AI 类站点全打不开。这一步由 `RESIDENTIAL.nodePattern` 一个正则决定：
+`REJECT` = AI 类站点全打不开。这一步由 `residential.nodePattern` 一个正则决定：
 
 ```js
 nodePattern: '🏠|IP-|家宽|住宅|静态|[Rr]esi|RESI|[Ss]tatic|STATIC|[Ii][Ss][Pp]',
@@ -217,7 +225,7 @@ curl -s --noproxy '*' --unix-socket "$SOCK" \
 `住宅出口` 是 `select` 组，成员 = 锁定的那一台 + `REJECT`（仅 `escapeToAI: true` 时再多个 `AI`）：
 
 ```js
-proxies: [RESIDENTIAL.primary, 'REJECT']   // escapeToAI: true 时 → [primary, 'REJECT', 'AI']
+proxies: [residential.primary, 'REJECT']   // escapeToAI: true 时 → [primary, 'REJECT', 'AI']
 ```
 
 `primary` 有值且 `pinOnly: true`（默认）时，组里**只会出现这一台**住宅节点。  
@@ -365,7 +373,7 @@ x-smart:            # ← 不带 +（Clash Party 的 deepMerge 只对数组认 +
 （`keepSubGroups` / `modeGuard`）都能写。完整键表、手机端写法、写错了会怎样，
 见 [自定义配置](custom-config.md) 与模板 [`x-smart.example.yaml`](../x-smart.example.yaml)。
 
-## 没有家宽怎么办（`RESIDENTIAL.enabled` 三态开关）
+## 没有家宽怎么办（`residential.enabled` 三态开关）
 
 **以前没有家宽静态 IP = AI 全被阻断**：`住宅出口` 组只有 `REJECT`，而 `aiStrict` /
 `residential` / Anthropic IP 段 / ChatGPT+Claude 进程规则全都指向它。
@@ -399,7 +407,7 @@ x-smart:            # ← 不带 +（Clash Party 的 deepMerge 只对数组认 +
 
 1. `FLCLASH_NO_RESIDENTIAL`（`flclash.js` 占位符版头部注入）→ 无条件判无家宽；
 2. `enabled: true` → 有家宽；`enabled: false` → 无家宽；
-3. `enabled: 'auto'` → `RESIDENTIAL.primary` 有值（FlClash 私有版注入）即判有家宽，
+3. `enabled: 'auto'` → `residential.primary` 有值（FlClash 私有版注入）即判有家宽，
    否则看 `config.proxies` 里有没有名字命中 `nodePattern` 的节点（正则写坏时
    `hasResidentialNode()` 兜底返回 `true`，宁可保留住宅链）。
 
@@ -409,7 +417,7 @@ x-smart:            # ← 不带 +（Clash Party 的 deepMerge 只对数组认 +
   也会被**强制判无家宽**；
 - 判定只在 `main()` 里做一次并写进 `residentialActive`。若把 `smart.js` 当模块引入、
   只提取 `getRules()` 等纯数据（没跑 `main()`），`residentialActive` 为 `null`，
-  `isResidentialOn()` 退回 `RESIDENTIAL.enabled !== false` → `'auto'` **等同 `true`**、
+  `isResidentialOn()` 退回 `residential.enabled !== false` → `'auto'` **等同 `true`**、
   完全不探测。所以「`auto` 有效」仅限正常覆写执行路径。
 
 ⚠️ **`'auto'` 的覆写顺序陷阱（这就是默认不用它的原因）**：第 3 步只能看到「脚本运行时
@@ -478,7 +486,7 @@ curl -s -H "Authorization: Bearer <secret>" 127.0.0.1:9090/rules | jq -r '.rules
 这是刻意的：出口 IP 从 A 悄悄变成 B，等于账号「换城市登录」，风控代价比断网大得多。
 
 **桌面端（Clash Party 覆写 YAML）**：节点写在 `+proxies` 里（带 🏠 或 IP- 前缀最省事），
-再把 `smart.js` 的 `RESIDENTIAL.primary` 指向主力那台（写节点名，见上文「锁哪一台」）：
+再把 `smart.js` 的 `residential.primary` 指向主力那台（写节点名，见上文「锁哪一台」）：
 
 ```yaml
 +proxies:
@@ -549,7 +557,7 @@ primary: '🏠 住宅-JP',   // 完整名（含 emoji，一字不差）；也可
 **1. 三件套结构**。每个出口 = 出口组（select）+ 上游组（url-test）+ 规则集（rule-provider）：
 
 ```js
-RESIDENTIAL.extraExits = [
+residential.extraExits = [
   {
     enabled: true,
     group: '住宅-US',                              // 出口组，规则引用它

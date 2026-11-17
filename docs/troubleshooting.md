@@ -112,7 +112,7 @@ FlClash 上订阅自带的「自动选择」选中占位节点后**所有境外�
 如果第一位是 `REJECT`，表现就是「AI 站点全挂」：`chatgpt.com` 在 TLS 握手中
 被 10ms 掐断，ChatGPT App 把它翻译成**「网络配置问题 / 非预期的 SSL 证书」**
 （不是被中间人，也不是节点被封）。
-解决：把「默认选中项」显式写进第一位（`RESIDENTIAL.primary`，FlClash 构建时自动填）。
+解决：把「默认选中项」显式写进第一位（`residential.primary`，FlClash 构建时自动填）。
 
 ## 坑 12 · `url-test` 的健康检查会依赖 `dialer-proxy` 指向的组，冷启动有竞态
 
@@ -285,7 +285,7 @@ for _, key := range profileBaseSections {
 `'auto'` 模式一直都在，从没被删掉；2026-11-13 只是把「判成无家宽之后做什么」
 统一成和 `false` 一样（两组都不生成、住宅节点移除、规则改投 `AI`、7865 改绑 `AI`）。
 它的判据是「脚本运行时 `config.proxies` 里有没有名字匹配 `nodePattern` 的节点」
-（或 FlClash 私有版注入的 `RESIDENTIAL.primary`），**不是**「你有没有配家宽」；
+（或 FlClash 私有版注入的 `residential.primary`），**不是**「你有没有配家宽」；
 而 Clash Party 是按覆写列表顺序执行的：`residential.yaml` 排在 `smart.js` **之后**时，
 脚本跑到这一步还没见过住宅节点 → 判成无家宽 → 住宅链整条不建，
 AI 流量静默退回机场（出口 IP 从住宅变成机场共享 IP，**不报任何错**）。
@@ -338,7 +338,7 @@ DNS 暴露。原因不在 YAML，也不在构建产物：
 用旧的 `include-all-proxies + filter` 收编时，第一个成员可能就是另一台住宅节点 ——
 出口 IP 从日本悄悄变成美国，内核日志只有一句「已切换」，账号侧看到的是异地登录。
 
-2026-11-16 起默认 `RESIDENTIAL.pinOnly: true`：`primary` 有值时组成员封闭成
+2026-11-16 起默认 `residential.pinOnly: true`：`primary` 有值时组成员封闭成
 `[primary, REJECT]`，其它住宅节点根本不进组，指定 IP 挂了/消失只能落 `REJECT`。
 多台 IP 的正确用法是「一台主力 + 若干备用」，换机就是把 `primary` 改成另一台的名字
 （桌面改 `smart.js` 配置区，手机改凭据文件里的 `primary`）后重载，见 [多台住宅 IP](configuration.md)。
@@ -383,7 +383,7 @@ DNS 暴露。原因不在 YAML，也不在构建产物：
 **订阅给的家宽节点不是**——订阅只保证「这个节点能连」，它不知道你要不要跳板。
 于是很容易出现「配了住宅链，实际却是裸直连海外住宅」：能通，但慢、抖，还以为是住宅商的问题。
 
-2026-11-17 起 `RESIDENTIAL.upstream.inject`（默认 `true`）会给命中的节点补上 `dialer-proxy`，
+2026-11-17 起 `residential.upstream.inject`（默认 `true`）会给命中的节点补上 `dialer-proxy`，
 server/port/密码一个字不动；`type: http` 的跳过（坑 5）。
 本机已经在住宅同城/同国时，这一跳是纯绕路 → 把 `inject` 设 `false`，日志里就不会再出现
 `已给 N 个订阅自带住宅节点补上 dialer-proxy`。
@@ -410,7 +410,7 @@ proxy-groups:
 
 2026-11-17 起：名字不冲突的订阅组**一律保留**（成员清洗成「本配置里真实存在的名字」，
 动态收编组为空时塞 `REJECT` 而不是让它变 `COMPATIBLE`），开关是文件顶部的
-`KEEP_SUB_GROUPS`。最后还会再扫一遍所有 `dialer-proxy`：指向不存在的组就改指
+`keepSubGroups`。最后还会再扫一遍所有 `dialer-proxy`：指向不存在的组就改指
 `前置-亚洲`，连 `前置-亚洲` 都没建就删掉该字段——**宁可退回本机直连，也不留一条
 让内核起不来的引用**。
 
@@ -465,6 +465,32 @@ grep 'dial 住宅出口.*error' <内核日志>
 脚本这边不用改：组里依旧是 `[住宅节点, REJECT]`，节点名不变时 `primary` 也不用动，
 把 `+proxies` 里的 `server` / `port` / `username` / `password` 换成新的、重载配置即可。
 
+**一分钟分清是哪一类**：绕过内核，直接问那个端口（`ip` / `port` / 账号换成你的）：
+
+```bash
+python3 - <<'EOF'
+import socket, base64
+ip, port, user, pw = "203.0.113.10", 7012, "USER", "PASS"
+s = socket.create_connection((ip, port), timeout=8)
+s.sendall(b"\x05\x01\x00"); print("SOCKS5:", s.recv(2).hex()); s.close()
+auth = base64.b64encode(f"{user}:{pw}".encode()).decode()
+s = socket.create_connection((ip, port), timeout=8)
+s.sendall((f"CONNECT ipinfo.io:443 HTTP/1.1\r\nHost: ipinfo.io:443\r\n"
+           f"Proxy-Authorization: Basic {auth}\r\n\r\n").encode())
+print("HTTP  :", s.recv(200).split(b"\r\n")[0].decode(errors="replace")); s.close()
+EOF
+```
+
+| 回应 | 含义 |
+| --- | --- |
+| SOCKS5 回 `0500` / HTTP 回 `200 Connection established` | 端口正常，问题在本地：`type` 写反了，或 `dialer-proxy` 指错 |
+| SOCKS5 回 `05ff`、HTTP 回 `407` | **这是 HTTP 代理**，`type` 要写 `http`，不是 `socks5` |
+| HTTP 回 `529 Proxy Limit Reached`（带 `X-Request-Error: PROXY_LIMIT_REACHED`） | 账号并发 / 额度到顶。**凭据是对的**，去面板看套餐，或等旧连接释放 |
+| 直接 reset、一个字都不回 | 白名单 / 套餐 / 端点失效（上面四种原因） |
+
+> ⚠️ 用 `curl -x` 测的时候**不要**同时加 `--noproxy '*'` —— 那个参数会连 `-x` 一起屏蔽，
+> 于是「测试成功」其实走的是直连，出口 IP 和本机一模一样，白高兴一场（实测踩过）。
+
 > 这也是 `pinOnly` 的价值：住宅挂了组里没有第二个成员能接手，`Claude` 那几个域名是
 > **直接阻断**而不是悄悄从机场出去 —— 症状是「AI 全连不上」，而不是「出口 IP 悄悄变了」。
 
@@ -491,9 +517,9 @@ grep -c 'using 住宅出口' <内核日志>      # 0
 **这条路把 fail-closed 契约整个关掉了**：全局模式里没有「住宅或阻断」，只有
 「GLOBAL 里选了谁」。切回「规则」模式，再用上面两条命令确认 `mode=rule`、住宅组有命中。
 
-> 现在脚本自带守卫（`MODE_GUARD`，默认开）：检测到 `global` / `direct` 会改回 `rule`，
+> 现在脚本自带守卫（`modeGuard`，默认开）：检测到 `global` / `direct` 会改回 `rule`，
 > 日志里有一条 `[模式守卫] 内核原来是「global」模式 → 已改回 rule`。看到这条说明
-> 有人（或某个客户端）把模式切走过；不想让脚本管，就把 `MODE_GUARD` 改成 `false`。
+> 有人（或某个客户端）把模式切走过；不想让脚本管，就把 `modeGuard` 改成 `false`。
 >
 > `GLOBAL` 里带 `DIRECT`、并且默认选 `DIRECT`，是内核内建行为（`GLOBAL` = `DIRECT` +
 > `REJECT` + 全部节点，默认项就是第一个成员），不是配置写坏。规则模式下它不参与分流，

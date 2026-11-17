@@ -6,6 +6,18 @@
 
 ---
 
+## 第 0 部分长什么样
+
+只有两个对象，默认值和你的覆盖彻底分开：
+
+```js
+const DEFAULT_CONFIG = { ... };   // 全部默认值，键名与 x-smart 完全一致（一般不用改）
+const USER_CONFIG = {};           // 你的覆盖项，只写要改的键
+```
+
+`DEFAULT_CONFIG` 是**唯一**的默认值来源；打包成 `flclash.js` 时，它的快照会渲染到文件顶部
+（注释形式），手机上打开就能看到全部键和当前值。
+
 ## 三个入口
 
 | 入口 | 用在哪 | 优先级 | 模板 |
@@ -14,7 +26,7 @@
 | `flclash-credentials.json` 的 `config` 段 | 手机（FlClash），构建时注入 | 中 | 见下文 |
 | `smart.js` 顶部的 `USER_CONFIG` | 自己 fork 的脚本 / 单文件脚本 | 最低 | 见下文 |
 
-后面覆盖前面，**对象逐字段合并、数组整体替换**。三个入口都是可选的，不写就用脚本默认值。
+后面覆盖前面，**对象逐字段合并、数组整体替换**。三个入口都是可选的，不写就用 `DEFAULT_CONFIG`。
 
 > 桌面端为什么推荐 `x-smart`：`smart.js` 通常是**远程覆写**，改本地文件下次更新就被覆盖；
 > 而 `x-smart` 写在你自己那个本地 YAML 里，跟着订阅走、不跟着脚本走。
@@ -80,7 +92,7 @@ const USER_CONFIG = {
 | 键 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `enabled` | 布尔 / `'auto'` | `true` | 三态开关，见 [没有家宽怎么办](configuration.md#没有家宽怎么办residentialenabled-三态开关) |
-| `primary` | 字符串 | `''` | 锁哪一台：先完整匹配、再 includes（须恰好 1 台） |
+| `primary` | 字符串 | `''` | 锁哪一台：先完整匹配、再 includes（须恰好 1 台）。**写成对象 = 锁定失败 → 只剩 REJECT** |
 | `pinOnly` | 布尔 | `true` | 只放 `primary` 那一台，其余不进组 |
 | `pinMiss` | `'reject'` / `'collect'` | `'reject'` | 锁不上时：只剩阻断 / 退回收编 |
 | `prefer` | 字符串 | `''` | 没配 `primary` 时按国家把节点排到组首（`'JP'`） |
@@ -91,7 +103,7 @@ const USER_CONFIG = {
 | `nodePattern` | 字符串 | `🏠\|IP-\|家宽\|住宅\|静态\|…` | 认哪些节点是住宅 |
 | `upstream.enabled` | 布尔 | `true` | 是否建 `前置-亚洲` |
 | `upstream.group` | 字符串 | `'前置-亚洲'` | 跳板组名 |
-| `upstream.inject` | `'fill'` / `'strip'` / `'override'` / `false` | `'fill'` | 订阅自带住宅的 `dialer-proxy` 怎么处理 |
+| `upstream.inject` | `true` / `'fill'` / `'strip'` / `'override'` / `false` | `true`（= `'fill'`） | 订阅自带住宅的 `dialer-proxy` 怎么处理 |
 | `upstream.filter` | 字符串 | 亚洲关键词 | 跳板池收哪些节点 |
 
 ### `appProxy`（应用级分流）
@@ -134,6 +146,7 @@ const USER_CONFIG = {
 | --- | --- |
 | 键名拼错（`primery`） | 忽略该项 + 列出该对象可用的键 |
 | 类型不符（`pinOnly: 'true'`） | 忽略该项、保留默认 —— 字符串 `'false'` 在 JS 里也是真值，这类错必须拦 |
+| `primary` 写成对象（`{ ip: … }`） | **不保留默认**：按锁定失败处理，`住宅出口` 只剩 `REJECT` —— 默认值是「不锁 → 全部住宅节点可选」，退回它等于把出口交给运气 |
 | 枚举不符（`inject: 'STRIP'`） | 忽略该项 + 列出允许值 |
 | 顶层键不认识（`nope: 1`） | 忽略 + 列出全部可用键 |
 
