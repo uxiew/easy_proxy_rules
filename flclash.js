@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-16 23:51:09
- * 源文件      : smart.js  sha256:7350306cbb4c  2183 行 / 121346 字节
- * 源码提交    : 4e95cca
+ * 构建时间    : 2026-11-17 11:15:31
+ * 源文件      : smart.js  sha256:af547019a093  2336 行 / 131217 字节
+ * 源码提交    : 713fdba
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -317,7 +317,15 @@ const RESIDENTIAL = {
   //      要自己把 residential.yaml 里的 +proxies / +rules 删掉。
   enabled: true,
   group: '住宅出口', // 组名，规则引用它；不要在覆写 YAML 里重复定义同名组，否则内核报重名
-  // 主力住宅节点名（= 「住宅出口」锁定的那一台）。留空 → 默认 REJECT（需手动选一次）。
+  // 主力住宅节点（= 「住宅出口」锁定的那一台）。留空 → 默认 REJECT（需手动选一次）。
+  // 两种写法，按需选一种：
+  //   1) 节点名（字符串）'🏠 住宅-JP' / '静态｜ISP｜家宽 01' —— 必须一字不差（含 emoji、全角）
+  //   2) 端点锁定（对象）{ server: '203.0.113.10', port: 7012 }
+  //      【订阅自带家宽节点时推荐这个】机场给节点加个 emoji、改个倍率标记，名字就变了；
+  //      端点（server:port）很少变。port 可省略 = 只按 server 匹配。
+  //      名字漂移时锁不上 → 按 pinMiss 处理（默认 REJECT，fail-closed）；
+  //      端点漂移说明住宅 IP 真的换了 —— 那本来就是你该知道的事。
+  // 两种写法都不用照抄订阅里的节点名，把「维护 primary」这件事降成「配一次端点」。
   // 和 FlClash 凭据里的 primary 同名同义：手机端由构建钩子自动填成注入的主节点 → 开箱即用。
   // （2026-11-16 前这个字段叫 nodeName，旧写法仍能读一次，但会在内核日志里提示改名）
   primary: '',
@@ -330,22 +338,38 @@ const RESIDENTIAL = {
   //   ⚠️ 备用住宅节点只注入、不进任何组（地区组/AUTO 也被 nodePattern 排掉），
   //      换主力必须改 primary（桌面改这里 / 手机改凭据里的 primary）后重载，不会被自动选中。
   pinOnly: true,
-  // 节点名匹配（Go RE2 正则），覆写里的节点名必须能命中这两个前缀之一：
-  //   🏠       —— 手工命名，最稳（🏠 住宅-JP / 🏠 住宅-US）
-  //   IP-      —— 服务商按 IP 出节点时的命名（IP-JP / IP-1.2.3.4）
-  // 为什么用 `IP-` 而不是裸 `IP`：裸 IP 会命中 IPLC、IPV6、机场的「IPLC 专线」这类
-  // 节点名；带横线能把这些全都排除掉。也不要写成 `IP` + 空格之类，名字里有空格就断。
-  nodePattern: '🏠|IP-',
+  // primary 写错、或订阅改名/换 IP 导致「锁不上」时的行为（只在本开关为 true 且 primary 有值时生效）：
+  //   'reject'（默认）= 组成员只剩 [REJECT]：AI 类站点直接打不开，日志里有醒目提示。
+  //      这就是这套配置想要的语义 —— 出口 IP 不确定就别出去，比「悄悄落到另一台住宅/机场」安全。
+  //   'collect'       = 退回旧行为：全部命中 nodePattern 的住宅节点进组，默认选中第一个
+  //      （= 订阅给的顺序，可能任何一国）。只有「这些住宅 IP 随便换都无所谓」时才用。
+  pinMiss: 'reject',
+  // 【节点名匹配】两端共用的正则，只能写 Go RE2 ∩ JS RegExp 的交集：
+  //   不能写 (?i) —— JS 的 RegExp 不支持内联旗标，写了直接抛异常（脚本侧整体失效）；
+  //   所以英文关键词的大小写只能靠字符类逐个覆盖：[Rr]esi|RESI / [Ss]tatic|STATIC / [Ii][Ss][Pp]。
+  // 覆盖范围：
+  //   🏠 、IP-              —— 自己写的节点（最稳，见下）
+  //   家宽 / 住宅 / 静态      —— 订阅自带住宅节点的常见命名（静态｜ISP｜家宽 01、住宅IP-美国）
+  //   Resi / RESI / Static / ISP —— 英文与缩写变体（含全大写：机场很爱写 RESIDENTIAL-US）
+  // ⚠️ 「匹配宽」≠「出口乱」：pinOnly: true 且 primary 锁住一台时，多命中几个只是候选池变大，
+  //    它们进不了「住宅出口」组；被排除出地区组 / AUTO / 前置组正是我们想要的
+  //    （住宅节点本来就不该拿去当跳板）。
+  // ⚠️ 但 pinOnly: false 时必须把这里收窄回 '🏠|IP-'：那时全部命中项都能被选中，
+  //    机场自带的「家宽住宅」节点会把出口变成共享 IP（坑 10 的原始事故）。
+  // 为什么写 `IP-` 而不是裸 `IP`：裸 IP 会命中 IPLC / IPV6 /「IPLC 专线」这类节点名；
+  // 为什么不加「原生」：机场的「原生解锁」是流媒体节点，收进来等于把好跳板排掉。
+  nodePattern: '🏠|IP-|家宽|住宅|静态|[Rr]esi|RESI|[Ss]tatic|STATIC|[Ii][Ss][Pp]',
   // 【逃生口】住宅线路彻底挂掉时，是否允许在面板把「住宅出口」切到 AI（机场）应急。
   //   false（默认）= 组成员只有 住宅节点 + REJECT，**切不出机场** —— 要么住宅、要么断网。
   //   这正是 Claude Code 这类「宁可断开也不许换 IP」的场景需要的语义：
   //   出口 IP 悄悄从 61.***193 变成机场共享 IP，比直接报错危险得多。
   //   真要应急：改成 true → 重载 → 面板切到 AI → 用完改回 false。
   escapeToAI: false,
-  // ⚠️ 命名约定：自己加的住宅节点必须带 🏠 前缀（如 🏠 住宅-JP / 🏠 住宅-US）
-  //   或 IP- 前缀（如 IP-JP / IP-住宅-US）。两者命中同一个 nodePattern。
-  //   不能用「住宅」两个字做匹配——很多机场自带「家宽住宅」「住宅IP」节点，
-  //   会被误收进住宅出口（换订阅后实测踩坑：18 个机场住宅节点混了进来）。
+  // ⚠️ 命名约定：自己加的住宅节点建议带 🏠 前缀（如 🏠 住宅-JP / 🏠 住宅-US）
+  //   或 IP- 前缀（如 IP-JP / IP-住宅-US）。命中 nodePattern 即可，前缀不是硬要求。
+  //   订阅自带的「家宽 / 住宅 / 静态 / ISP」节点同样命中——这正是「订阅已带家宽」的用法；
+  //   老版本文档里「别用『住宅』两个字」的说法已作废：真正的护栏是 pinOnly 锁一台，
+  //   而不是把匹配收窄（收窄的后果是订阅自带的家宽节点一个都认不出来 → 住宅出口只剩 REJECT）。
 
   // 【方案 A｜当前采用】AI 服务商官方域名走住宅
   // ai-strict.list 里只放「有账号体系、会风控」的服务商（Claude / OpenAI / Grok / Perplexity …），
@@ -365,12 +389,21 @@ const RESIDENTIAL = {
   //   - 早先只收日本，好处是最短路径，坏处是「所有日本节点一起挂」时整条 AI 链路断掉；
   //   - 现在收亚洲：HK/TW/KR/SG 到日本住宅都在几十毫秒量级，越南/马来/泰/菲稍远，
   //     但都还在同一个「亚洲近场」里，跳板池从 6 个变成 30+ 个。
-  // 节点名必须含 filter 关键词；订阅改名后若一个都匹配不到，该组会退到 DIRECT
-  // （这一跳不经机场，但住宅本身仍可连），把 filter 改成新关键词即可恢复。
+  // 为什么是「按洲/按国」而不是「按七大洲铺开」：见 docs/configuration.md 的
+  // 「上游要不要按大洲拆」一节 —— 结论是**按住宅所在国建一个就够了**，
+  // 多出来的洲级空组只会变成 url-test 无成员 → COMPATIBLE/DIRECT 泄漏源。
+  // 节点名必须含 filter 关键词；订阅改名后若一个都匹配不到，该组用 REJECT 兜底，
+  // 把 filter 改成新关键词即可恢复（写 REJECT 而不是 DIRECT：宁可断，不裸连住宅 IP）。
   // 覆写 YAML 里的住宅节点写 dialer-proxy: 前置-亚洲 即可。
   upstream: {
     enabled: true,
     group: '前置-亚洲', // 组名，覆写 YAML 的 dialer-proxy 引用它；别重复定义同名组
+    // 【2026-11-17 新增】给「订阅自带、且没有 dialer-proxy」的住宅节点自动补跳板。
+    //   订阅给的家宽节点只有订阅那些字段，没有 dialer-proxy → 本机直连海外住宅 IP，
+    //   又慢又不稳（这条链当初就是为了解决它）。这里只补 dialer-proxy 一个字段，
+    //   server/port/密码一律不碰；已有 dialer-proxy 的、type: http 的一律跳过（坑 5）。
+    //   false = 保持「住宅直连」，适合本机已经在住宅同城/同国的情况（少一跳更快）。
+    inject: true,
     // 【2026-11-05 改】原来留空 = 复用 smartGroups.JP 的 filter（只收日本）。
     // 现在显式写亚洲关键词，和地区组的 filter 解耦（改地区组不会影响跳板池）。
     // 只放多字/带国名的关键词，绝不放单字：
@@ -688,18 +721,61 @@ const isFlClashPlaceholder = () =>
 // 无家宽」，判成无家宽之后的处理与 false 完全一致（不建两组 / 规则改 AI /
 // 节点清理 / 7865 改绑 AI）。它判的是「运行时可见性」，不是「有没有家宽」；
 // 未跑 main() 时 residentialActive 为 null，isResidentialOn() 会把 'auto' 当成 true。
-// 主力住宅节点名 = 「住宅出口」锁定的那一台（pinOnly: false 时只是默认选中项）。
+// 主力住宅节点 = 「住宅出口」锁定的那一台（pinOnly: false 时只是默认选中项）。
 // 2026-11-16 从 nodeName 改名而来，和 FlClash 凭据里的 primary 对齐：同一个概念一个词。
 // 旧名仍读一次并搬过来 —— 否则老配置会静默退回「全部住宅节点可选」，
 // 而结果（多一台可选）不报错，很难在日志里看出来。
-function primaryNodeName() {
-  const cur = String(RESIDENTIAL.primary || '').trim();
-  if (cur) return cur;
+//
+// 【2026-11-17】primary 支持两种形态，解决「订阅自带家宽节点时，名字一改就锁不上」：
+//   字符串              → 精确节点名（最明确，自己起名时用）
+//   { server, port? }   → 端点锁定：按 server（+ port）在本次节点列表里找那一台
+// 为什么不是「序号 id（第 1、2 台）」：节点的顺序由订阅/机场下发决定，
+// 换一次订阅、机场按延迟重排、插进一条「到期提醒」占位节点，第 1 台就可能变成另一国 IP。
+// 用序号锁定 = 把出口 IP 交给别人排序，而失败时**不报错**，正好踩在这套配置最怕的点上。
+// 为什么不是「正则匹配名字」：可行（必须要求恰好命中 1 台，0 台或多台都判失败），
+// 但等价效果用 server 就够了，还少一层转义维护 —— 见 docs/configuration.md。
+function primarySpec() {
+  const raw = RESIDENTIAL.primary;
+  if (raw && typeof raw === 'object') {
+    const server = String(raw.server || '').trim();
+    if (!server) return null;
+    const portRaw = raw.port === undefined || raw.port === null || raw.port === '' ? 0 : Number(raw.port);
+    return { kind: 'endpoint', server, port: Number.isFinite(portRaw) ? portRaw : 0 };
+  }
+  const cur = String(raw || '').trim();
+  if (cur) return { kind: 'name', name: cur };
   const legacy = String(RESIDENTIAL.nodeName || '').trim();
-  if (!legacy) return '';
+  if (!legacy) return null;
   RESIDENTIAL.primary = legacy;
   console.log('[住宅出口] RESIDENTIAL.nodeName 已改名为 primary，本次沿用旧值，请更新配置');
-  return legacy;
+  return { kind: 'name', name: legacy };
+}
+
+// primary 配没配（'auto' 判定用；端点形态也算配了）
+const primaryNodeName = () => {
+  const spec = primarySpec();
+  return spec ? (spec.kind === 'name' ? spec.name : `${spec.server}:${spec.port || '*'}`) : '';
+};
+
+// 把 primary 解析成「本次节点列表里真实存在的那一台」。解析不出来 → ''，
+// 由调用方按 RESIDENTIAL.pinMiss 决定后果（默认 REJECT，绝不猜、绝不落到第 N 台）。
+function resolvePrimaryName(proxies) {
+  const spec = primarySpec();
+  if (!spec) return '';
+  if (spec.kind === 'name') return spec.name; // 名字形态原样交给调用方校验存在性
+  const list = (Array.isArray(proxies) ? proxies : []).filter(
+    (p) => p && typeof p.name === 'string' && String(p.server || '') === spec.server,
+  );
+  const exact = spec.port ? list.filter((p) => Number(p.port) === spec.port) : list;
+  if (exact.length === 1) return exact[0].name;
+  if (exact.length > 1) {
+    console.log(
+      `[住宅出口] primary 端点 ${spec.server}${spec.port ? ':' + spec.port : ''} 命中 ${exact.length} 台节点` +
+        `（${exact.map((p) => p.name).join(' / ')}），无法确定是哪一台 → 按 pinMiss 处理` +
+        (spec.port ? '' : '；补上 port 即可唯一确定'),
+    );
+  }
+  return '';
 }
 
 function resolveResidentialEnabled(config) {
@@ -1517,6 +1593,67 @@ function main(config) {
     );
   }
 
+  // 【2026-11-17 新增】订阅自带的住宅节点：补上 dialer-proxy
+  // 背景：住宅节点以前只来自「覆写 YAML / FlClash 凭据」，这两种都是我们自己写 proxies，
+  // 字段齐全（type / dialer-proxy 都手写）。订阅自带的家宽节点不是我们写的 ——
+  // 它只有订阅给的那些字段，**没有 dialer-proxy**，于是「本机 → 住宅 IP」成了裸直连：
+  // 从国内直连海外住宅 IP 通常又慢又不稳，正是这条链当初要解决的问题。
+  // 这里只补一个字段，不碰 nodes 的其它内容（server/port/密码一律不动）。
+  // 三种情况跳过：
+  //   1) 已经有 dialer-proxy（FlClash 注入的、或你自己写的）→ 尊重你的选择；
+  //   2) type: http → http + 跳板连不通（坑 5），补了等于把它变成不可用；
+  //   3) 名字命中 INFO_NODE_PATTERN（「到期/剩余流量」这类信息节点）→ 不是真节点。
+  // 想保持「住宅直连，不经机场」：把 RESIDENTIAL.upstream.inject 设 false。
+  if (
+    residentialActive &&
+    RESIDENTIAL.upstream &&
+    RESIDENTIAL.upstream.enabled &&
+    RESIDENTIAL.upstream.inject !== false &&
+    Array.isArray(config.proxies)
+  ) {
+    let resiRe = null;
+    try {
+      resiRe = new RegExp(RESIDENTIAL.nodePattern);
+    } catch {
+      resiRe = null;
+    }
+    let infoRe = null;
+    try {
+      infoRe = INFO_NODE_PATTERN ? new RegExp(INFO_NODE_PATTERN) : null;
+    } catch {
+      infoRe = null;
+    }
+    let injected = 0;
+    let skippedHttp = 0;
+    const injectedNames = [];
+    for (const p of config.proxies) {
+      if (!p || typeof p.name !== 'string' || !resiRe || !resiRe.test(p.name)) continue;
+      if (infoRe && infoRe.test(p.name)) continue;
+      if (p['dialer-proxy']) continue;
+      const type = String(p.type || '').toLowerCase();
+      if (!type || type === 'http') {
+        skippedHttp++;
+        continue;
+      }
+      p['dialer-proxy'] = RESIDENTIAL.upstream.group;
+      injected++;
+      injectedNames.push(p.name);
+    }
+    if (injected) {
+      console.log(
+        `[住宅出口] 已给 ${injected} 个订阅自带住宅节点补上 dialer-proxy: ${RESIDENTIAL.upstream.group}` +
+          `（${injectedNames.slice(0, 5).join(' / ')}${injectedNames.length > 5 ? ' …' : ''}）` +
+          '；想直连住宅就把 RESIDENTIAL.upstream.inject 设 false',
+      );
+    }
+    if (skippedHttp) {
+      console.log(
+        `[住宅出口] ${skippedHttp} 个住宅节点是 http 类型/缺 type，跳过 dialer-proxy 注入` +
+          '（http + 跳板连不通，见 docs/troubleshooting.md 坑 5）',
+      );
+    }
+  }
+
   // 【没有家宽：把住宅链的残留节点也清掉】
   // 组不建了，但订阅/覆写里可能还有「🏠 / IP-」节点，或 dialer-proxy 指向这两个组名的
   // 节点。留着它们内核会报 proxy not found 并拒载整份配置，所以脚本能看见的一律移除。
@@ -1996,25 +2133,41 @@ function main(config) {
     // 从配置里消失（改名/换订阅/改覆写），内核按「第一个存活成员」回落 → 落到另一台
     // 住宅节点上，出口 IP 悄悄变了，日志里只有一句「已切换到 xxx」。
     // 锁定模式把成员写死成 [primary, REJECT]：指定那台没了/挂了就是 REJECT，没有第二台可接手。
-    // 锁定的名字在本次节点列表里找不到时（比如桌面端手写错了名字）退回旧的全收编模式，
-    // 而不是把不存在的名字写进 proxies —— 那会让内核直接拒载整份配置。
-    const primaryName = primaryNodeName(); // 旧名 nodeName 在这里也一并被收编
+    //
+    // 【2026-11-17 改】锁不上时不再退回收编，而且绝不把不存在的名字写进 proxies：
+    //   旧写法无论如何都把 primaryName 塞进 proxies 再补 include-all-proxies，
+    //   名字写错时得到的是「组里引用一个不存在的节点」→ 内核 proxy not found → 整份配置拒载
+    //   （坑 7 的翻版），而注释里写的是「退回全收编」——代码和注释不一致。
+    //   现在：pinOk → [primary, REJECT]；锁不上 → 按 pinMiss 走，见下。
+    const spec = primarySpec();
+    const primaryName = resolvePrimaryName(config.proxies); // 旧名 nodeName 在这里也一并被收编
     const pinOk = RESIDENTIAL.pinOnly && !!primaryName && allProxyNames.indexOf(primaryName) >= 0;
-    if (RESIDENTIAL.pinOnly && primaryName && !pinOk) {
+    const pinMissCollect = RESIDENTIAL.pinMiss === 'collect';
+    if (RESIDENTIAL.pinOnly && spec && !pinOk) {
+      const label =
+        spec.kind === 'endpoint'
+          ? `${spec.server}${spec.port ? ':' + spec.port : ''}（端点）`
+          : `${spec.name}（节点名）`;
       console.log(
-        `[住宅出口] 锁定节点「${primaryName}」不在本次节点列表（${allProxyNames.length} 个），` +
-          '退回「全部住宅节点可选」模式',
+        `[住宅出口] 锁定目标 ${label} 不在本次节点列表（共 ${allProxyNames.length} 个）→ ` +
+          (pinMissCollect
+            ? '退回「全部住宅节点可选」模式（pinMiss: collect，出口可能落到任意一台住宅 IP）'
+            : '组成员只留 REJECT（pinMiss: reject，出口不确定就不出去；改名/换 IP 后请更新 primary）'),
       );
     }
     const resiGroup = {
       name: RESIDENTIAL.group,
       type: 'select',
       // 成员里永远没有 AI：住宅出口只允许「住宅 / 阻断」，escapeToAI 是唯一例外且默认关。
-      proxies: [primaryName, 'REJECT', ...(RESIDENTIAL.escapeToAI ? ['AI'] : [])].filter(Boolean),
+      // 锁不上、或 primary 留空时，第一位是 REJECT：需要手动选一次（store-selected 会记住）。
+      proxies: [...(pinOk ? [primaryName] : []), 'REJECT', ...(RESIDENTIAL.escapeToAI ? ['AI'] : [])],
     };
-    if (!pinOk) {
-      // 非锁定模式（primary 为空 / 找不到 / pinOnly: false）：内核级收编，
-      // 覆写 YAML 排在 smart.js 之后也没关系，节点注入后照样进组。
+    if (!pinOk && !(RESIDENTIAL.pinOnly && spec && !pinMissCollect)) {
+      // 收编模式只在两种情况下出现：
+      //   1) 没配 primary（桌面端留空，先让用户手动选）；
+      //   2) pinOnly: false（明确要「多台都能选」）；
+      //   3) 锁不上但显式写了 pinMiss: 'collect'。
+      // 内核级收编：覆写 YAML 排在 smart.js 之后也没关系，节点注入后照样进组。
       resiGroup['include-all-proxies'] = true;
       resiGroup.filter = RESIDENTIAL.nodePattern;
       resiGroup['exclude-filter'] = INFO_NODE_PATTERN;
