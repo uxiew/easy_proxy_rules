@@ -353,13 +353,17 @@ x-smart:            # ← 不带 +（Clash Party 的 deepMerge 只对数组认 +
     upstream:
       inject: strip
     prefer: 'JP'
-  keepSubGroups: true
 ```
 
 - 对象**逐字段覆盖**：只写 `upstream.inject` 不会把 `upstream.group` 抹掉；
 - 读完会把 `x-smart` 从配置里删掉，内核看不到这个字段；
 - **顺序很关键**：YAML 排在 `smart.js` 后面时脚本已经跑完，读不到这份配置 ——
   在面板里把它拖到 `smart.js` 之上。
+
+`x-smart` 能覆盖的**不只是住宅**：第 0 部分的所有对象（`appProxy` / `traffic` /
+`narrowTun` / `regionPriority` / `webrtcGuard` / `aiStaticToAI`）和两个顶层开关
+（`keepSubGroups` / `modeGuard`）都能写。完整键表、手机端写法、写错了会怎样，
+见 [自定义配置](custom-config.md) 与模板 [`x-smart.example.yaml`](../x-smart.example.yaml)。
 
 ## 没有家宽怎么办（`RESIDENTIAL.enabled` 三态开关）
 

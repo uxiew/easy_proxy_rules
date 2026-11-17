@@ -1,0 +1,98 @@
+# https://clashparty.org/docs/guide/override/yaml
+#
+# x-smart 模板：覆盖 smart.js 第 0 部分的所有配置，不用改脚本本身。
+# 完整键表与说明：docs/custom-config.md
+#
+# 用法：
+#   1. Clash Party → 覆写 → 新建 → 类型「本地」→ 粘贴本文件
+#   2. 设为全局覆写，并把它拖到 smart.js **上面**（脚本要先读到这份配置才能用）
+#   3. 只需要下面几段，其余全部注释着即可
+#
+# ⚠️ 键名是 x-smart，不是 +x-smart。Clash Party 的 deepMerge 只对数组（+proxies /
+#    +rules）认 + 前缀；写成 +x-smart 会得到一个叫「+x-smart」的键，脚本读不到。
+# ⚠️ 未知键、类型不对、枚举拼错都不会静默生效：日志里会有一条 [配置覆写] 说明原因。
+
+x-smart:
+  # ---------- 住宅出口 ----------
+  residential:
+    # 总开关：true = 有家宽；false = 没有（两组不建、AI 改投机场）；'auto' 不推荐
+    enabled: true
+
+    # 锁哪一台：只写节点名。先完整匹配，再按 includes（须恰好命中 1 台）
+    #   自己起的名字 → 写全：'🏠IP-JP'
+    #   订阅下发的长名字 → 写稳定片段：'JP-静态33'
+    primary: '🏠IP-JP'
+
+    # 锁不上时：'reject' = 只剩阻断（默认，最安全）｜'collect' = 退回收编
+    pinMiss: 'reject'
+
+    # 没配 primary 时，把哪个国家的住宅排到组首（只重排、不淘汰）
+    prefer: 'JP'
+
+    # 订阅自带住宅的 dialer-proxy 怎么处理：
+    #   'fill'   = 只给空的补「前置-亚洲」（默认，本机在国内时用）
+    #   'strip'  = 删掉，本机直连住宅网关（本机与住宅同国，少一跳）
+    #   'override' = 全部改指「前置-亚洲」
+    #   false    = 不碰
+    upstream:
+      inject: 'strip'
+      # enabled: true          # 要不要建「前置-亚洲」跳板组
+      # group: '前置-亚洲'
+      # filter: '日本|JP|🇯🇵|…'  # 跳板池收哪些节点（默认亚洲关键词）
+
+    # AI 相关：默认就是「只走住宅，否则阻断」，一般不用改
+    # aiStrict: true           # AI 服务商 / Anthropic IP 段 / Claude+ChatGPT 进程 → 住宅
+    # allAI: false             # true = 整个 forAI 走住宅（会烧流量，含 YouTube）
+    # escapeToAI: false        # true = 允许在面板把住宅出口切成 AI 应急（破坏契约）
+    # nodePattern: '🏠|IP-|家宽|住宅|静态|[Rr]esi|…'
+    # group: '住宅出口'
+
+  # ---------- 应用级分流 ----------
+  # 数组是整体替换：写了 ports 就等于把默认的 7865 那条也换掉，想保留要一起写
+  # appProxy:
+  #   ports:
+  #     - { name: 'residential-in', port: 7865, proxy: '住宅出口' }
+  #   processes:
+  #     - { value: 'com.openai.chatgpt', proxy: '住宅出口' }
+  #     - { value: '^/Applications/Claude\.app/', type: 'path-regex', proxy: '住宅出口' }
+
+  # ---------- 省流量 ----------
+  # traffic:
+  #   domesticDirect: true     # GEOSITE,cn → DIRECT
+  #   appleDirect: true        # Apple 全家桶直连
+
+  # ---------- 窄 TUN ----------
+  # narrowTun:
+  #   enabled: true            # 只把 Google 段塞进内核（救 language_server / gRPC）
+  #   includeAI: true          # 额外接管系统 DNS + fake-ip（ChatGPT 常驻连接要用）
+  #   stack: 'Mixed'
+
+  # ---------- 地区优先级 ----------
+  # regionPriority:
+  #   enabled: true
+  #   targets:
+  #     AUTO: ['JP', 'SG', 'KR', 'HK', 'TW', 'US', 'UK', 'DE', 'FR', 'CA', 'EU']
+  #     AI: ['JP', 'SG', 'KR', 'HK', 'TW', 'US', 'UK', 'DE', 'FR', 'CA', 'EU']
+  #   othersGroup: 'OT'
+  #   interval: 120
+
+  # ---------- 其它 ----------
+  # webrtcGuard:
+  #   enabled: false           # true = 拦 STUN 探测（会打断语音/视频）
+  # aiStaticToAI:              # AI 静态资源 / 安装包 → 机场（不烧住宅流量）
+  #   - 'DOMAIN-SUFFIX,oaistatic.com'
+  #   - 'DOMAIN-SUFFIX,downloads.claude.ai'
+  # keepSubGroups: true        # 保留订阅自带策略组（避免 dialer-proxy 悬空）
+  # modeGuard: true            # 把内核钉在「规则」模式
+
+# ---------- 自备住宅节点（可选，和上面无关）----------
+# 需要往订阅里注入自己那台住宅时，取消注释并填真实值；
+# 不注入就把整段删掉。字段说明见 residential.example.yaml。
+# +proxies:
+#   - name: '🏠IP-JP'
+#     type: socks5
+#     server: 203.0.113.10
+#     port: 7012
+#     username: 'user'
+#     password: 'pass'
+#     udp: false

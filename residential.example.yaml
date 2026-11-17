@@ -6,14 +6,16 @@
 #   ruleset/residential.list 负责：具体哪些域名走住宅（一行一个，随时改）
 #   本文件负责：节点地址/账号/密码/跳板（密钥，私有不提交）
 #
+# 只想要一份「全都能调」的模板（住宅 + 应用分流 + 省流量 + 窄 TUN + 地区优先）：
+#   → x-smart.example.yaml（键表见 docs/custom-config.md），本文件可以只留 +proxies
+#
 # ⚠️ 没有家宽静态 IP 的用户：不要用本文件。
 #    把 smart.js 里的 RESIDENTIAL.enabled 改成 false 即可 —— 住宅出口 / 前置-亚洲
 #    两个组都不生成，住宅节点自动移除，相关规则全部改投 AI 组，其它照旧。
 #    本文件一旦导入，里面的 +proxies 节点会让「组不存在」变成 proxy not found 拒载。
 #
 # 用法：
-#   1. Clash Party → 覆写 → 新建（或导入本地文件）→ 把下面内容粘进去、填好凭据 → 保存
-#   2. 设为「全局」覆写（和 smart.js 一样）。
+#   1. Clash Party → 覆写 → 新建（或导入本地文件）→ 把下面内容粘进去、填好凭据 → 保存#   2. 设为「全局」覆写（和 smart.js 一样）。
 #      默认 RESIDENTIAL.enabled: true，本文件排在 smart.js 前 / 后都行：
 #      「住宅出口」组用 include-all-proxies + filter 在内核侧收编，
 #      后置注入的 🏠/IP- 节点照样进组。

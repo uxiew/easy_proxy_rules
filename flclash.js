@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-17 13:13:46
- * 源文件      : smart.js  sha256:44ead32d0f0b  2633 行 / 146122 字节
- * 源码提交    : 4c380d1
+ * 构建时间    : 2026-11-17 13:21:35
+ * 源文件      : smart.js  sha256:bda3a711b6f8  2789 行 / 152428 字节
+ * 源码提交    : a1912fd
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -55,6 +55,14 @@ const FLCLASH_RESIDENTIAL = {
     { name: "🏠 住宅-JP", server: "YOUR_HOST", port: 0, username: "YOUR_USERNAME", password: "YOUR_PASSWORD" },
   ],
 };
+
+// ============ 配置项（可选，与桌面端 x-smart 同一套键名） ============
+// 来源：flclash-credentials.json 的 "config" 段。留空 = 全用 smart.js 的默认值。
+// 手机上没法用覆写链，这里是唯一「重新构建也不会丢」的配置入口；
+// 也可以直接改 smart.js 顶部的 USER_CONFIG（但重建会覆盖，别在里面放只在本机有用的东西）。
+// 键名：residential / appProxy / traffic / narrowTun / regionPriority / webrtcGuard /
+//       aiStaticToAI + keepSubGroups / modeGuard，详见 docs/custom-config.md
+const FLCLASH_USER_CONFIG = {};
 // 占位符版没有真实凭据：告诉 smart.js 按「没有家宽」处理，AI 走 AI 组
 const FLCLASH_NO_RESIDENTIAL = true;
 // ==========================================================
@@ -104,11 +112,37 @@ const FLCLASH_NO_RESIDENTIAL = true;
  *   ③ TRAFFIC          省流量：国内直连、Apple 直连
  *   ④ AI_STATIC_TO_AI  AI 静态资源 / 安装包 → 机场 AI 组（不烧住宅流量）
  * 再往下才是 CDN 源、节点清洗、分组、规则生成 —— 日常不用看。
+ *
+ * 【更推荐：不碰本文件】下面那个 USER_CONFIG（桌面端用覆写 YAML 的 x-smart，
+ * 键名一样）能覆盖第 0 部分的所有字段。远程引用本脚本时改这里才不会被下次更新冲掉，
+ * 完整键表和示例见 docs/custom-config.md。
  */
 
 // ============================================================
 // 第 0 部分：用户配置区（日常只改这里，往下全是逻辑）
 // ============================================================
+
+// ------------------------------------------------------------
+// ⓿ USER_CONFIG —— 覆盖下面所有配置（三处来源共用一套键名）
+// ------------------------------------------------------------
+// 这里写的东西会覆盖 ①~⑦ 的默认值，**不用改那几段**。
+// 三个来源，优先级从低到高（后面的覆盖前面的，对象逐字段合并）：
+//
+//   1) 本文件这个 USER_CONFIG          —— 自己 fork 的脚本 / 手机单文件改这里
+//   2) FlClash 构建期注入的 config 段   —— flclash-credentials.json 的 config，重建不丢
+//   3) 覆写 YAML 里的 x-smart          —— 桌面端推荐，remote 引用也能改
+//
+// ⚠️ 键名必须和第 0 部分里的一致（驼峰）：residential / appProxy / traffic /
+//    narrowTun / regionPriority / webrtcGuard / aiStaticToAI + 顶层 keepSubGroups /
+//    modeGuard。写错不会被当成新配置默默生效，日志里会给一条「忽略未知项」。
+//
+// 例子（桌面端等价的 YAML 写法见 x-smart.example.yaml）：
+//   const USER_CONFIG = {
+//     residential: { primary: '🏠IP-JP', upstream: { inject: 'strip' }, prefer: 'JP' },
+//     appProxy: { ports: [{ name: 'residential-in', port: 7865, proxy: '住宅出口' }] },
+//     narrowTun: { enabled: false },
+//   };
+const USER_CONFIG = {};
 
 // ------------------------------------------------------------
 // ① APP_PROXY —— 应用级分流（最常用：指定某个 App 走哪个组/节点）
@@ -679,7 +713,8 @@ let KEEP_SUB_GROUPS = true;
 // 这个开关把模式钉回 rule：面板上再点「全局」也会在下一次重载时被改回来，
 // 并在日志里说清楚为什么。想交还面板控制就改成 false。
 // ⚠️ 不钉的话，别人把「全局」当「更省事」随手一点，AI 就可能悄悄换了出口。
-const MODE_GUARD = true;
+// 改这里，或用 USER_CONFIG.modeGuard / x-smart 的 modeGuard 覆盖
+let MODE_GUARD = true;
 
 function enforceRuleMode(config) {
   if (!MODE_GUARD) return;
@@ -1538,45 +1573,174 @@ const getRules = ()=>{
 // 否则会和 FlClash 自己的 DNS/TUN 打架，表现为「所有节点全部失效」。
 let FLCLASH_MODE = false;
 
-// 【2026-11-17 新增】在覆写 YAML 里覆盖配置，不必改本文件。
-// 背景：primary / inject 这类东西是「每台机器都不一样」的 —— 住宅 IP 是你自己的，
-// 本机在哪个国家也只有你知道。写死在脚本顶部，等于每换一次订阅就要 fork 一份脚本；
-// 而 smart.js 常常是 remote 覆写，改本地还没用（下次更新就被覆盖）。
-// 用法（写在任意一个排在 smart.js 之前的覆写 YAML 里，比如「静态住宅节点」）：
-//   x-smart:                              # ← 不要写 +x-smart
+// =========== 用户配置层：USER_CONFIG / FlClash 注入 / x-smart ===========
+// 三个来源，一套键名，优先级从低到高：USER_CONFIG < FLCLASH_USER_CONFIG < x-smart。
+// 桌面端的推荐写法（写在任意一个排在 smart.js **之前**的覆写 YAML 里，比如「静态住宅节点」）：
+//   x-smart:                           # ← 不要写 +x-smart
 //     residential:
-//       primary: '东京-住宅'                # 锁这一台（完整名，或名字里的唯一片段）
+//       primary: '🏠IP-JP'              # 锁这一台（完整名，或名字里的唯一片段）
 //       upstream:
-//         inject: strip                  # 本机与住宅同国 → 直连住宅网关，别绕机场
+//         inject: strip                # 本机与住宅同国 → 直连住宅网关，别绕机场
 //       prefer: 'JP'
-//     keepSubGroups: true                # 等价于文件顶部的 KEEP_SUB_GROUPS
+//     narrowTun: { enabled: true }
+//     keepSubGroups: true
 // ⚠️ 为什么不是 `+x-smart`：Clash Party 的 deepMerge 只对**数组**认 `+` 前缀
 //    （`+proxies` / `+rules`）；对象键不认，写 `+x-smart` 会得到一个叫「+x-smart」的键。
 //    两种写法这里都兼容，但正确写法是不带 `+`。
-// 合并规则：对象逐字段覆盖（upstream 只写 inject 不会把 group 抹掉），其它类型整体替换。
+// 合并规则：对象递归合并（upstream 只写 inject 不会把 group 抹掉），数组/标量整体替换。
+// 每一项都过类型校验；键名写错就报警并列可用键 —— 静默吞掉一个错键，等于让人以为它生效了。
 // 读完整段会从配置里删掉，避免内核因为陌生字段报警。
-function applyRunnableOverrides(config) {
-  const KEY = config['x-smart'] ? 'x-smart' : config['+x-smart'] ? '+x-smart' : '';
-  const raw = KEY ? config[KEY] : null;
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
-  const isPlain = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
-  const resi = raw.residential;
-  if (isPlain(resi)) {
-    const applied = [];
-    for (const key of Object.keys(resi)) {
-      if (isPlain(resi[key]) && isPlain(RESIDENTIAL[key])) {
-        Object.assign(RESIDENTIAL[key], resi[key]);
-        applied.push(`${key}.{${Object.keys(resi[key]).join(',')}}`);
-      } else {
-        RESIDENTIAL[key] = resi[key];
-        applied.push(key);
-      }
+
+// 可覆盖的目标对象：键名 → 实际对象。以后新增配置对象，在这里登记一行就行。
+const CONFIG_TARGETS = {
+  residential: () => RESIDENTIAL,
+  appProxy: () => APP_PROXY,
+  traffic: () => TRAFFIC,
+  narrowTun: () => NARROW_TUN,
+  regionPriority: () => REGION_PRIORITY,
+  webrtcGuard: () => WEBRTC_GUARD,
+  aiStaticToAI: () => AI_STATIC_TO_AI,
+};
+
+// 不在上面那些对象里的顶层开关
+const CONFIG_SWITCHES = {
+  keepSubGroups: (v) => {
+    KEEP_SUB_GROUPS = v;
+  },
+  modeGuard: (v) => {
+    MODE_GUARD = v;
+  },
+};
+
+// 只能取固定值的项：写错不是「类型不对」，而是拼错了一个枚举，必须拦下来。
+const CONFIG_ENUMS = {
+  'residential.pinMiss': ['reject', 'collect'],
+  'residential.upstream.inject': ['fill', 'strip', 'override', false],
+  'narrowTun.stack': ['Mixed', 'gvisor', 'system'],
+};
+
+const isPlainObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+function describeValue(v) {
+  if (Array.isArray(v)) return '数组';
+  if (v === null) return 'null';
+  if (isPlainObject(v)) return '对象';
+  if (typeof v === 'boolean') return '布尔 true/false';
+  if (typeof v === 'number') return '数字';
+  if (typeof v === 'string') return '字符串';
+  return typeof v;
+}
+// 类型对不上就拒绝：`pinOnly: 'true'`（字符串）在 JS 里是 truthy，会悄悄按 true 跑，
+// 下次写 `'false'` 也一样 truthy —— 这类坑只能靠严格校验挡住。
+function sameKind(cur, v) {
+  if (Array.isArray(cur)) return Array.isArray(v);
+  if (isPlainObject(cur)) return isPlainObject(v);
+  return typeof v === typeof cur;
+}
+
+function applyConfigFields(path, target, patch, sink) {
+  for (const k of Object.keys(patch)) {
+    const v = patch[k];
+    const here = path ? `${path}.${k}` : k;
+    if (!Object.prototype.hasOwnProperty.call(target, k)) {
+      sink.unknown.push(`${here}（可用：${Object.keys(target).join(' / ')}）`);
+      continue;
     }
-    if (applied.length) {
-      console.log(`[配置覆写] 已从 x-smart.residential 应用：${applied.join(' / ')}`);
+    const cur = target[k];
+    if (isPlainObject(cur) && isPlainObject(v)) {
+      applyConfigFields(here, cur, v, sink);
+      continue;
+    }
+    // 枚举先判：`upstream.inject` 的默认值是布尔 true，但合法的写法是 'fill' / 'strip' /
+    // 'override' / false —— 按「默认值类型」校验会把 'strip' 当成类型错误挡掉。
+    const allowed = CONFIG_ENUMS[here];
+    if (allowed) {
+      if (allowed.indexOf(v) < 0) {
+        sink.bad.push(
+          `${here} 只能是 ${allowed.map((x) => JSON.stringify(x)).join(' / ')}，` +
+            `收到 ${JSON.stringify(v)}`,
+        );
+        continue;
+      }
+      target[k] = v;
+      sink.applied.push(here);
+      continue;
+    }
+    if (!sameKind(cur, v)) {
+      sink.bad.push(`${here} 需要${describeValue(cur)}，收到${describeValue(v)}`);
+      continue;
+    }
+    target[k] = v;
+    sink.applied.push(here);
+  }
+}
+
+function applyConfigLayer(label, src) {
+  const sink = { applied: [], unknown: [], bad: [] };
+  for (const k of Object.keys(src)) {
+    const v = src[k];
+    if (CONFIG_TARGETS[k]) {
+      const tgt = CONFIG_TARGETS[k]();
+      // 数组目标（目前只有 aiStaticToAI）：整体替换。就地改内容——绑定是 const，
+      // 但数组长度和元素都是可变的；这样其它地方已经拿到的引用不会失效。
+      if (Array.isArray(tgt)) {
+        if (!Array.isArray(v)) {
+          sink.bad.push(`${k} 需要数组，收到${describeValue(v)}`);
+          continue;
+        }
+        if (tgt.length && tgt.every((x) => typeof x === 'string') && !v.every((x) => typeof x === 'string')) {
+          sink.bad.push(`${k} 的每一项都需要字符串（例如 'DOMAIN-SUFFIX,example.com'）`);
+          continue;
+        }
+        tgt.length = 0;
+        tgt.push(...v);
+        sink.applied.push(`${k}[]`);
+        continue;
+      }
+      if (!isPlainObject(v)) {
+        sink.bad.push(`${k} 需要对象，收到${describeValue(v)}`);
+        continue;
+      }
+      applyConfigFields(k, tgt, v, sink);
+    } else if (CONFIG_SWITCHES[k]) {
+      if (typeof v !== 'boolean') {
+        sink.bad.push(`${k} 需要布尔 true/false，收到${describeValue(v)}`);
+        continue;
+      }
+      CONFIG_SWITCHES[k](v);
+      sink.applied.push(k);
+    } else {
+      sink.unknown.push(
+        `${k}（可用：${[...Object.keys(CONFIG_TARGETS), ...Object.keys(CONFIG_SWITCHES)].join(' / ')}）`,
+      );
     }
   }
-  if (typeof raw.keepSubGroups === 'boolean') KEEP_SUB_GROUPS = raw.keepSubGroups;
+  if (sink.applied.length) console.log(`[配置覆写] ${label}：已应用 ${sink.applied.join(' / ')}`);
+  if (sink.unknown.length) console.log(`[配置覆写] ${label}：忽略未知项 ${sink.unknown.join('；')}`);
+  if (sink.bad.length) {
+    console.log(`[配置覆写] ${label}：${sink.bad.join('；')} —— 已保留脚本默认值`);
+  }
+}
+
+function applyUserConfig(config) {
+  const KEY = config['x-smart'] ? 'x-smart' : config['+x-smart'] ? '+x-smart' : '';
+  /** @type {Array<[string, object]>} */
+  const layers = [];
+  if (isPlainObject(USER_CONFIG) && Object.keys(USER_CONFIG).length) {
+    layers.push(['脚本顶部 USER_CONFIG', USER_CONFIG]);
+  }
+  if (
+    typeof FLCLASH_USER_CONFIG !== 'undefined' &&
+    isPlainObject(FLCLASH_USER_CONFIG) &&
+    Object.keys(FLCLASH_USER_CONFIG).length
+  ) {
+    layers.push(['FlClash 构建期注入的 config', FLCLASH_USER_CONFIG]);
+  }
+  if (KEY && isPlainObject(config[KEY])) {
+    layers.push([`覆写 YAML 的 ${KEY}`, config[KEY]]);
+  } else if (KEY) {
+    console.log(`[配置覆写] 覆写 YAML 的 ${KEY} 不是对象（是${describeValue(config[KEY])}） → 已忽略`);
+  }
+  for (const [label, src] of layers) applyConfigLayer(label, src);
   delete config['x-smart'];
   delete config['+x-smart'];
 }
@@ -1588,7 +1752,7 @@ function main(config) {
     throw new Error('配置对象为空');
   }
 
-  applyRunnableOverrides(config);
+  applyUserConfig(config);
 
   // ===== FlClash 新版安全网（v0.9.1+）=====
   // v0.9.1 起 core/profile_base.go 的 mergeProfileBase 会做两件事：

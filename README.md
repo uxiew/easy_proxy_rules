@@ -45,6 +45,27 @@ curl -x http://127.0.0.1:7865 -s https://api.ip.sb/geoip | jq '{ip,country,asn,i
 
 ---
 
+## 配置写在哪：一份 `x-smart` 就够
+
+第 0 部分的所有开关（住宅出口、应用分流、省流量、窄 TUN、地区优先、WebRTC、两个顶层开关）
+都能在**你自己的覆写 YAML** 里覆盖，不用改脚本、remote 引用也不会被更新冲掉：
+
+```yaml
+x-smart:                 # ← 不带 +
+  residential:
+    primary: '🏠IP-JP'    # 锁这一台
+    upstream: { inject: strip }
+  narrowTun: { enabled: false }
+  keepSubGroups: true
+```
+
+放在**排在 `smart.js` 之前**的本地覆写里即可；手机端等价写法是
+`flclash-credentials.json` 的 `config` 段（重建不丢）或脚本顶部的 `USER_CONFIG`。
+完整键表、优先级、写错了会怎样：[自定义配置](docs/custom-config.md)｜模板
+[`x-smart.example.yaml`](x-smart.example.yaml)。
+
+---
+
 ## AI 只走家宽：三个开关就是全部
 
 | 开关 | 默认 | 作用 |

@@ -9,6 +9,7 @@
 | --- | --- |
 | 第一次接入、验证链路通不通 | [快速开始](getting-started.md) |
 | 改 `smart.js` 的配置项、搞清楚住宅三态开关 | [配置项详解](configuration.md) |
+| 不想改脚本：用 `x-smart` / `USER_CONFIG` 覆盖全部配置 | [自定义配置](custom-config.md) |
 | 想配多台住宅 IP、让指定 IP 挂了只阻断不换 IP | [配置项详解](configuration.md) 的「多台住宅 IP」 |
 | 搞清楚 7890 / 7865 的区别、有哪些组 | [端口、分组与文件结构](architecture.md) |
 | 解决「规则写对了但 App 一直转圈」 | [流量怎么进内核](traffic-entry.md) |
@@ -26,17 +27,18 @@
 | [architecture.md](architecture.md) | 端口分工、策略组、`select`/`url-test`/`fallback`、国家优先、规则文件结构 |
 | [traffic-entry.md](traffic-entry.md) | 应用级分流、TUN vs 系统代理、路线 A/B/C、窄 TUN、App 自建 DNS |
 | [configuration.md](configuration.md) | 七个配置对象、家宽节点怎么认（`nodePattern`）、订阅自带住宅怎么接（`inject` 四模式 + `x-smart`）、DNS 用 IP 型 DoH、WebRTC guard、`dialer-proxy` 与「前置要不要按大洲拆」、住宅出口锁定（`primary` 名字匹配 / `pinMiss` / `prefer`）、无家宽三态、`auto` 边界、多出口预案（未实现） |
+| [custom-config.md](custom-config.md) | `x-smart` / `flclash-credentials.json` 的 `config` / `USER_CONFIG` 三个入口、完整键表、优先级与合并规则、类型与枚举校验 |
 | [clients.md](clients.md) | Claude Code、`claude-guard`、常驻会话、pf 硬阻断、Proxifier |
 | [flclash.md](flclash.md) | Android 客户端对比、`flclash-private.js` 生成与安装、构建期自检、手机端专有陷阱 |
 | [security.md](security.md) | 三层防泄漏（hook / CI / 精确名单）、`sync-sensitive.mjs`、Secret 维护 |
-| [troubleshooting.md](troubleshooting.md) | 29 条实测踩坑，按编号引用 |
+| [troubleshooting.md](troubleshooting.md) | 31 条实测踩坑，按编号引用 |
 | [verification.md](verification.md) | 出口验证、内核日志证据、fake-ip 下 `GEOIP,CN` 的三答案验收 |
 
 ## 建议阅读顺序
 
 1. 新用户：[快速开始](getting-started.md) → [端口、分组与文件结构](architecture.md)
 2. 要接住宅出口：[配置项详解](configuration.md) 的「锁哪一台」、「没有家宽怎么办」
-   与「多台住宅 IP」
+   与「多台住宅 IP」，配置写在哪看 [自定义配置](custom-config.md)
 3. 遇到连不上：[流量怎么进内核](traffic-entry.md) → [踩过的坑](troubleshooting.md)
 4. 改过规则后：[验证分流是否生效](verification.md)
 

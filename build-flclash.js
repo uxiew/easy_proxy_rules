@@ -166,6 +166,18 @@ const FLCLASH_RESIDENTIAL = {
 ${nodeLines}
   ],
 };
+
+// ============ 配置项（可选，与桌面端 x-smart 同一套键名） ============
+// 来源：flclash-credentials.json 的 "config" 段。留空 = 全用 smart.js 的默认值。
+// 手机上没法用覆写链，这里是唯一「重新构建也不会丢」的配置入口；
+// 也可以直接改 smart.js 顶部的 USER_CONFIG（但重建会覆盖，别在里面放只在本机有用的东西）。
+// 键名：residential / appProxy / traffic / narrowTun / regionPriority / webrtcGuard /
+//       aiStaticToAI + keepSubGroups / modeGuard，详见 docs/custom-config.md
+const FLCLASH_USER_CONFIG = ${JSON.stringify(
+    cred && typeof cred.config === 'object' && cred.config ? cred.config : {},
+    null,
+    2,
+  ).split('\n').join('\n')};
 ${isPublic ? "// 占位符版没有真实凭据：告诉 smart.js 按「没有家宽」处理，AI 走 AI 组\nconst FLCLASH_NO_RESIDENTIAL = true;\n" : ''}// ==========================================================
 
 // ================= smart.js 全文（勿手改） =================

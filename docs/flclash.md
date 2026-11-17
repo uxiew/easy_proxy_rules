@@ -31,9 +31,17 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
      "nodes": [
        { "name": "🏠 住宅-JP", "server": "...", "port": 7012, "username": "...", "password": "..." },
        { "name": "🏠 住宅-US", "server": "...", "port": 7013, "username": "...", "password": "..." }
-     ]
+     ],
+     "config": {
+       "residential": { "upstream": { "inject": "strip" }, "prefer": "JP" },
+       "narrowTun": { "enabled": false }
+     }
    }
    ```
+
+   可选的 `config` 段 = 桌面端 `x-smart` 的同一套键名，构建时注入成 `FLCLASH_USER_CONFIG`，
+   **重新构建不会丢**（手机上改 `USER_CONFIG` 会被下次构建覆盖）。键表见
+   [自定义配置](custom-config.md)。
 
    只有 `primary` 那台会进「住宅出口」——构建时它的名字会被写进节点的 `RESIDENTIAL.primary`，
    所以桌面配置和手机凭据用的是同一个词。其余节点注入后**只作备用**（`pinOnly: true`）——
