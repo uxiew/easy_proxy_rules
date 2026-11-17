@@ -55,6 +55,19 @@ curl -x http://127.0.0.1:7890 https://claude.ai/cdn-cgi/trace | grep -E '^ip=|^l
 
 三态的判定优先级、覆写顺序陷阱、日志与验证命令见 [配置项详解 · 没有家宽怎么办](docs/configuration.md)。
 
+## 订阅**自带**家宽节点？
+
+不用再手写 `+proxies`，命个名就行——脚本认「家宽 / 住宅 / 静态 / ISP / RESI / `🏠` / `IP-`」这些词：
+
+| 配置 | 写什么 | 为什么 |
+| --- | --- | --- |
+| `RESIDENTIAL.nodePattern` | 默认就覆盖上面这些词 | 认窄了 → 住宅出口只剩 `REJECT` → AI 全断 |
+| `RESIDENTIAL.primary` | `{ server: '1.2.3.4', port: 7012 }` | **端点锁定**：订阅改名/加 emoji/加倍率标记都不用维护；别用「第 1 台」那种序号（顺序由订阅决定，会静默换 IP） |
+| `RESIDENTIAL.upstream.inject` | 默认 `true` | 订阅节点没有 `dialer-proxy` → 自动补 `前置-亚洲`；本机已在住宅同国就设 `false` 直连 |
+
+匹配放宽是安全的：`pinOnly: true` 会把出口锁死在一台上，多命中的节点只进候选池。
+细节见 [家宽节点怎么认](docs/configuration.md) 与 [锁哪一台](docs/configuration.md)。
+
 ---
 
 ## 改配置看哪里
@@ -64,7 +77,7 @@ curl -x http://127.0.0.1:7890 https://claude.ai/cdn-cgi/trace | grep -E '^ip=|^l
 | 对象 | 管什么 |
 | --- | --- |
 | ① `APP_PROXY` | 应用级分流：专用端口 / 进程名 / 路径正则 / Android 包名 |
-| ② `RESIDENTIAL` | 住宅出口：总开关、组名、跳板、专用端口 |
+| ② `RESIDENTIAL` | 住宅出口：总开关、节点匹配（`nodePattern`）、锁定哪一台（`primary`：名字或端点）、跳板组 |
 | ③ `TRAFFIC` | 国内直连、Apple 直连 |
 | ④ `AI_STATIC_TO_AI` | AI 静态资源 / 安装包走机场 |
 | ⑤ `NARROW_TUN` | 窄 TUN（只把 Google 段塞进内核） |
@@ -85,7 +98,7 @@ curl -x http://127.0.0.1:7890 https://claude.ai/cdn-cgi/trace | grep -E '^ip=|^l
 | 逐项改配置 | [配置项详解](docs/configuration.md) |
 | 接 Claude Code / Proxifier / pf | [桌面客户端接入](docs/clients.md) |
 | 生成手机 FlClash 覆写 | [FlClash 与构建产物](docs/flclash.md) |
-| 排查报错、换订阅后的怪现象 | [踩过的坑（24 条）](docs/troubleshooting.md) |
+| 排查报错、换订阅后的怪现象 | [踩过的坑（27 条）](docs/troubleshooting.md) |
 | 确认某条规则命中了什么 | [验证分流是否生效](docs/verification.md) |
 | 维护出口 IP / 凭据防泄漏 | [防泄漏](docs/security.md) |
 

@@ -36,9 +36,23 @@ curl -s --noproxy '*' --unix-socket "$SOCK" http://localhost/proxies \
 ```
 
 锁定模式（`RESIDENTIAL.pinOnly: true` + 有 `primary`）下，`all` 应该**只有两项**：
-`['🏠 住宅-JP', 'REJECT']`，`now` 就是那台住宅。若 `all` 里冒出第二台住宅节点，
-说明锁定没生效——多半是 `primary` 和节点名没完全对上（emoji、空格都算），
-脚本退回了「全部可选」，内核日志里会有 `[住宅出口] 锁定节点「…」不在本次节点列表` 这句。
+`['🏠 住宅-JP', 'REJECT']`，`now` 就是那台住宅。三种异常各自对应一句话：
+
+| `all` 实际内容                          | 含义                                                     | 去看哪                                                                    |
+| ----------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `['REJECT']`（一项）                    | `primary` 写错/订阅改名 → 锁不上，按 `pinMiss: 'reject'` 只留阻断        | 内核日志 `[住宅出口] 锁定目标 … 不在本次节点列表`；改成端点锁定即可 |
+| `[节点A, 节点B, …, 'REJECT']`（多台）      | 锁没生效：`pinOnly: false`，或写了 `pinMiss: 'collect'`           | [坑 24](troubleshooting.md)                                            |
+| `['COMPATIBLE']` / 组不存在              | 组空（内核塞占位直连）或没建组                                          | 坑 6、`enabled` 判定日志                                                     |
+
+住宅节点有没有接上跳板，看这两个地方：
+
+```bash
+# 1) 配置里该节点有没有 dialer-proxy（日志更直接）
+#    [住宅出口] 已给 N 个订阅自带住宅节点补上 dialer-proxy: 前置-亚洲（…）
+# 2) 前置组当前选中的是谁（它一换，经住宅的长连接会断一次）
+curl -s --noproxy '*' --unix-socket "$SOCK" http://localhost/proxies \
+  | python3 -c "import sys,json;p=json.load(sys.stdin)['proxies'];print(p['前置-亚洲'].get('now'), len(p['前置-亚洲']['all']))"
+```
 
 ## 国内直连兜底的三答案验收
 
