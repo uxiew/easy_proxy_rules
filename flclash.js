@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-17 11:15:31
- * 源文件      : smart.js  sha256:af547019a093  2336 行 / 131217 字节
- * 源码提交    : 713fdba
+ * 构建时间    : 2026-11-17 12:07:25
+ * 源文件      : smart.js  sha256:2f1c85940725  2650 行 / 147184 字节
+ * 源码提交    : 2e4c7b8
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -344,6 +344,15 @@ const RESIDENTIAL = {
   //   'collect'       = 退回旧行为：全部命中 nodePattern 的住宅节点进组，默认选中第一个
   //      （= 订阅给的顺序，可能任何一国）。只有「这些住宅 IP 随便换都无所谓」时才用。
   pinMiss: 'reject',
+  // 【2026-11-17 新增】没锁定（primary 留空 / pinOnly: false）时，「住宅出口」的默认项按国家排。
+  // 留空 = 保持订阅下发的顺序（第一位是什么国家就选什么）。
+  // 静态住宅订阅通常「一台日本 + 两百台欧美」，不排的话默认很可能从美国出去，
+  // 而你在日本 —— Claude 看到的就是「换国家登录」。
+  // 写法是 JS 正则（只在脚本侧用，不进内核 filter），建议只写国家码/城市：
+  //   'JP' / '日本|东京' / 'US' / '新加坡'
+  // ⚠️ 只重排不淘汰：没命中的住宅节点仍在组里（排在 REJECT 之后），面板里可以手动切。
+  // ⚠️ 真正要「出口确定」请用 primary 锁一台 —— prefer 只解决「默认选谁」。
+  prefer: '',
   // 【节点名匹配】两端共用的正则，只能写 Go RE2 ∩ JS RegExp 的交集：
   //   不能写 (?i) —— JS 的 RegExp 不支持内联旗标，写了直接抛异常（脚本侧整体失效）；
   //   所以英文关键词的大小写只能靠字符类逐个覆盖：[Rr]esi|RESI / [Ss]tatic|STATIC / [Ii][Ss][Pp]。
@@ -398,12 +407,29 @@ const RESIDENTIAL = {
   upstream: {
     enabled: true,
     group: '前置-亚洲', // 组名，覆写 YAML 的 dialer-proxy 引用它；别重复定义同名组
-    // 【2026-11-17 新增】给「订阅自带、且没有 dialer-proxy」的住宅节点自动补跳板。
-    //   订阅给的家宽节点只有订阅那些字段，没有 dialer-proxy → 本机直连海外住宅 IP，
-    //   又慢又不稳（这条链当初就是为了解决它）。这里只补 dialer-proxy 一个字段，
-    //   server/port/密码一律不碰；已有 dialer-proxy 的、type: http 的一律跳过（坑 5）。
-    //   false = 保持「住宅直连」，适合本机已经在住宅同城/同国的情况（少一跳更快）。
+    // 【订阅自带住宅节点：dialer-proxy 怎么处理】四个值，按「本机在哪」选：
+    //   true / 'fill'（默认）—— 只补没有 dialer-proxy 的；已有的一律尊重，不动。
+    //      适合「本机在国内、需要机场当跳板才能连上住宅网关」。
+    //   'strip'  —— 把住宅节点上的 dialer-proxy **删掉**，变成「本机 → 住宅网关」一跳。
+    //      适合「本机已经在日本/美国，住宅也在同一国」——多绕一个机场反而是两次长途。
+    //      实测（2026-11-17，本机东京）：直连 BrightData 网关 brd.superproxy.io:44445
+    //      稳定 80–85ms，绕机场前置只会更慢。这是「订阅自带静态住宅」最常见的正解。
+    //   'override' —— 不管有没有，全改成 upstream.group（前置-亚洲）。
+    //      适合「订阅把前置写成了一个手选组、默认选了别的洲」的情形。
+    //      默认仍然跳过 type: http（坑 5：http + 跳板连不通），要改写 http 请同时设
+    //      allowHttp: true —— 只在你确认过这份订阅的 http 节点能走链式代理时再开。
+    //   false   —— 一个字都不碰（连下面「悬空修复」也不做，出问题自己担）。
+    // 任何非 false 的模式都会顺带修「悬空」：dialer-proxy 指向一个本次配置里
+    // 根本不存在的组/节点时（典型：订阅写了 前置-机场，而那个组在本配置里没有），
+    // 内核会报 `dialer-proxy [X] not found` 并让该节点不可用 —— 这里按模式补上或删掉。
     inject: true,
+    // override 模式下是否也改写 type: http 的住宅节点。
+    // 【2026-11-17 实测修正】旧文档（坑 5）说「http + 跳板连不通」，实测 v1.19.32 上
+    // **是通的**：mihomo 的 http 出站同样走 dialer 链，`dialer-proxy` 指向节点或
+    // url-test 组都能生效（本地起假前置抓到了 CONNECT）。静态住宅订阅基本都是
+    // type: http，所以这里默认 true —— 设 false 只用于「旧版本内核 http 跳板确实不通」
+    // 或「这份订阅的 http 节点必须直连」的情况。
+    allowHttp: true,
     // 【2026-11-05 改】原来留空 = 复用 smartGroups.JP 的 filter（只收日本）。
     // 现在显式写亚洲关键词，和地区组的 filter 解耦（改地区组不会影响跳板池）。
     // 只放多字/带国名的关键词，绝不放单字：
@@ -637,6 +663,16 @@ const CDN_BASE = CDN_BASE_CN;
 
 // 本仓库规则集专用源：要即时生效，不能被 CDN 缓存拖住
 const RAW_BASE = 'https://raw.githubusercontent.com/uxiew/easy_proxy_rules/refs/heads/main/ruleset';
+
+// =========== 兼容订阅自带策略组 ===========
+// 本脚本会重建 proxy-groups，而订阅自带的组可能正被**节点**引用：
+// 典型是静态住宅订阅 —— 几百个住宅节点写着 `dialer-proxy: 前置-机场`，
+// 那个组是订阅自己建的。重建时把它丢掉，这些节点就全部悬空（内核日志
+// `proxy [X] dialer-proxy [前置-机场] not found`），面板上却看不出异常，
+// 只表现为「选了住宅节点，Claude 打不开」。
+// true  = 名字不冲突的订阅组一律保留（成员清洗成「本配置里真实存在的名字」）
+// false = 只保留本脚本建的组（旧行为；订阅把 dialer-proxy 指向自家组时会全断）
+let KEEP_SUB_GROUPS = true;
 // ===========================
 // 第一部分：自定义关键词和规则
 // ======= 自定义关键词 =======
@@ -726,17 +762,26 @@ const isFlClashPlaceholder = () =>
 // 旧名仍读一次并搬过来 —— 否则老配置会静默退回「全部住宅节点可选」，
 // 而结果（多一台可选）不报错，很难在日志里看出来。
 //
-// 【2026-11-17】primary 支持两种形态，解决「订阅自带家宽节点时，名字一改就锁不上」：
-//   字符串              → 精确节点名（最明确，自己起名时用）
+// 【2026-11-17】primary 支持三种形态，解决「订阅自带家宽节点时，名字一改就锁不上」：
+//   字符串              → 节点名：先精确匹配；没命中再按「唯一子串」匹配（见下）
+//   { ip: '1.2.3.4' }   → 按「名字里包含这个 IP」锁定（静态住宅订阅的正解，见下）
 //   { server, port? }   → 端点锁定：按 server（+ port）在本次节点列表里找那一台
+// 为什么单列一个 ip 形态：静态住宅订阅（BrightData 那类）把几百个住宅 IP 全挂在
+// **同一个网关地址**上（server 都是 brd.superproxy.io，port 都是 44445），
+// 只有 username / 节点名里的 `-ip-1.2.3.4` 不同 —— 端点锁定在这种订阅上
+// 会命中几百台、无法区分；而节点名里的 IP 是唯一稳定的身份。
 // 为什么不是「序号 id（第 1、2 台）」：节点的顺序由订阅/机场下发决定，
 // 换一次订阅、机场按延迟重排、插进一条「到期提醒」占位节点，第 1 台就可能变成另一国 IP。
 // 用序号锁定 = 把出口 IP 交给别人排序，而失败时**不报错**，正好踩在这套配置最怕的点上。
-// 为什么不是「正则匹配名字」：可行（必须要求恰好命中 1 台，0 台或多台都判失败），
-// 但等价效果用 server 就够了，还少一层转义维护 —— 见 docs/configuration.md。
+// 子串匹配为什么要求「唯一命中」：命中 0 台或多台都按 pinMiss 处理（默认 REJECT），
+// 宁可断也不猜 —— 猜错就是「Claude 从日本变成美国登录」。
 function primarySpec() {
   const raw = RESIDENTIAL.primary;
   if (raw && typeof raw === 'object') {
+    const ip = String(raw.ip || '').trim();
+    if (ip) return { kind: 'ip', ip };
+    const name = String(raw.name || '').trim();
+    if (name) return { kind: 'name', name };
     const server = String(raw.server || '').trim();
     if (!server) return null;
     const portRaw = raw.port === undefined || raw.port === null || raw.port === '' ? 0 : Number(raw.port);
@@ -751,10 +796,13 @@ function primarySpec() {
   return { kind: 'name', name: legacy };
 }
 
-// primary 配没配（'auto' 判定用；端点形态也算配了）
+// primary 配没配（'auto' 判定用；对象形态也算配了）
 const primaryNodeName = () => {
   const spec = primarySpec();
-  return spec ? (spec.kind === 'name' ? spec.name : `${spec.server}:${spec.port || '*'}`) : '';
+  if (!spec) return '';
+  if (spec.kind === 'name') return spec.name;
+  if (spec.kind === 'ip') return `ip:${spec.ip}`;
+  return `${spec.server}:${spec.port || '*'}`;
 };
 
 // 把 primary 解析成「本次节点列表里真实存在的那一台」。解析不出来 → ''，
@@ -762,17 +810,45 @@ const primaryNodeName = () => {
 function resolvePrimaryName(proxies) {
   const spec = primarySpec();
   if (!spec) return '';
-  if (spec.kind === 'name') return spec.name; // 名字形态原样交给调用方校验存在性
   const list = (Array.isArray(proxies) ? proxies : []).filter(
-    (p) => p && typeof p.name === 'string' && String(p.server || '') === spec.server,
+    (p) => p && typeof p.name === 'string',
   );
-  const exact = spec.port ? list.filter((p) => Number(p.port) === spec.port) : list;
+  if (spec.kind === 'name') {
+    // 精确名优先：自己给节点起名时行为不变，一个字不差就是它
+    if (list.some((p) => p.name === spec.name)) return spec.name;
+    // 没精确命中 → 退回「唯一子串」：给订阅节点用，不必照抄整串
+    // （`静态33` / `51.241.93.0` 都行），但必须恰好命中 1 台。
+    return matchUniqueName(list, spec.name, '节点名');
+  }
+  if (spec.kind === 'ip') {
+    return matchUniqueName(list, spec.ip, 'IP');
+  }
+  const byServer = list.filter((p) => String(p.server || '') === spec.server);
+  const exact = spec.port ? byServer.filter((p) => Number(p.port) === spec.port) : byServer;
   if (exact.length === 1) return exact[0].name;
   if (exact.length > 1) {
     console.log(
       `[住宅出口] primary 端点 ${spec.server}${spec.port ? ':' + spec.port : ''} 命中 ${exact.length} 台节点` +
-        `（${exact.map((p) => p.name).join(' / ')}），无法确定是哪一台 → 按 pinMiss 处理` +
-        (spec.port ? '' : '；补上 port 即可唯一确定'),
+        `（${exact.slice(0, 3).map((p) => p.name).join(' / ')}${exact.length > 3 ? ' …' : ''}），` +
+        '无法确定是哪一台 → 按 pinMiss 处理' +
+        (spec.port
+          ? '。静态住宅订阅常把几百个 IP 挂在同一个网关上，这种情况请改用 { ip: \'1.2.3.4\' }'
+          : '；补上 port 即可唯一确定'),
+    );
+  }
+  return '';
+}
+
+// 按「名字包含 needle」找唯一一台。0 台 / 多台都返回 ''，让调用方按 pinMiss 处理 ——
+// 绝不 return 第一个：那样「锁不上」会变成「锁到别人」，而这套配置最怕的就是出口悄悄换人。
+function matchUniqueName(list, needle, label) {
+  const hit = list.filter((p) => p.name.indexOf(needle) >= 0);
+  if (hit.length === 1) return hit[0].name;
+  if (hit.length > 1) {
+    console.log(
+      `[住宅出口] primary 按${label}「${needle}」命中 ${hit.length} 台节点` +
+        `（${hit.slice(0, 3).map((p) => p.name).join(' / ')}${hit.length > 3 ? ' …' : ''}），` +
+        '要求恰好命中 1 台 → 按 pinMiss 处理；把 primary 换成更长的片段（整串 IP）即可唯一确定',
     );
   }
   return '';
@@ -1485,12 +1561,52 @@ const getRules = ()=>{
 // 否则会和 FlClash 自己的 DNS/TUN 打架，表现为「所有节点全部失效」。
 let FLCLASH_MODE = false;
 
+// 【2026-11-17 新增】在覆写 YAML 里覆盖配置，不必改本文件。
+// 背景：primary / inject 这类东西是「每台机器都不一样」的 —— 住宅 IP 是你自己的，
+// 本机在哪个国家也只有你知道。写死在脚本顶部，等于每换一次订阅就要 fork 一份脚本；
+// 而 smart.js 常常是 remote 覆写，改本地还没用（下次更新就被覆盖）。
+// 用法（写在任意一个排在 smart.js 之前的覆写 YAML 里，比如「静态住宅节点」）：
+//   +x-smart:
+//     residential:
+//       primary: { ip: '51.241.93.0' }   # 锁这一台住宅（名字里含这个 IP 的那台）
+//       upstream:
+//         inject: strip                  # 本机与住宅同国 → 直连住宅网关，别绕机场
+//       prefer: 'JP'
+//     keepSubGroups: true                # 等价于文件顶部的 KEEP_SUB_GROUPS
+// 合并规则：对象逐字段覆盖（upstream 只写 inject 不会把 group 抹掉），其它类型整体替换。
+// 读完整段会从配置里删掉，避免内核因为陌生字段报警。
+function applyRunnableOverrides(config) {
+  const raw = config['x-smart'];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+  const isPlain = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+  const resi = raw.residential;
+  if (isPlain(resi)) {
+    const applied = [];
+    for (const key of Object.keys(resi)) {
+      if (isPlain(resi[key]) && isPlain(RESIDENTIAL[key])) {
+        Object.assign(RESIDENTIAL[key], resi[key]);
+        applied.push(`${key}.{${Object.keys(resi[key]).join(',')}}`);
+      } else {
+        RESIDENTIAL[key] = resi[key];
+        applied.push(key);
+      }
+    }
+    if (applied.length) {
+      console.log(`[配置覆写] 已从 x-smart.residential 应用：${applied.join(' / ')}`);
+    }
+  }
+  if (typeof raw.keepSubGroups === 'boolean') KEEP_SUB_GROUPS = raw.keepSubGroups;
+  delete config['x-smart'];
+}
+
 // 程序入口
 function main(config) {
   // 验证配置
   if (!config) {
     throw new Error('配置对象为空');
   }
+
+  applyRunnableOverrides(config);
 
   // ===== FlClash 新版安全网（v0.9.1+）=====
   // v0.9.1 起 core/profile_base.go 的 mergeProfileBase 会做两件事：
@@ -1593,17 +1709,14 @@ function main(config) {
     );
   }
 
-  // 【2026-11-17 新增】订阅自带的住宅节点：补上 dialer-proxy
+  // 【2026-11-17 新增】订阅自带的住宅节点：补 / 删 / 改写 dialer-proxy
   // 背景：住宅节点以前只来自「覆写 YAML / FlClash 凭据」，这两种都是我们自己写 proxies，
   // 字段齐全（type / dialer-proxy 都手写）。订阅自带的家宽节点不是我们写的 ——
-  // 它只有订阅给的那些字段，**没有 dialer-proxy**，于是「本机 → 住宅 IP」成了裸直连：
-  // 从国内直连海外住宅 IP 通常又慢又不稳，正是这条链当初要解决的问题。
-  // 这里只补一个字段，不碰 nodes 的其它内容（server/port/密码一律不动）。
-  // 三种情况跳过：
-  //   1) 已经有 dialer-proxy（FlClash 注入的、或你自己写的）→ 尊重你的选择；
-  //   2) type: http → http + 跳板连不通（坑 5），补了等于把它变成不可用；
-  //   3) 名字命中 INFO_NODE_PATTERN（「到期/剩余流量」这类信息节点）→ 不是真节点。
-  // 想保持「住宅直连，不经机场」：把 RESIDENTIAL.upstream.inject 设 false。
+  // 它要么没有 dialer-proxy（本机裸连海外住宅 IP），要么写了个指向订阅自己组的
+  // dialer-proxy（那个组在本配置里存不存在，取决于订阅长什么样）。
+  // 这里只动 dialer-proxy 一个字段，server/port/密码一律不碰。
+  // 模式语义见 RESIDENTIAL.upstream.inject 的注释。
+  // 悬空（指向不存在的组）留给下面的「悬空修复」统一处理 —— 那时才知道最终组名。
   if (
     residentialActive &&
     RESIDENTIAL.upstream &&
@@ -1611,6 +1724,39 @@ function main(config) {
     RESIDENTIAL.upstream.inject !== false &&
     Array.isArray(config.proxies)
   ) {
+    const rawInject = RESIDENTIAL.upstream.inject;
+    let injectMode =
+      rawInject === 'strip' || rawInject === 'override' ? rawInject : 'fill';
+    // 【自动降级：没有可用跳板就别挂 dialer-proxy】
+    // 前置组是 url-test + include-all-proxies，一个亚洲节点都匹配不到时只剩 REJECT 兜底；
+    // 此时把住宅节点的 dialer-proxy 指过去 = 每个请求都先撞 REJECT → 住宅全断。
+    // 实测（2026-11-17）静态住宅订阅常常只有欧洲机场节点，这份「亚洲前置」根本选不出东西。
+    // 自动改成 strip（本机直连住宅网关），比留一个指向空组的 dialer-proxy 安全得多。
+    let noUpstreamNode = false;
+    if (injectMode !== 'strip' && RESIDENTIAL.upstream.filter) {
+      try {
+        const reIn = new RegExp(RESIDENTIAL.upstream.filter);
+        const reOut = new RegExp(
+          [RESIDENTIAL.nodePattern, INFO_NODE_PATTERN].filter(Boolean).join('|'),
+        );
+        noUpstreamNode = !(config.proxies || []).some(
+          (p) =>
+            p &&
+            typeof p.name === 'string' &&
+            reIn.test(p.name) &&
+            !(reOut && reOut.test(p.name)),
+        );
+      } catch {
+        noUpstreamNode = false;
+      }
+      if (noUpstreamNode) {
+        console.log(
+          `[住宅出口] 前置组「${RESIDENTIAL.upstream.group}」在本次订阅里没有任何可用节点` +
+            '（filter 匹配 0 台）→ 自动改成直连住宅网关，不把住宅节点挂到一个空组上',
+        );
+        injectMode = 'strip';
+      }
+    }
     let resiRe = null;
     try {
       resiRe = new RegExp(RESIDENTIAL.nodePattern);
@@ -1624,14 +1770,45 @@ function main(config) {
       infoRe = null;
     }
     let injected = 0;
+    let stripped = 0;
+    let rewritten = 0;
     let skippedHttp = 0;
     const injectedNames = [];
     for (const p of config.proxies) {
       if (!p || typeof p.name !== 'string' || !resiRe || !resiRe.test(p.name)) continue;
       if (infoRe && infoRe.test(p.name)) continue;
-      if (p['dialer-proxy']) continue;
+      const hasDialer = !!p['dialer-proxy'];
       const type = String(p.type || '').toLowerCase();
-      if (!type || type === 'http') {
+      const isHttp = type === 'http';
+
+      if (injectMode === 'strip') {
+        if (hasDialer) {
+          delete p['dialer-proxy'];
+          stripped++;
+        }
+        continue;
+      }
+      if (injectMode === 'override') {
+        if (isHttp && !RESIDENTIAL.upstream.allowHttp) {
+          skippedHttp++;
+          continue;
+        }
+        if (p['dialer-proxy'] !== RESIDENTIAL.upstream.group) {
+          p['dialer-proxy'] = RESIDENTIAL.upstream.group;
+          if (hasDialer) rewritten++;
+          else injected++;
+          injectedNames.push(p.name);
+        }
+        continue;
+      }
+      // fill：只补空的
+      if (hasDialer) continue;
+      if (!type) {
+        // 缺 type 的节点内核本来就会拒载，别在这上面加字段
+        skippedHttp++;
+        continue;
+      }
+      if (isHttp && !RESIDENTIAL.upstream.allowHttp) {
         skippedHttp++;
         continue;
       }
@@ -1639,17 +1816,30 @@ function main(config) {
       injected++;
       injectedNames.push(p.name);
     }
+    const sample = `${injectedNames.slice(0, 3).join(' / ')}${injectedNames.length > 3 ? ' …' : ''}`;
     if (injected) {
       console.log(
         `[住宅出口] 已给 ${injected} 个订阅自带住宅节点补上 dialer-proxy: ${RESIDENTIAL.upstream.group}` +
-          `（${injectedNames.slice(0, 5).join(' / ')}${injectedNames.length > 5 ? ' …' : ''}）` +
-          '；想直连住宅就把 RESIDENTIAL.upstream.inject 设 false',
+          `（${sample}）；想直连住宅就把 RESIDENTIAL.upstream.inject 设 'strip'`,
+      );
+    }
+    if (rewritten) {
+      console.log(
+        `[住宅出口] 已把 ${rewritten} 个订阅自带住宅节点的 dialer-proxy 改指 ${RESIDENTIAL.upstream.group}` +
+          `（${sample}）`,
+      );
+    }
+    if (stripped) {
+      console.log(
+        `[住宅出口] 已移除 ${stripped} 个订阅自带住宅节点的 dialer-proxy → 本机直连住宅网关` +
+          '（inject: \'strip\'；本机与住宅同国时这条最快）',
       );
     }
     if (skippedHttp) {
       console.log(
         `[住宅出口] ${skippedHttp} 个住宅节点是 http 类型/缺 type，跳过 dialer-proxy 注入` +
-          '（http + 跳板连不通，见 docs/troubleshooting.md 坑 5）',
+          '（http + 跳板连不通，见 docs/troubleshooting.md 坑 5；' +
+          'inject: \'override\' + allowHttp: true 可强制改写）',
       );
     }
   }
@@ -2147,7 +2337,9 @@ function main(config) {
       const label =
         spec.kind === 'endpoint'
           ? `${spec.server}${spec.port ? ':' + spec.port : ''}（端点）`
-          : `${spec.name}（节点名）`;
+          : spec.kind === 'ip'
+            ? `${spec.ip}（IP）`
+            : `${spec.name}（节点名）`;
       console.log(
         `[住宅出口] 锁定目标 ${label} 不在本次节点列表（共 ${allProxyNames.length} 个）→ ` +
           (pinMissCollect
@@ -2155,12 +2347,52 @@ function main(config) {
             : '组成员只留 REJECT（pinMiss: reject，出口不确定就不出去；改名/换 IP 后请更新 primary）'),
       );
     }
+    // 【2026-11-17 新增】没收紧锁定时的默认项：把「住宅所在国」的节点排到最前面。
+    // 为什么需要：静态住宅订阅常常是「一台日本 + 两百台欧美」放在一个组里，
+    // 不配 primary 时组员按订阅顺序排，第一位是哪个国家完全看运气 ——
+    // 用户在日本却默认从美国住宅出去，Claude 那边看到的就是「换了国家登录」。
+    // 只重排、不淘汰：prefer 没命中的节点仍由 include-all-proxies 收在后面，
+    // 面板里照样能手动切；真出问题就把 prefer 清空 / 换国家。
+    // prefer 只在 JS 侧用（内核 filter 不参与），所以可以直接写 JS 正则。
+    let preferredNames = [];
+    if (!pinOk && RESIDENTIAL.prefer) {
+      try {
+        const prefRe = new RegExp(RESIDENTIAL.prefer);
+        const resiRe = new RegExp(RESIDENTIAL.nodePattern);
+        const infoRe = INFO_NODE_PATTERN ? new RegExp(INFO_NODE_PATTERN) : null;
+        preferredNames = (config.proxies || [])
+          .filter(
+            (p) =>
+              p &&
+              typeof p.name === 'string' &&
+              resiRe.test(p.name) &&
+              !(infoRe && infoRe.test(p.name)) &&
+              prefRe.test(p.name),
+          )
+          .map((p) => p.name)
+          .slice(0, 20); // 保险：订阅给几百台同国住宅时不至于把面板刷爆
+        if (preferredNames.length) {
+          console.log(
+            `[住宅出口] 按 prefer「${RESIDENTIAL.prefer}」把 ${preferredNames.length} 个住宅节点排到组首` +
+              `（默认选中「${preferredNames[0]}」）`,
+          );
+        }
+      } catch {
+        preferredNames = [];
+      }
+    }
     const resiGroup = {
       name: RESIDENTIAL.group,
       type: 'select',
       // 成员里永远没有 AI：住宅出口只允许「住宅 / 阻断」，escapeToAI 是唯一例外且默认关。
-      // 锁不上、或 primary 留空时，第一位是 REJECT：需要手动选一次（store-selected 会记住）。
-      proxies: [...(pinOk ? [primaryName] : []), 'REJECT', ...(RESIDENTIAL.escapeToAI ? ['AI'] : [])],
+      // 锁不上、或 primary 留空时，第一位是 prefer 命中的住宅节点，其次才是 REJECT：
+      // 需要手动选一次时（store-selected 会记住），阻断永远排在可选节点之后。
+      proxies: [
+        ...(pinOk ? [primaryName] : []),
+        ...preferredNames,
+        'REJECT',
+        ...(RESIDENTIAL.escapeToAI ? ['AI'] : []),
+      ],
     };
     if (!pinOk && !(RESIDENTIAL.pinOnly && spec && !pinMissCollect)) {
       // 收编模式只在两种情况下出现：
@@ -2339,6 +2571,88 @@ function main(config) {
       });
     }
   }
+  // ===== 保留订阅自带的策略组（防 dialer-proxy 悬空）=====
+  // 在覆盖之前先把订阅原文里的组捞出来：这些组可能正被**节点**引用
+  // （静态住宅订阅的常见写法：几百个住宅节点写着 dialer-proxy: 前置-机场）。
+  // 详见文件顶部 KEEP_SUB_GROUPS 的注释。
+  if (KEEP_SUB_GROUPS) {
+    const subGroups = Array.isArray(config['proxy-groups']) ? config['proxy-groups'] : [];
+    if (subGroups.length) {
+      const ownNames = new Set(finalGroups.map((g) => g && g.name).filter(Boolean));
+      const targets = new Set(ownNames);
+      ['DIRECT', 'REJECT', 'PASS', 'GLOBAL'].forEach((n) => targets.add(n));
+      const nodeList = Array.isArray(config.proxies) ? config.proxies : [];
+      for (const p of nodeList) {
+        if (p && typeof p.name === 'string') targets.add(p.name);
+      }
+      let kept = 0;
+      const keptNames = [];
+      for (const g of subGroups) {
+        if (!g || typeof g.name !== 'string' || !g.name) continue;
+        // 重名会让内核直接拒载（duplicate group name）→ 本脚本的版本优先
+        if (ownNames.has(g.name)) continue;
+        const members = Array.isArray(g.proxies) ? g.proxies.filter((m) => targets.has(m)) : [];
+        const dynamic = !!(g['include-all-proxies'] || g['include-all'] || g.use);
+        if (!members.length && !dynamic) continue; // 空组又不动态收编 → 纯噪音
+        const copy = Object.assign({}, g);
+        // 动态组兜底：url-test 空组会被内核塞 COMPATIBLE（= 直连泄漏，坑 6）
+        copy.proxies = members.length ? members : ['REJECT'];
+        finalGroups.push(copy);
+        kept++;
+        keptNames.push(g.name);
+      }
+      if (kept) {
+        console.log(
+          `[节点清洗] 保留 ${kept} 个订阅自带策略组（${keptNames.slice(0, 4).join(' / ')}` +
+            `${keptNames.length > 4 ? ' …' : ''}），避免节点的 dialer-proxy 悬空`,
+        );
+      }
+    }
+  }
+
+  // ===== 修悬空 dialer-proxy =====
+  // 到这一步才第一次知道「最终一定存在的名字」：activeGroups 会淘汰空组，
+  // 所以 inject 阶段判断不了 upstream.group 到底建没建。
+  // 悬空对内核是硬错误（报 not found，该节点直接不可用，面板上看不出来），这里统一兜住：
+  //   有 upstream.group → 改指它；没有 → 删掉（退回本机直连，比整台节点不可用强）。
+  {
+    const names = new Set(finalGroups.map((g) => g && g.name).filter(Boolean));
+    ['DIRECT', 'REJECT', 'PASS', 'GLOBAL'].forEach((n) => names.add(n));
+    const nodeList = Array.isArray(config.proxies) ? config.proxies : [];
+    for (const p of nodeList) {
+      if (p && typeof p.name === 'string') names.add(p.name);
+    }
+    const upstreamGroup =
+      RESIDENTIAL.upstream && RESIDENTIAL.upstream.enabled ? RESIDENTIAL.upstream.group : '';
+    const hasUpstream = !!(upstreamGroup && names.has(upstreamGroup));
+    let fixedToUpstream = 0;
+    let removedDangling = 0;
+    for (const p of nodeList) {
+      if (!p || typeof p !== 'object') continue;
+      const dp = p['dialer-proxy'];
+      if (!dp || typeof dp !== 'string' || names.has(dp)) continue;
+      if (hasUpstream) {
+        p['dialer-proxy'] = upstreamGroup;
+        fixedToUpstream++;
+      } else {
+        delete p['dialer-proxy'];
+        removedDangling++;
+      }
+    }
+    if (fixedToUpstream) {
+      console.log(
+        `[节点清洗] ${fixedToUpstream} 个节点的 dialer-proxy 指向不存在的组，` +
+          `已改指 ${upstreamGroup}（否则内核报 not found、这些节点直接不可用）`,
+      );
+    }
+    if (removedDangling) {
+      console.log(
+        `[节点清洗] ${removedDangling} 个节点的 dialer-proxy 指向不存在的组且无可用前置，` +
+          '已移除该字段（改本机直连）',
+      );
+    }
+  }
+
   config['proxy-groups'] = finalGroups;
   config['rule-providers'] = finalProviders;
   config.rules = rules;
