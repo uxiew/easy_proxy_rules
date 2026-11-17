@@ -57,16 +57,31 @@ curl -x http://127.0.0.1:7890 https://claude.ai/cdn-cgi/trace | grep -E '^ip=|^l
 
 ## 订阅**自带**家宽节点？
 
-不用再手写 `+proxies`，命个名就行——脚本认「家宽 / 住宅 / 静态 / ISP / RESI / `🏠` / `IP-`」这些词：
+不用手写 `+proxies`，命个名就行——脚本认「家宽 / 住宅 / 静态 / ISP / RESI / `🏠` / `IP-`」这些词。
+**静态住宅订阅**（BrightData 那类：几百个 `type: http`、共用一个网关、名字里带 IP）按这三行配：
+
+```yaml
+# 写在排在 smart.js 之前的覆写 YAML 里（不用改脚本）
++x-smart:
+  residential:
+    primary: { ip: '51.241.93.0' }   # 锁名字里含这个 IP 的那台
+    upstream: { inject: strip }      # 本机与住宅同国 → 直连网关，别绕机场
+    prefer: 'JP'
+```
 
 | 配置 | 写什么 | 为什么 |
 | --- | --- | --- |
-| `RESIDENTIAL.nodePattern` | 默认就覆盖上面这些词 | 认窄了 → 住宅出口只剩 `REJECT` → AI 全断 |
-| `RESIDENTIAL.primary` | `{ server: '1.2.3.4', port: 7012 }` | **端点锁定**：订阅改名/加 emoji/加倍率标记都不用维护；别用「第 1 台」那种序号（顺序由订阅决定，会静默换 IP） |
-| `RESIDENTIAL.upstream.inject` | 默认 `true` | 订阅节点没有 `dialer-proxy` → 自动补 `前置-亚洲`；本机已在住宅同国就设 `false` 直连 |
+| `RESIDENTIAL.primary` | `{ ip: '1.2.3.4' }` | 这类订阅几百个 IP 共用一个 `server:port`，**端点锁定会一次命中几百台**（[坑 29](docs/troubleshooting.md)）；节点名里的住宅 IP 才是唯一身份。别用「第 1 台」那种序号 |
+| `RESIDENTIAL.upstream.inject` | `'strip'` / `'fill'` / `'override'` | 本机和住宅同国 → `strip`（直连网关 80ms）；跨洲 → 默认 `fill`。前置组一个节点都匹配不到时自动降级成 `strip` |
+| `RESIDENTIAL.prefer` | `'JP'` / `'US'` | 没锁定时默认选哪国的住宅。这类订阅常是「1 台日本 + 200 台欧美」，不排的话默认很可能从美国出去 |
+| `RESIDENTIAL.nodePattern` | 默认已覆盖 | 认窄了 → 住宅出口只剩 `REJECT` → AI 全断 |
 
 匹配放宽是安全的：`pinOnly: true` 会把出口锁死在一台上，多命中的节点只进候选池。
-细节见 [家宽节点怎么认](docs/configuration.md) 与 [锁哪一台](docs/configuration.md)。
+订阅自带的策略组也会被**保留**——丢掉它们会让节点的 `dialer-proxy` 悬空，内核直接 `Parse config error`
+（[坑 28](docs/troubleshooting.md)）。
+
+细节见 [家宽节点怎么认](docs/configuration.md)、[锁哪一台](docs/configuration.md)、
+[订阅自带静态住宅怎么接](docs/configuration.md)。
 
 ---
 
@@ -98,7 +113,7 @@ curl -x http://127.0.0.1:7890 https://claude.ai/cdn-cgi/trace | grep -E '^ip=|^l
 | 逐项改配置 | [配置项详解](docs/configuration.md) |
 | 接 Claude Code / Proxifier / pf | [桌面客户端接入](docs/clients.md) |
 | 生成手机 FlClash 覆写 | [FlClash 与构建产物](docs/flclash.md) |
-| 排查报错、换订阅后的怪现象 | [踩过的坑（27 条）](docs/troubleshooting.md) |
+| 排查报错、换订阅后的怪现象 | [踩过的坑（29 条）](docs/troubleshooting.md) |
 | 确认某条规则命中了什么 | [验证分流是否生效](docs/verification.md) |
 | 维护出口 IP / 凭据防泄漏 | [防泄漏](docs/security.md) |
 

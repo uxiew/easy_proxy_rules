@@ -47,7 +47,7 @@ mihomo 会同时开几个入口，**用途完全不同**，配错会绕过规则
 | 组                                  | 类型       | 成员                                   | 干嘛的                                                                                                     |
 | ---------------------------------- | -------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------- |
 | `🚀 全部节点`                          | select   | `DIRECT` + 全部节点                      | 手动挑单个节点，绕开所有自动逻辑                                                                                        |
-| `住宅出口`                             | select   | **只有一台** `🏠 住宅-JP` + `REJECT`（`pinOnly: true`；`escapeToAI` 时才多一个 `AI`） | **AI 风控面专用出口**。`primary` 有值时组是**封闭**的：其它住宅 IP 只注入、不进组，指定 IP 挂了就落 `REJECT`，不存在「自动换到另一台住宅 IP」的路径；`primary` 留空才用 `include-all-proxies` + `filter: <nodePattern>` 动态收编（桌面首选手选，`store-selected` 记住）；锁不上时按 `pinMiss` 走，默认只留 `REJECT` |
+| `住宅出口`                             | select   | **只有一台** `🏠 住宅-JP` + `REJECT`（`pinOnly: true`；`escapeToAI` 时才多一个 `AI`） | **AI 风控面专用出口**。`primary` 有值时组是**封闭**的：其它住宅 IP 只注入、不进组，指定 IP 挂了就落 `REJECT`，不存在「自动换到另一台住宅 IP」的路径；`primary` 留空才用 `include-all-proxies` + `filter: <nodePattern>` 动态收编，`prefer` 命中的国家排在 `REJECT` 之前（桌面首选手选，`store-selected` 记住）；锁不上时按 `pinMiss` 走，默认只留 `REJECT` |
 | `前置-亚洲`                            | url-test | 亚洲机场节点（日/港/台/韩/新/越/马/泰/菲）            | 住宅节点的 `dialer-proxy`，只负责「本机 → 机场亚洲 → 住宅」这一跳；`tolerance: 200` 防抖。**按住宅所在国建一个就够，不按大洲铺开**（空组会变直连泄漏源）；订阅自带家宽节点缺 `dialer-proxy` 时由 `upstream.inject` 自动补上 |
 | `AUTO`                             | fallback | **全部地区组**按顺序：`JP` → `SG` → `KR` → `HK` → `TW` → `US` → `UK` → `DE` → `FR` → `CA` → `EU` → `OT` | 默认出口。**按国家顺序**取第一个活的（日本优先），国家内部由地区组按延迟挑最快；所有地区组都挂才落到 `OT` |
 | `AI`                               | fallback | 与 `AUTO` 同一批地区组                  | 机场 AI 组（Gemini、Google、中转站），**不含住宅节点**；顺序规则与 `AUTO` 相同 |
@@ -170,6 +170,16 @@ python3 -c "import sys,json;d=json.load(sys.stdin)['proxies'];[print(g,d[g]['typ
 
 再跑一次真实请求确认出口国家（`https://api.ip.sb/geoip` 会回 `Osaka` 之类）。
 
+### 订阅自带的策略组会被保留
+
+本脚本重建 `proxy-groups` 时，**名字不冲突的订阅组会原样保留**（成员清洗成
+「本配置里真实存在的名字」，动态收编组为空时塞 `REJECT` 防直连泄漏）。
+理由只有一个：静态住宅订阅把节点的 `dialer-proxy` 指向订阅自己的组，
+而悬空的 `dialer-proxy` 会让内核 `Parse config error` 直接起不来（[坑 28](troubleshooting.md)）。
+
+覆盖 `proxy-groups` 之后还会再扫一遍所有节点的 `dialer-proxy`：指向不存在的名字时
+改指 `前置-亚洲`，连 `前置-亚洲` 都没建就删掉该字段 —— 宁可退回本机直连，
+也不留一条让内核起不来的引用。开关是顶部的 `KEEP_SUB_GROUPS`。
 
 ---
 

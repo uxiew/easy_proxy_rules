@@ -25,11 +25,11 @@
 | [getting-started.md](getting-started.md) | 三步启用、一分钟验证、覆写顺序、高频误区速查 |
 | [architecture.md](architecture.md) | 端口分工、策略组、`select`/`url-test`/`fallback`、国家优先、规则文件结构 |
 | [traffic-entry.md](traffic-entry.md) | 应用级分流、TUN vs 系统代理、路线 A/B/C、窄 TUN、App 自建 DNS |
-| [configuration.md](configuration.md) | 七个配置对象、家宽节点怎么认（`nodePattern`）、DNS 用 IP 型 DoH、WebRTC guard、`dialer-proxy` 与「前置要不要按大洲拆」、自定义节点字段、住宅出口锁定（名字/端点/`pinMiss`）与多台 IP、无家宽三态、`auto` 边界、多出口预案（未实现） |
+| [configuration.md](configuration.md) | 七个配置对象、家宽节点怎么认（`nodePattern`）、订阅自带静态住宅怎么接（`inject` 四模式 + `x-smart`）、DNS 用 IP 型 DoH、WebRTC guard、`dialer-proxy` 与「前置要不要按大洲拆」、住宅出口锁定（IP/端点/名字/`pinMiss`/`prefer`）、无家宽三态、`auto` 边界、多出口预案（未实现） |
 | [clients.md](clients.md) | Claude Code、`claude-guard`、常驻会话、pf 硬阻断、Proxifier |
 | [flclash.md](flclash.md) | Android 客户端对比、`flclash-private.js` 生成与安装、构建期自检、手机端专有陷阱 |
 | [security.md](security.md) | 三层防泄漏（hook / CI / 精确名单）、`sync-sensitive.mjs`、Secret 维护 |
-| [troubleshooting.md](troubleshooting.md) | 27 条实测踩坑，按编号引用 |
+| [troubleshooting.md](troubleshooting.md) | 29 条实测踩坑，按编号引用 |
 | [verification.md](verification.md) | 出口验证、内核日志证据、fake-ip 下 `GEOIP,CN` 的三答案验收 |
 
 ## 建议阅读顺序

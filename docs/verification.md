@@ -94,3 +94,62 @@ curl -x http://127.0.0.1:7890 "https://$(dig +short @1.1.1.1 example.com | head 
 > 典型漏法：域名解析出**混合 IP**，程序又喜欢直连 IP（SDK、桌面客户端），首条命中落到
 > `GEOIP,CN → DIRECT` → 本该走机场的流量裸连出去。只测「浏览器能不能打开」永远发现不了这个，
 > 因为浏览器那一侧走的是域名规则。
+
+---
+
+## `dialer-proxy` 到底走没走
+
+链式代理最容易出的错是「以为在走跳板，其实直连了」（`dialer-proxy` 写错名字时内核直接
+`Parse config error`；写在 http 节点上时，旧版本会静默忽略）。别靠面板上的延迟猜，起个假前置看它收不收连接：
+
+```bash
+# 1) 假前置：只记录被 CONNECT 到哪里，不真转发
+node -e '
+const net=require("net");
+net.createServer(c=>{c.once("data",()=>{c.write(Buffer.from([5,0]));c.once("data",r=>{
+  const n=r[4],host=r.subarray(5,5+n).toString();
+  console.log("前置收到 CONNECT", host+":"+r.readUInt16BE(r.length-2));c.destroy();});});})
+ .listen(11080,"127.0.0.1",()=>console.log("假前置 11080"));'
+
+# 2) 一份最小配置：http 落地 + dialer-proxy 指向假前置
+cat > /tmp/dp.yaml <<'YAML'
+mixed-port: 17891
+proxies:
+  - { name: FRONT, type: socks5, server: 127.0.0.1, port: 11080, udp: false }
+  - { name: RESI,  type: http,    server: 1.1.1.1,   port: 80, dialer-proxy: FRONT }
+proxy-groups:
+  - { name: G, type: select, proxies: [RESI] }
+rules: [ 'MATCH,G' ]
+YAML
+
+# 3) 起内核 + 发一个请求，看第 1 步的终端有没有打出「前置收到 CONNECT」
+mihomo -d /tmp -f /tmp/dp.yaml &
+curl -x http://127.0.0.1:17891 http://example.com/ -o /dev/null
+```
+
+- **打出了** → `dialer-proxy` 生效（`type: http` 也一样，实测 v1.19.32）；
+- **没打出** → 这条链是直的：先查日志里的 `dialer-proxy [...] not found`（[坑 28](troubleshooting.md)）；
+- **内核起不来 + `Parse config error`** → 名字写错了，不是「不生效」而是致命。
+
+`dialer-proxy` 指向**策略组**时，前置那组的健康检查也会走它（假前置会先收到一条
+`www.gstatic.com:443`）—— 这条日志正好可以确认「组真的被用上了」。
+
+## 静态住宅订阅的三件事
+
+接这类订阅（一两百个 `type: http`、共用网关、名字带 IP）后按顺序查三件：
+
+```bash
+# ① 组还在不在（被脚本重建丢掉 = 内核起不来）
+grep -c "name: 前置-" work/config.yaml
+
+# ② 住宅出口锁的是不是你要的那一台
+curl -s http://127.0.0.1:9090/proxies | jq '.proxies["住宅出口"] | {now, all: (.all|length), all0: .all[0]}'
+#   期望：now = 那台东京住宅，all 长度 2（[那台, REJECT]）
+
+# ③ 出口到底是不是家宽 —— 看 ASN，不看城市
+curl -x http://127.0.0.1:7865 -s https://api.ip.sb/geoip | jq '{ip,country,city,asn,isp}'
+#   住宅 IP 的 asn/isp 会显示运营商名（如 NTT / KDDI），机场节点显示机房名（Vultr / Hetzner）
+```
+
+第 ③ 步是这套配置唯一真正的验收标准：**ASN 是家宽运营商才算走了住宅**，
+城市对得上但 ASN 是机房，说明你走的是机场节点，不是家宽。
