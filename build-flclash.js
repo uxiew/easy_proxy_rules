@@ -360,7 +360,7 @@ function inspect(text, options) {
     const members = residential.proxies || [];
     // fail-closed：REJECT 必须在列，否则节点全挂时组变空 → 内核塞 COMPATIBLE = 直连
     if (!members.includes('REJECT')) problems.push('住宅出口组没有 REJECT 兜底（节点挂了会组空/直连）');
-    const resiMembers = members.filter((name) => /🏠|IP-/.test(name));
+    const resiMembers = members.filter((name) => !['REJECT', 'DIRECT', 'AI'].includes(name));
     if (resiMembers.length > 1) {
       problems.push(`住宅出口组里有多台住宅节点：${resiMembers.join(', ')}（出口 IP 会在它们之间漂移）`);
     }
