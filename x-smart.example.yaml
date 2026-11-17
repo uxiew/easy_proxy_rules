@@ -35,12 +35,13 @@ x-smart:
     prefer: 'JP'
 
     # 订阅自带住宅的 dialer-proxy 怎么处理：
-    #   true / 'fill' = 只给空的补「前置-亚洲」（默认，本机在国内时用）
-    #   'strip'  = 删掉，本机直连住宅网关（本机与住宅同国，少一跳）
+    #   true / 'fill' = 只给空的补「前置-亚洲」（默认。人在国内必须走这条：
+    #                   直连海外网关会被墙，TCP 通、一发数据就 RST，见 troubleshooting 坑 32）
+    #   'strip'  = 删掉，本机直连住宅网关 —— 只有「人在海外 / 直连路径干净」才值得
     #   'override' = 全部改指「前置-亚洲」
-    #   false    = 不碰
+    #   false    = 不碰（连 residential.nodes 也不自动补）
     upstream:
-      inject: 'strip'
+      # inject: 'fill'       # 默认就是 fill，不写即可；'strip' 仅海外机器用
       # enabled: true          # 要不要建「前置-亚洲」跳板组
       # group: '前置-亚洲'
       # filter: '日本|JP|🇯🇵|…'  # 跳板池收哪些节点（默认亚洲关键词）

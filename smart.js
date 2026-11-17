@@ -107,10 +107,12 @@ const DEFAULT_CONFIG = {
       enabled: true,
       group: '前置-亚洲',
       // 订阅自带住宅节点上的 dialer-proxy 怎么处理：
-      //   true / 'fill'  只补没有的（本机在国内，需要机场当跳板）
-      //   'strip'        全删掉（本机与住宅同国，直连最快）
+      //   true / 'fill'  只补没有的（人在国内，必须机场当跳板 —— 默认就是这个）
+      //   'strip'        全删掉（仅当「本机 → 网关」的直连路径干净可达时才快，
+      //                   比如人在海外且与网关同区；人在国内直连日本网关会被墙
+      //                   RST，症状与「住宅商拒了」一模一样，见 troubleshooting 坑 32）
       //   'override'     全改指 group（订阅把前置写成了手选组）
-      //   false          一个字都不碰
+      //   false          一个字都不碰（连 residential.nodes 也不自动补 dialer-proxy）
       inject: true,
       allowHttp: true, // override 时是否也改写 type: http 的节点（v1.19.32 实测可通）
       // 只放多字 / 带国名的关键词：单字会误中（「日」→ 尼日利亚，「MY」→ Myanmar）
@@ -243,7 +245,7 @@ const DEFAULT_CONFIG = {
 // 你的覆盖项：只写要改的键（对象逐字段合并，数组整体替换）
 // ------------------------------------------------------------
 //   const USER_CONFIG = {
-//     residential: { primary: '🏠IP-JP', upstream: { inject: 'strip' } },
+//     residential: { primary: '🏠IP-JP', prefer: 'JP' },
 //     appProxy: { ports: [{ name: 'ai-in', port: 7866, proxy: 'AI' }] },
 //   };
 const USER_CONFIG = {};
@@ -278,6 +280,11 @@ setMode(DEFAULT_CONFIG.mode); // 默认桌面；手机由 USER_CONFIG.mode 改�
 // 「全局」和「直连」会让内核绕过整份 rules：住宅出口 / AI / 前置-亚洲 全部空转，
 // 日志里只剩 `using GLOBAL`，看起来像「住宅节点坏了」。
 // 这个开关把模式改回 rule，并在日志里说清楚为什么。想交还面板控制就把 modeGuard 设 false。
+// ⚠️ 守卫的边界（实测）：它只改「配置文件里的 mode」。Clash Party / FlClash 会在
+//    覆写脚本跑完**之后**，把 App 界面里选的模式再写回内核 —— App 停在「全局」时，
+//    脚本改的 rule 会被盖掉（work/config.yaml 重新生成后仍是 mode: global）。
+//    所以运行期被切走，要在 App 界面切回「规则」（或调内核 API PATCH /configs），
+//    守卫负责的只是「配置文件本身的默认值 + 留下日志线索」。
 function enforceRuleMode(config) {
   if (!MODE_GUARD) return;
   const cur = config.mode;
@@ -286,7 +293,8 @@ function enforceRuleMode(config) {
   console.log(
     `[模式守卫] 内核原来是「${cur}」模式 → 已改回 rule：` +
       `全局/直连会绕过全部规则，「${RESIDENTIAL.group}」一次都不会被命中，` +
-      'AI 的「住宅或阻断」等于关闭',
+      'AI 的「住宅或阻断」等于关闭' +
+      '；注意 App 界面若停在全局，仍会在脚本之后把模式写回 —— 请在界面切回「规则」',
   );
 }
 
@@ -1166,9 +1174,9 @@ const getRules = ()=>{
 //   x-smart:                           # ← 不要写 +x-smart
 //     residential:
 //       primary: '🏠IP-JP'              # 锁这一台（完整名，或名字里的唯一片段）
-//       upstream:
-//         inject: strip                # 本机与住宅同国 → 直连住宅网关，别绕机场
 //       prefer: 'JP'
+//       # upstream.inject 默认 fill（走前置）——人在国内直连住宅网关会被墙，
+//       # 只有「人在海外且直连路径干净」才值得写 'strip'
 //     narrowTun: { enabled: true }
 //     keepSubGroups: true
 // ⚠️ 为什么不是 `+x-smart`：Clash Party 的 deepMerge 只对**数组**认 `+` 前缀
@@ -1374,11 +1382,15 @@ function applyUserConfig(config) {
 // 桌面和手机同一个位置。手机没有覆写链，只能靠它；桌面也可以用，省掉在 +proxies 里
 // 手写 dialer-proxy 并自己保证字段齐全。
 //   · 同名节点先删后插 —— 订阅更新后同名节点换了地址，以这里的为准；
-//   · dialer-proxy 自动补成 upstream.group，除非 upstream.enabled = false 或 inject: 'strip'；
+//   · dialer-proxy 自动补成 upstream.group，除非 upstream.enabled = false / inject: 'strip' / inject: false；
 //   · primary 留空时锁第一台：手机没有 store-selected，不锁的话组默认选中 REJECT，
 //     手机上表现为「AI 站点全被阻断」（ChatGPT 报「非预期的 SSL 证书」）；
 //   · primary 写了但对不上任何一台 → 一个字都不改，交给 pinMiss 处理（默认阻断）。
 //     绝不自作聪明换成第一台：那就是「Claude 从日本变成美国登录」还不报错。
+// 本轮由 residential.nodes 注入的节点对象：main() 后段「前置组匹配 0 台 → 自动降级 strip」
+// 时，要把它们的 dialer-proxy 一并摘掉 —— 否则订阅节点降成了直连、自备节点还挂在一个
+// 只剩 REJECT 兜底的组上，同类节点两种行为（踩过的真实不一致）。
+let INJECTED_RESI_NODES = [];
 function applyResidentialNodes(config) {
   const list = (Array.isArray(RESIDENTIAL.nodes) ? RESIDENTIAL.nodes : []).filter(
     (n) => n && n.name && n.server && n.port,
@@ -1391,9 +1403,13 @@ function applyResidentialNodes(config) {
     return;
   }
   const up = RESIDENTIAL.upstream || {};
-  const hop = up.enabled !== false && up.inject !== 'strip' ? up.group : '';
+  // inject 语义与订阅节点那套完全一致：false = 一个字都不碰（连自备节点也不补），
+  // strip = 直连；true / 'fill' / 'override' = 补上跳板
+  const hop =
+    up.enabled !== false && up.inject !== 'strip' && up.inject !== false ? up.group : '';
   const names = new Set(list.map((n) => n.name));
   config.proxies = (config.proxies || []).filter((p) => p && !names.has(p.name));
+  INJECTED_RESI_NODES = [];
   let re = null;
   try {
     re = new RegExp(RESIDENTIAL.nodePattern);
@@ -1411,6 +1427,7 @@ function applyResidentialNodes(config) {
     });
     if (hop && !node['dialer-proxy']) node['dialer-proxy'] = hop;
     config.proxies.push(node);
+    INJECTED_RESI_NODES.push(node);
     if (re && !re.test(n.name)) {
       console.log(
         `[住宅出口] 节点名「${n.name}」不含住宅关键词（${RESIDENTIAL.nodePattern}），` +
@@ -1533,9 +1550,18 @@ function main(config) {
         noUpstreamNode = false;
       }
       if (noUpstreamNode) {
+        // 自备节点同步降级：挂在一个只剩 REJECT 的组上 = 每个请求先撞 REJECT
+        let deInjected = 0;
+        for (const node of INJECTED_RESI_NODES) {
+          if (node['dialer-proxy']) {
+            delete node['dialer-proxy'];
+            deInjected++;
+          }
+        }
         console.log(
           `[住宅出口] 前置组「${RESIDENTIAL.upstream.group}」在本次订阅里没有任何可用节点` +
-            '（filter 匹配 0 台）→ 自动改成直连住宅网关，不把住宅节点挂到一个空组上',
+            '（filter 匹配 0 台）→ 订阅住宅节点与 residential.nodes 一起降级为直连住宅网关' +
+            `（摘掉 ${deInjected} 台自备节点的 dialer-proxy），不把住宅节点挂到一个空组上`,
         );
         injectMode = 'strip';
       }
@@ -1603,7 +1629,7 @@ function main(config) {
     if (injected) {
       console.log(
         `[住宅出口] 已给 ${injected} 个订阅自带住宅节点补上 dialer-proxy: ${RESIDENTIAL.upstream.group}` +
-          `（${sample}）；想直连住宅就把 RESIDENTIAL.upstream.inject 设 'strip'`,
+          `（${sample}）；人在海外、直连网关可达时想省这一跳，就把 RESIDENTIAL.upstream.inject 设 'strip'`,
       );
     }
     if (rewritten) {
@@ -1615,7 +1641,8 @@ function main(config) {
     if (stripped) {
       console.log(
         `[住宅出口] 已移除 ${stripped} 个订阅自带住宅节点的 dialer-proxy → 本机直连住宅网关` +
-          '（inject: \'strip\'；本机与住宅同国时这条最快）',
+          '（inject: \'strip\'；仅当本机到网关的直连路径干净可达时才安全 —— ' +
+          '人在国内直连海外网关会被墙 RST，症状与住宅商拒连相同，见 troubleshooting 坑 32）',
       );
     }
     if (skippedHttp) {

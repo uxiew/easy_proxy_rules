@@ -76,6 +76,7 @@ curl -s -m 10 -x socks5h://127.0.0.1:7865 https://claude.ai/cdn-cgi/trace | grep
 | `7865` 返回 204、`ip=` 是住宅 IP | 链通了，慢就是节点/线路本身 | — |
 | `7865` 返回 **502**，面板延迟测试报 `An error occurred in the delay test` | 内核对**上游**握手失败：住宅商的端点/账号轮换，或来源 IP 不在白名单 | [坑 30](troubleshooting.md) |
 | `7865` 返回 502，日志里 `using GLOBAL` 而不是 `using 住宅出口` | 内核在全局模式，规则没跑 | [坑 31](troubleshooting.md) |
+| 502 + 节点 `dialer-proxy` 为空、curl 直连网关一发数据就 RST，但经海外出口连网关有应答（407/529） | 人在国内、直连网关被墙，住宅没挂前置 | [坑 32](troubleshooting.md) |
 | 组里只剩 `['REJECT']` | 节点名对不上，`primary` 锁不上 | 上方表格第 1 行 |
 
 ## 国内直连兜底的三答案验收

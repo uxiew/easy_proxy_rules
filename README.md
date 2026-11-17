@@ -54,9 +54,9 @@ curl -x http://127.0.0.1:7865 -s https://api.ip.sb/geoip | jq '{ip,country,asn,i
 x-smart:                 # ← 不带 +
   residential:
     primary: '🏠IP-JP'    # 锁这一台
-    upstream: { inject: strip }
     # 住宅凭据也在这里（和手机端同一个键）：
     # nodes: [{ name: '🏠IP-JP', type: http, server: 1.2.3.4, port: 7012, username: u, password: p }]
+    # upstream 默认 fill（走前置）——人在国内直连海外网关会被墙，别写 strip
   narrowTun: { enabled: false }
   keepSubGroups: true
 ```
@@ -107,13 +107,13 @@ primary: '住宅-JP',      // 或者名字里稳定的一段
 x-smart:                      # 键名不要带 +
   residential:
     primary: '住宅-JP'         # 锁哪一台（名字或其中稳定片段）
-    upstream: { inject: strip } # 本机与住宅同国 → 直连网关，别绕机场
+    # upstream 不写 = fill（挂前置-亚洲跳板）
 ```
 
 | 配置 | 什么时候改 |
 | --- | --- |
 | `primary` | 换主力住宅时。**不要**写序号，也别按 `server`/`port` 锁 |
-| `upstream.inject` | 本机与住宅同国 → `'strip'`；跨洲 → 默认 `'fill'`（挂 `前置-亚洲`） |
+| `upstream.inject` | 人在**海外**且直连网关可达 → `'strip'`；其余（含人在国内）→ 默认 `'fill'`（挂 `前置-亚洲`，直连海外网关会被墙） |
 | `prefer` | 没配 `primary` 时，组首默认选哪一国（如 `'JP'`） |
 
 细节见 [配置项详解](docs/configuration.md)。

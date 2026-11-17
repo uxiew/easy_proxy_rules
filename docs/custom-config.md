@@ -45,8 +45,7 @@ x-smart:                 # ← 不要写 +x-smart
     # 和手机端是同一条配置：
     # nodes:
     #   - { name: '🏠IP-JP', type: http, server: 203.0.113.10, port: 7012, username: u, password: p }
-    upstream:
-      inject: strip      # 本机与住宅同国 → 直连住宅网关
+    # upstream 不写 = fill（挂前置-亚洲）：人在国内直连海外网关会被墙，别写 strip
     prefer: 'JP'
   narrowTun:
     enabled: false
@@ -73,8 +72,7 @@ x-smart:                 # ← 不要写 +x-smart
       "nodes": [
         { "name": "🏠IP-JP", "type": "http", "server": "203.0.113.10",
           "port": 7012, "username": "u", "password": "p" }
-      ],
-      "upstream": { "inject": "strip" }
+      ]
     }
   }
 }
@@ -83,6 +81,8 @@ x-smart:                 # ← 不要写 +x-smart
 - `mode` 不用写，构建时默认就是 `"flclash"`；写了别的值（`"clash"`）会照办。
 - `nodes` 里的 `type` 按服务商给的协议填（HTTP 代理写 `http`，SOCKS5 才写 `socks5`），
   不写默认 `http`。多写几台只作备用：**只有 `primary` 那台进组**，主力挂了是 `REJECT`。
+- `upstream` 不用写：默认 `fill`（住宅流量经机场跳板）——人在国内必须这样，
+  直连海外网关会被墙（见 [troubleshooting 坑 32](troubleshooting.md)）。
 - 桌面端也可以把节点写在 `x-smart.residential.nodes`（同一个键，见上面的桌面示例）。
 - 旧的顶层写法（`{ "primary": ..., "nodes": [...] }`）仍然能用，构建时会自动折进
   `config.residential` 并提示一次。
@@ -111,7 +111,7 @@ x-smart:                 # ← 不要写 +x-smart
 | `nodePattern` | 字符串 | `🏠\|IP-\|家宽\|住宅\|静态\|…` | 认哪些节点是住宅 |
 | `upstream.enabled` | 布尔 | `true` | 是否建 `前置-亚洲` |
 | `upstream.group` | 字符串 | `'前置-亚洲'` | 跳板组名 |
-| `upstream.inject` | `true` / `'fill'` / `'strip'` / `'override'` / `false` | `true`（= `'fill'`） | 订阅自带住宅的 `dialer-proxy` 怎么处理 |
+| `upstream.inject` | `true` / `'fill'` / `'strip'` / `'override'` / `false` | `true`（= `'fill'`） | `dialer-proxy` 怎么处理：默认 `fill` 走前置（人在国内必须走）；`'strip'` 仅人在海外直连可达时；`false` = 一个字都不碰 |
 | `upstream.filter` | 字符串 | 亚洲关键词 | 跳板池收哪些节点 |
 
 ### `appProxy`（应用级分流）

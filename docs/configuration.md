@@ -41,7 +41,7 @@
 | `residential.escapeToAI`       | `false`         | 是否把 `AI` 放进「住宅出口」当手动逃生口。默认 `false` = 住宅挂了只能阻断，不会静默换机场 IP                                             |
 | `residential.dedicatedPort`    | `0`（已迁移）        | **旧字段**，仅兼容用：填非 0 值且 `appProxy.ports` 里没有 `residential-in` 时自动补一条                                   |
 | `residential.upstream.enabled` | `true`          | 建「前置-亚洲」组：住宅节点的 `dialer-proxy` 指向它                                                                   |
-| `residential.upstream.inject`  | `true`          | 订阅自带住宅节点的 `dialer-proxy` 怎么处理：`'fill'`（默认，只补空的）/ `'strip'`（删掉，直连网关）/ `'override'`（全改 `前置-亚洲`）/ `false`（不碰）。前置组匹配不到节点时自动降级 `strip`。见下文「订阅自带住宅怎么接」 |
+| `residential.upstream.inject`  | `true`          | `dialer-proxy` 怎么处理：`'fill'`（默认，只补空的）/ `'strip'`（删掉，**仅人在海外且直连网关可达时**，人在国内直连会被墙，见 [坑 32](troubleshooting.md)）/ `'override'`（全改 `前置-亚洲`）/ `false`（一个字都不碰，连 `residential.nodes` 也不补）。前置组匹配不到节点时自动降级 `strip`。见下文「订阅自带住宅怎么接」 |
 | `residential.nodePattern`      | `🏠\|IP-\|家宽\|住宅\|静态\|[Rr]esi\|RESI\|[Ss]tatic\|STATIC\|[Ii][Ss][Pp]` | 住宅节点名匹配。既认自己命名的 `🏠`/`IP-` 前缀，也认**订阅自带**的「家宽 / 住宅 / 静态 / ISP / RESI」变体。匹配宽不危险——`pinOnly` 会锁死一台；但 `pinOnly: false` 时必须收窄回 `🏠\|IP-`。见下文「家宽节点怎么认」 |
 | `residential.primary`          | `''`            | **主力**住宅节点 = 组内锁定的那一台。**只写节点名**：先完整匹配，再按 includes 匹配（须恰好命中 1 台）。留空 = 用 `prefer` 排第一台。FlClash 构建时自动填成注入的主节点。见下文「锁哪一台」 |
 | `residential.pinOnly`          | `true`          | **严格锁定**：`primary` 有值时组里只放这一台，其余住宅 IP 只注入、不进组 —— 指定 IP 挂了就是 `REJECT`，**不会**自动换到另一台住宅 IP。`false` = 全部住宅节点可选（旧行为） |
@@ -63,6 +63,12 @@
 
 默认 `modeGuard = true`：检测到 `mode: global` / `direct` 就改回 `rule`，并打一条日志说明
 原因。面板上再点「全局」，下一次重载也会被改回来。
+
+> ⚠️ 守卫的边界（实测）：它只改「配置文件里的 `mode`」。Clash Party / FlClash 会在覆写
+> 脚本跑完**之后**，把 App 界面里选的模式写回内核 —— App 停在「全局」时，脚本改的
+> `rule` 会被盖掉（`work/config.yaml` 重新生成后仍是 `mode: global`）。运行期被切走，
+> 要在 App 界面切回「规则」，或调内核 API `PATCH /configs {"mode":"rule"}`；
+> 守卫负责的是「配置文件默认值 + 日志里留下线索」。
 
 ```js
 const modeGuard = false;   // 想交还面板控制时改成 false
@@ -307,7 +313,8 @@ proxies: [residential.primary, 'REJECT']   // escapeToAI: true 时 → [primary,
 
 订阅给的是「能连的节点」，不是「能当链尾的节点」。命中的节点没有 `dialer-proxy` 时，
 脚本补上 `前置-亚洲`（`upstream.inject`，默认开），server/port/密码一个字不动。
-本机已经在住宅同国、直连更快，就设 `inject: 'strip'`。
+只有「人在海外、直连网关干净可达」才值得设 `inject: 'strip'`——人在国内直连海外
+网关会被墙（TCP 通、数据即 RST），症状与住宅商拒连几乎一样，见 [坑 32](troubleshooting.md)。
 
 ## 锁哪一台（`primary`）
 
@@ -339,14 +346,14 @@ primary: '住宅-JP',      // 订阅节点名带速度标记时，抄一段稳�
 
 ## 订阅自带住宅怎么接（`inject` 四模式）
 
-`inject` 的判据是「**本机与住宅是否同国**」，不是订阅长什么样：
+`inject` 的判据是「**本机到住宅网关的直连路径干不干净**」，不是订阅长什么样：
 
 | 值 | 行为 | 什么时候用 |
 | --- | --- | --- |
-| `'fill'`（默认） | 只给没写 `dialer-proxy` 的补 `前置-亚洲` | 本机在国内、住宅在海外 |
-| `'strip'` | 删掉 `dialer-proxy`，本机直连住宅网关 | 本机与住宅同国（少一跳更快） |
+| `'fill'`（默认） | 只给没写 `dialer-proxy` 的补 `前置-亚洲` | 人在国内（直连海外网关会被墙）；跨洲也一样 |
+| `'strip'` | 删掉 `dialer-proxy`，本机直连住宅网关 | **仅**人在海外且到网关的线路干净（与住宅同国 / 同区时少一跳更快） |
 | `'override'` | 全部改成 `前置-亚洲` | 订阅写了手选组，但默认选中别的洲 |
-| `false` | 不碰 | 你要手动接管 |
+| `false` | 不碰 | 你要手动接管（连 `residential.nodes` 也不自动补） |
 
 `前置-亚洲` 一个节点都匹配不到时（订阅里全是欧洲节点是常态），脚本自动降到 `strip` ——
 不会把住宅挂到一个只有 `REJECT` 的空组上。
@@ -360,9 +367,8 @@ primary: '住宅-JP',      // 订阅节点名带速度标记时，抄一段稳�
 x-smart:            # ← 不带 +（Clash Party 的 deepMerge 只对数组认 + 前缀）
   residential:
     primary: '住宅-JP'
-    upstream:
-      inject: strip
     prefer: 'JP'
+    # upstream 不写 = fill（挂前置）。只有人在海外才写 inject: strip
 ```
 
 - 对象**逐字段覆盖**：只写 `upstream.inject` 不会把 `upstream.group` 抹掉；

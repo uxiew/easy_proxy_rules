@@ -36,7 +36,6 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
            { "name": "🏠 住宅-JP", "type": "http", "server": "...", "port": 7012, "username": "...", "password": "..." },
            { "name": "🏠 住宅-US", "type": "http", "server": "...", "port": 5432, "username": "...", "password": "..." }
          ],
-         "upstream": { "inject": "strip" },
          "prefer": "JP"
        },
        "narrowTun": { "enabled": false }
@@ -45,7 +44,8 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
    ```
 
    构建时整段 `config` 会变成**产物文件顶部的 `USER_CONFIG`**（重新构建不会丢；直接改产物里的
-   `USER_CONFIG` 会被下次构建覆盖）。`mode` 不写也默认 `"flclash"`。键表见
+   `USER_CONFIG` 会被下次构建覆盖）。`mode` 不写也默认 `"flclash"`；`upstream` 不写 =
+   默认 `fill`（住宅经机场跳板，人在国内必须这样，直连海外网关会被墙）。键表见
    [自定义配置](custom-config.md)。
 
    只有 `primary` 那台会进「住宅出口」，其余节点注入后**只作备用**（`pinOnly: true`）——
