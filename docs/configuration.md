@@ -432,7 +432,7 @@ upstream: {
 现在可以直接写在**排在 `smart.js` 之前**的覆写 YAML 里：
 
 ```yaml
-+x-smart:
+x-smart:            # ← 不带 +（Clash Party 的 deepMerge 只对数组认 + 前缀）
   residential:
     primary:
       ip: '51.241.93.0'
@@ -442,6 +442,8 @@ upstream: {
   keepSubGroups: true
 ```
 
+- **键名不要带 `+`**：`deepMerge` 只对数组（`+proxies` / `+rules`）识别 `+` 前缀，
+  对象键会原样保留，写 `+x-smart` 会得到一个叫「+x-smart」的键（脚本两种都读，但别这么写）；
 - 对象**逐字段覆盖**：只写 `upstream.inject` 不会把 `upstream.group` 抹掉；
 - 读完会把 `x-smart` 从配置里删掉，内核看不到这个陌生字段；
 - 顺序很关键：YAML 排在 `smart.js` 后面时脚本已经跑完，读不到这份配置。

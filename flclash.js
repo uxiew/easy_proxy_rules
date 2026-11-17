@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-17 12:07:25
- * 源文件      : smart.js  sha256:2f1c85940725  2650 行 / 147184 字节
- * 源码提交    : 2e4c7b8
+ * 构建时间    : 2026-11-17 12:09:55
+ * 源文件      : smart.js  sha256:dc57f567ea40  2655 行 / 147632 字节
+ * 源码提交    : 421760a
  * 构建命令    : node build-flclash.js
  * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
  *
@@ -1566,17 +1566,21 @@ let FLCLASH_MODE = false;
 // 本机在哪个国家也只有你知道。写死在脚本顶部，等于每换一次订阅就要 fork 一份脚本；
 // 而 smart.js 常常是 remote 覆写，改本地还没用（下次更新就被覆盖）。
 // 用法（写在任意一个排在 smart.js 之前的覆写 YAML 里，比如「静态住宅节点」）：
-//   +x-smart:
+//   x-smart:                              # ← 不要写 +x-smart
 //     residential:
 //       primary: { ip: '51.241.93.0' }   # 锁这一台住宅（名字里含这个 IP 的那台）
 //       upstream:
 //         inject: strip                  # 本机与住宅同国 → 直连住宅网关，别绕机场
 //       prefer: 'JP'
 //     keepSubGroups: true                # 等价于文件顶部的 KEEP_SUB_GROUPS
+// ⚠️ 为什么不是 `+x-smart`：Clash Party 的 deepMerge 只对**数组**认 `+` 前缀
+//    （`+proxies` / `+rules`）；对象键不认，写 `+x-smart` 会得到一个叫「+x-smart」的键。
+//    两种写法这里都兼容，但正确写法是不带 `+`。
 // 合并规则：对象逐字段覆盖（upstream 只写 inject 不会把 group 抹掉），其它类型整体替换。
 // 读完整段会从配置里删掉，避免内核因为陌生字段报警。
 function applyRunnableOverrides(config) {
-  const raw = config['x-smart'];
+  const KEY = config['x-smart'] ? 'x-smart' : config['+x-smart'] ? '+x-smart' : '';
+  const raw = KEY ? config[KEY] : null;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
   const isPlain = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
   const resi = raw.residential;
@@ -1597,6 +1601,7 @@ function applyRunnableOverrides(config) {
   }
   if (typeof raw.keepSubGroups === 'boolean') KEEP_SUB_GROUPS = raw.keepSubGroups;
   delete config['x-smart'];
+  delete config['+x-smart'];
 }
 
 // 程序入口

@@ -61,8 +61,8 @@ curl -x http://127.0.0.1:7890 https://claude.ai/cdn-cgi/trace | grep -E '^ip=|^l
 **静态住宅订阅**（BrightData 那类：几百个 `type: http`、共用一个网关、名字里带 IP）按这三行配：
 
 ```yaml
-# 写在排在 smart.js 之前的覆写 YAML 里（不用改脚本）
-+x-smart:
+# 写在排在 smart.js 之前的覆写 YAML 里（不用改脚本）；键名不要带 +
+x-smart:
   residential:
     primary: { ip: '51.241.93.0' }   # 锁名字里含这个 IP 的那台
     upstream: { inject: strip }      # 本机与住宅同国 → 直连网关，别绕机场
