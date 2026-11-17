@@ -68,7 +68,6 @@ payload:
 
   # ========== 非 AI 的通用服务（原来混在 AI 清单里）==========
   - DOMAIN-SUFFIX,figma.com
-  - DOMAIN-SUFFIX,bing.com
   - DOMAIN-SUFFIX,microsofttranslator.com
   - DOMAIN-SUFFIX,edge.microsoft.com
   - DOMAIN-SUFFIX,discord.com
