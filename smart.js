@@ -604,6 +604,31 @@ const RAW_BASE = 'https://raw.githubusercontent.com/uxiew/easy_proxy_rules/refs/
 // true  = 名字不冲突的订阅组一律保留（成员清洗成「本配置里真实存在的名字」）
 // false = 只保留本脚本建的组（旧行为；订阅把 dialer-proxy 指向自家组时会全断）
 let KEEP_SUB_GROUPS = true;
+
+// =========== 模式守卫：把内核钉在「规则」模式 ===========
+// 「全局 / Global」和「直连 / Direct」两种模式会让内核**绕过整份 rules**：
+//   - 全局：所有连接投给内建的 GLOBAL 组（成员是 DIRECT + REJECT + 全部节点，
+//           默认选 DIRECT），住宅出口 / AI / 前置-亚洲 全部空转；
+//   - 直连：所有连接直接出门。
+// 结果就是「住宅或阻断」这条契约被一键关掉，而且日志里只剩 `using GLOBAL`，
+// 看起来像「住宅节点坏了」（实测踩过：全局 + GLOBAL 选 DIRECT，整机裸连，
+// Claude / OpenAI 全超时）。
+// 这个开关把模式钉回 rule：面板上再点「全局」也会在下一次重载时被改回来，
+// 并在日志里说清楚为什么。想交还面板控制就改成 false。
+// ⚠️ 不钉的话，别人把「全局」当「更省事」随手一点，AI 就可能悄悄换了出口。
+const MODE_GUARD = true;
+
+function enforceRuleMode(config) {
+  if (!MODE_GUARD) return;
+  const cur = config.mode;
+  if (!cur || cur === 'rule') return;
+  config.mode = 'rule';
+  console.log(
+    `[模式守卫] 内核原来是「${cur}」模式 → 已改回 rule：` +
+      `全局/直连会绕过全部规则，「${RESIDENTIAL.group}」一次都不会被命中，` +
+      'AI 的「住宅或阻断」等于关闭',
+  );
+}
 // ===========================
 // 第一部分：自定义关键词和规则
 // ======= 自定义关键词 =======
@@ -1525,6 +1550,11 @@ function main(config) {
     );
     return config;
   }
+
+  // ===== 模式守卫：把内核钉在「规则」模式（见文件顶部 MODE_GUARD）=====
+  // 放在最前面：后面的分组 / 规则重建都建立在「规则模式生效」这个前提上，
+  // 模式是 global 时它们建出来也一次不会被用到。
+  enforceRuleMode(config);
 
   // ===== FlClash 钩子（桌面端不会走到这里）=====
   // FlClash 没有覆写链，只能跑单个脚本：把 smart.js 全文拼在凭据头后面

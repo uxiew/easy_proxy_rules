@@ -38,10 +38,28 @@
 | `RESIDENTIAL.pinMiss`          | `'reject'`      | 锁**不上**时（`primary` 命中 0 台或多台）：`'reject'` = 成员只剩 `REJECT`，AI 直接打不开；`'collect'` = 退回收编（默认选中订阅排序的第一台） |
 | `RESIDENTIAL.prefer`           | `''`            | 没配 `primary` 时，把指定国家的住宅节点排到组首（`'JP'` / `'日本\|东京'`）。只重排不淘汰 |
 | `KEEP_SUB_GROUPS`（顶层）        | `true`          | 保留订阅自带的策略组（名字不冲突时）。节点的 `dialer-proxy` 可能指向订阅自家组，丢掉它 = 内核 `Parse config error`，见 [坑 28](troubleshooting.md) |
+| `MODE_GUARD`（顶层）             | `true`          | 把内核钉在「规则」模式：面板上被切成「全局 / 直连」时自动改回 `rule` 并记日志。那两种模式会绕过整份规则，`住宅出口` 一次都不会命中，见 [坑 31](troubleshooting.md) |
 | `RESIDENTIAL.upstream.filter`  | 显式亚洲关键词         | 跳板池节点名匹配：日/港/台/韩/新/越/马/泰/菲（多字词，见 [坑 8](troubleshooting.md)）。**已与 `smartGroups.JP` 解耦**，改地区组不会连带改跳板池                         |
 | `TRAFFIC.domesticDirect`       | `true`          | 追加 `GEOSITE,cn → DIRECT`（`GEOIP,CN` 对 fake-ip 域名无效）                                                  |
 | `TRAFFIC.appleDirect`          | `true`          | Apple 全家桶直连（iCloud 同步/App Store 原来走机场，最费流量）                                                          |
 | `WEBRTC_GUARD.enabled`         | `false`         | 拦截常见 STUN 探测：`DST-PORT 3478/5349/19302-19309` + `DOMAIN-KEYWORD,stun` → `REJECT`。**会同时打断 Google Meet、微信语音、游戏语音**，且拦不住「从未进入内核的 UDP」。见下文「WebRTC 探测要不要拦」 |
+
+## 模式守卫（`MODE_GUARD`）
+
+「全局」和「直连」两种模式会让内核**绕过整份 `rules`**：全局把一切投给内建的 `GLOBAL`
+（成员是 `DIRECT` + `REJECT` + 全部节点，默认就选 `DIRECT`），直连则直接出门。此时
+`住宅出口` / `AI` / `前置-亚洲` 全都空转，日志里只剩 `using GLOBAL` —— 看起来像
+「住宅节点坏了」，实际是分流没跑。
+
+默认 `MODE_GUARD = true`：检测到 `mode: global` / `direct` 就改回 `rule`，并打一条日志说明
+原因。面板上再点「全局」，下一次重载也会被改回来。
+
+```js
+const MODE_GUARD = false;   // 想交还面板控制时改成 false
+```
+
+> 为什么要钉死：AI 那条契约是「只走住宅，否则阻断」。全局模式一开，这条约束就静默失效，
+> 而且不会有任何报错 —— 只有一条 `using GLOBAL`。
 
 ## DNS：一律用 IP 型 DoH，不要域名型
 

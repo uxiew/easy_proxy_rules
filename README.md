@@ -18,6 +18,7 @@
 | **订阅无关** | 换订阅只需改 `primary` 一个字符串；订阅自带的策略组会被保留，不会因重建分组而让 `dialer-proxy` 悬空 |
 | **桌面手机同一套** | `smart.js` 桌面直用；`build-flclash.js` 生成手机单文件并在构建期真跑一遍自检 |
 | **DNS / 泄漏防护** | IP 型 DoH（不需要明文 53 引导）、fake-ip、可选 STUN 拦截、敏感信息扫描 hook |
+| **模式守卫** | 内核被误切到「全局 / 直连」时自动改回「规则」并记一条日志——那两种模式会绕过全部规则，`住宅出口` 一次都不会命中，AI 就悄悄换了出口 |
 
 ---
 
@@ -27,7 +28,8 @@
    ```
    https://raw.githubusercontent.com/uxiew/easy_proxy_rules/main/smart.js
    ```
-2. 设为**全局覆写**，模式切到「**规则**」（全局模式下规则失效）。
+2. 设为**全局覆写**。模式用「**规则**」：脚本会把「全局 / 直连」自动改回来（`MODE_GUARD`），
+   因为那两种模式会绕过整份规则。
 3. 有家宽要接：再建一个本地 YAML 覆写，参考 [`residential.example.yaml`](residential.example.yaml)；
    **顺序必须是「住宅 YAML → smart.js → 其他 YAML」**。
 
