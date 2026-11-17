@@ -174,7 +174,7 @@ python3 -c "import sys,json;d=json.load(sys.stdin)['proxies'];[print(g,d[g]['typ
 
 本脚本重建 `proxy-groups` 时，**名字不冲突的订阅组会原样保留**（成员清洗成
 「本配置里真实存在的名字」，动态收编组为空时塞 `REJECT` 防直连泄漏）。
-理由只有一个：静态住宅订阅把节点的 `dialer-proxy` 指向订阅自己的组，
+理由只有一个：订阅可能把节点的 `dialer-proxy` 指向自己的组，
 而悬空的 `dialer-proxy` 会让内核 `Parse config error` 直接起不来（[坑 28](troubleshooting.md)）。
 
 覆盖 `proxy-groups` 之后还会再扫一遍所有节点的 `dialer-proxy`：指向不存在的名字时

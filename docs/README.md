@@ -25,7 +25,7 @@
 | [getting-started.md](getting-started.md) | 三步启用、一分钟验证、覆写顺序、高频误区速查 |
 | [architecture.md](architecture.md) | 端口分工、策略组、`select`/`url-test`/`fallback`、国家优先、规则文件结构 |
 | [traffic-entry.md](traffic-entry.md) | 应用级分流、TUN vs 系统代理、路线 A/B/C、窄 TUN、App 自建 DNS |
-| [configuration.md](configuration.md) | 七个配置对象、家宽节点怎么认（`nodePattern`）、订阅自带静态住宅怎么接（`inject` 四模式 + `x-smart`）、DNS 用 IP 型 DoH、WebRTC guard、`dialer-proxy` 与「前置要不要按大洲拆」、住宅出口锁定（IP/端点/名字/`pinMiss`/`prefer`）、无家宽三态、`auto` 边界、多出口预案（未实现） |
+| [configuration.md](configuration.md) | 七个配置对象、家宽节点怎么认（`nodePattern`）、订阅自带住宅怎么接（`inject` 四模式 + `x-smart`）、DNS 用 IP 型 DoH、WebRTC guard、`dialer-proxy` 与「前置要不要按大洲拆」、住宅出口锁定（`primary` 名字匹配 / `pinMiss` / `prefer`）、无家宽三态、`auto` 边界、多出口预案（未实现） |
 | [clients.md](clients.md) | Claude Code、`claude-guard`、常驻会话、pf 硬阻断、Proxifier |
 | [flclash.md](flclash.md) | Android 客户端对比、`flclash-private.js` 生成与安装、构建期自检、手机端专有陷阱 |
 | [security.md](security.md) | 三层防泄漏（hook / CI / 精确名单）、`sync-sensitive.mjs`、Secret 维护 |
@@ -35,8 +35,8 @@
 ## 建议阅读顺序
 
 1. 新用户：[快速开始](getting-started.md) → [端口、分组与文件结构](architecture.md)
-2. 要接住宅出口：[配置项详解](configuration.md) 的「没有家宽怎么办」、
-   「住宅出口组：只锁一台」与「多台住宅 IP」
+2. 要接住宅出口：[配置项详解](configuration.md) 的「锁哪一台」、「没有家宽怎么办」
+   与「多台住宅 IP」
 3. 遇到连不上：[流量怎么进内核](traffic-entry.md) → [踩过的坑](troubleshooting.md)
 4. 改过规则后：[验证分流是否生效](verification.md)
 
