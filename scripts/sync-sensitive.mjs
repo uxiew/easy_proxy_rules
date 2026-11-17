@@ -6,7 +6,7 @@
  * scripts/scan-sensitive.mjs 精确匹配。换 IP / 换密码后重跑一次即可。
  *
  * 数据来源（都在 .gitignore 内）：
- *   - flclash-credentials.json      → server / username / password
+ *   - flclash-credentials.json      → config.residential.nodes（旧写法 nodes / 单节点也认）
  *   - claude-guard/allowed-exit-ips → 每一行有效 IPv4
  *
  * 只写清单，不回显任何值。
@@ -34,9 +34,21 @@ const credPath = resolve(ROOT, 'flclash-credentials.json');
 if (existsSync(credPath)) {
   try {
     const c = JSON.parse(readFileSync(credPath, 'utf8'));
-    add(c.server, 'credentials.server');
-    add(c.username, 'credentials.username');
-    add(c.password, 'credentials.password');
+    // 住宅节点现在住在 config.residential.nodes；旧写法（顶层 nodes / 单节点）一并认
+    const nodes = [
+      ...(Array.isArray(c.nodes) ? c.nodes : []),
+      ...(c.config && c.config.residential && Array.isArray(c.config.residential.nodes)
+        ? c.config.residential.nodes
+        : []),
+      ...(c.server ? [c] : []),
+    ];
+    nodes.forEach((n, i) => {
+      if (!n || typeof n !== 'object') return;
+      const tag = `credentials.nodes[${i}]`;
+      add(n.server, `${tag}.server`);
+      add(n.username, `${tag}.username`);
+      add(n.password, `${tag}.password`);
+    });
   } catch { console.warn('⚠ flclash-credentials.json 解析失败，跳过'); }
 }
 

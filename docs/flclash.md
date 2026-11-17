@@ -18,47 +18,50 @@
 | `dialer-proxy` 链式   | ✅                            | 只能手写 Xray JSON 的 `sockopt.dialerProxy` |
 
 **FlClash（推荐）** 用 [`flclash.js`](../flclash.js) —— **与桌面端同一份 smart.js 全量逻辑**：  
-FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本把「凭据头 + smart.js 全文」  
+FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本把「配置 + smart.js 全文」  
 拼成单文件，组/规则和 Clash Party 完全一致（AUTO/AI/前置-亚洲/住宅出口/AI 走住宅/国内直连/占位节点清洗）。
 
 生成与安装：
 
-1. 凭据写进 `flclash-credentials.json`（`.gitignore` 已排除），**支持多台静态 IP**：  
+1. 配置写进 `flclash-credentials.json`（`.gitignore` 已排除）—— 键名与桌面端 `x-smart`
+   **完全一样**，住宅节点就是 `residential.nodes`，没有第二套凭据格式：
 
    ```json
    {
-     "primary": "🏠 住宅-JP",
-     "nodes": [
-       { "name": "🏠 住宅-JP", "server": "...", "port": 7012, "username": "...", "password": "..." },
-       { "name": "🏠 住宅-US", "server": "...", "port": 7013, "username": "...", "password": "..." }
-     ],
      "config": {
-       "residential": { "upstream": { "inject": "strip" }, "prefer": "JP" },
+       "mode": "flclash",
+       "residential": {
+         "primary": "🏠 住宅-JP",
+         "nodes": [
+           { "name": "🏠 住宅-JP", "type": "http", "server": "...", "port": 7012, "username": "...", "password": "..." },
+           { "name": "🏠 住宅-US", "type": "http", "server": "...", "port": 5432, "username": "...", "password": "..." }
+         ],
+         "upstream": { "inject": "strip" },
+         "prefer": "JP"
+       },
        "narrowTun": { "enabled": false }
      }
    }
    ```
 
-   可选的 `config` 段 = 桌面端 `x-smart` 的同一套键名，构建时注入成 `FLCLASH_USER_CONFIG`，
-   **重新构建不会丢**（手机上改 `USER_CONFIG` 会被下次构建覆盖）。键表见
+   构建时整段 `config` 会变成**产物文件顶部的 `USER_CONFIG`**（重新构建不会丢；直接改产物里的
+   `USER_CONFIG` 会被下次构建覆盖）。`mode` 不写也默认 `"flclash"`。键表见
    [自定义配置](custom-config.md)。
 
-   只有 `primary` 那台会进「住宅出口」——构建时它的名字会被写进节点的 `residential.primary`，
-   所以桌面配置和手机凭据用的是同一个词。其余节点注入后**只作备用**（`pinOnly: true`）——
-   主力挂了是 `REJECT`，不会自动切到备用 IP。单节点旧写法 `{ "name": ..., "server": ... }`
-   仍然有效。详见 [多台住宅 IP](configuration.md)。
-2. `node build-flclash.js` → 得到 `flclash-private.js`（几台节点都会写进头部常量）
+   只有 `primary` 那台会进「住宅出口」，其余节点注入后**只作备用**（`pinOnly: true`）——
+   主力挂了是 `REJECT`，不会自动切到备用 IP。`primary` 留空 = 锁第一台。
+   `type` 按服务商给的协议填（HTTP 代理写 `http`，SOCKS5 才写 `socks5`），不写默认 `http`。
+   旧的顶层写法（`{ "primary": ..., "nodes": [...] }`）仍能用，构建时自动折进 `config.residential`。
+2. `node build-flclash.js` → 得到 `flclash-private.js`（配置写在文件顶部）
 3. 全文复制 → FlClash → 工具 → 覆写 → 新建 → 类型「脚本」→ 粘贴
 4. 对订阅启用该覆写 → 开 TUN
 
 **smart.js 改动后必须重新生成**（`node build-flclash.js`）并重新粘贴到手机，否则手机跑的还是旧逻辑。  
 生成器头部注释有提醒；`flclash.js`（占位符版）也会一并重新生成提交，方便对照。
 
-> `flclash.js` 占位符版头部带 `FLCLASH_NO_RESIDENTIAL = true`（没有凭据可注入），
-> 会**强制**判成「没有家宽」→ 不建住宅链、AI 规则改投 `AI` 组，粘上去就能用。
-> 这个标记优先级高于 `residential.enabled`：公共版里把 `enabled` 改成 `true` 或 `'auto'`
-> 也不会建住宅链（判定顺序见 [没有家宽怎么办](configuration.md)）。
-> `flclash-private.js` 有真实凭据，走完整住宅链。
+> `flclash.js` 占位符版的 `USER_CONFIG` 里 `residential.enabled = 'auto'`、节点是占位符
+> （端口 0，不会被注入）→ 判定成「没有家宽」→ 不建住宅链、AI 规则改投 `AI` 组，粘上去就能用。
+> 把 `nodes` 填成真的即可走完整住宅链，和桌面端同一条配置。
 
 > **手机上「指定某个 App 走某个组」**：`listeners` 在 FlClash 模式会被跳过（手机没有自填代理端口这条路），  
 > 用 `appProxy.processes` 写**包名**，例如 `{ value: 'org.telegram.messenger', proxy: 'US' }`。  
@@ -67,11 +70,11 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
 生成的文件**顶部自带构建元信息**，拿到任何一份 flclash 配置，看头部就知道它对应哪一版逻辑（以下是某次构建的输出，数值以实际文件头部为准）：
 
 ```
- * 构建时间    : 2026-11-16 23:51:09
- * 源文件      : smart.js  sha256:7350306cbb4c  2183 行 / 121346 字节
- * 源码提交    : 4e95cca
+ * 构建时间    : 2026-11-17 15:05:07
+ * 源文件      : smart.js  sha256:b2e0ae14f23b  2496 行 / 123961 字节
+ * 源码提交    : 76331f0
  * 构建命令    : node build-flclash.js
- * 住宅节点    : 🏠 住宅-JP  ->  YOUR_HOST:0   (占位符，使用前请填真实凭据)
+ * 住宅节点    : （未配置）AI 走 AI 组
 ```
 
 （上面是仓库里 `flclash.js` 的实际头部；`flclash-private.js` 同一行会显示真实
@@ -111,7 +114,7 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
 
 ## FlClash 模式：只改路由与 DNS 上游
 
-**FlClash 模式只改路由 + DNS 上游，不动系统级配置**（`FLCLASH_MODE`）。  
+**FlClash 模式只改路由 + DNS 上游，不动系统级配置**（配置项 `mode: 'flclash'`）。  
 手机上内核跑在 App 的 VPN 服务里，监听端口 / IPv6 策略都由 App 统一管，脚本再覆盖就会打架。
 
 

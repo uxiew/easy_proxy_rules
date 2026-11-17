@@ -3,14 +3,25 @@
  * build-flclash.js —— 生成 FlClash 用的单文件覆写脚本
  * ------------------------------------------------------------
  * FlClash 没有覆写链（不能像 Clash Party 那样 script + YAML 依次叠加），
- * 只能跑一个脚本。这个脚本把「凭据头 + smart.js 全文」拼成一份文件：
+ * 只能跑一个脚本。这个脚本把「配置头 + smart.js 全文」拼成一份文件：
  *
- *   flclash.js           凭据是占位符（提交进仓库，给别人参考）
- *   flclash-private.js   凭据是真实值（.gitignore 排除，粘贴到手机用）
+ *   flclash.js           配置是占位符（提交进仓库，给别人参考）
+ *   flclash-private.js   配置是真实值（.gitignore 排除，粘贴到手机用）
  *
- * 真实凭据放在 flclash-credentials.json（同样 .gitignore 排除）：
- *   { "name": "🏠 住宅-JP", "server": "x.x.x.x", "port": 7012,
- *     "username": "xxx", "password": "xxx" }
+ * 真实配置放在 flclash-credentials.json（同样 .gitignore 排除），
+ * 键名与桌面端的 x-smart 完全一样 —— 一份配置，两端通用：
+ *   {
+ *     "config": {
+ *       "mode": "flclash",
+ *       "residential": {
+ *         "primary": "🏠 住宅-JP",
+ *         "nodes": [
+ *           { "name": "🏠 住宅-JP", "type": "http", "server": "1.2.3.4",
+ *             "port": 7012, "username": "xxx", "password": "xxx" }
+ *         ]
+ *       }
+ *     }
+ *   }
  *
  * 用法：
  *   node build-flclash.js            # 两个文件都生成（有 credentials 时）
@@ -30,8 +41,9 @@ const ROOT = __dirname;
 const SMART_PATH = path.join(ROOT, 'smart.js');
 const smart = fs.readFileSync(SMART_PATH, 'utf8');
 
-const PLACEHOLDER = {
+const PLACEHOLDER_NODE = {
   name: '🏠 住宅-JP',
+  type: 'http',
   server: 'YOUR_HOST',
   port: 0,
   username: 'YOUR_USERNAME',
@@ -71,12 +83,12 @@ function meta() {
 
 function maskHost(host) {
   const s = String(host || '');
-  if (!s || s === PLACEHOLDER.server) return PLACEHOLDER.server;
+  if (!s || s === PLACEHOLDER_NODE.server) return PLACEHOLDER_NODE.server;
   if (s.length <= 7) return s;
   return `${s.slice(0, 3)}***${s.slice(-3)}`;
 }
 
-// 把 DEFAULT_CONFIG 渲染成一段可直接取消注释的注释块。
+// 把 DEFAULT_CONFIG 渲染成一段只读的注释块。
 // 为什么要放：手机上没法像桌面那样用覆写链，用户打开文件第一眼就该看到
 // 「有哪些键、当前默认值是什么」，而不是去翻 2000 行 smart.js。
 function renderConfigComment(obj) {
@@ -88,36 +100,40 @@ function renderConfigComment(obj) {
 
 const DEFAULTS = require('./smart.js').DEFAULT_CONFIG || {};
 
-function header(cred, m) {
-  const defaultsComment = renderConfigComment(DEFAULTS);
-  const raw = Array.isArray(cred.nodes) && cred.nodes.length ? cred.nodes : [cred];
-  // 占位符版的 port 是 0，会被下面的过滤丢掉 —— 那时退回原样，保证模板里有可填的一行
-  const valid = raw.filter((n) => n && n.server && n.port);
-  const nodes = valid.length ? valid : raw;
-  const primary = nodes.filter((n) => n.name === cred.primary)[0] || nodes[0] || cred;
-  const isPublic = primary.server === PLACEHOLDER.server;
-  const credLine = isPublic
-    ? `住宅节点    : ${primary.name}  ->  ${PLACEHOLDER.server}:${PLACEHOLDER.port}   (占位符，使用前请填真实凭据)`
-    : `住宅节点    : ${primary.name}  ->  ${maskHost(primary.server)}:${primary.port}` +
-      (nodes.length > 1 ? `   (+${nodes.length - 1} 台备用，只注入、不参与自动选择)` : '');
+// 凭据归一化：只认一种写法（config 段），旧的顶层 nodes / 单节点自动折进去并提示。
+// 归一化之后，两端的配置就是同一个对象：手机 = USER_CONFIG，桌面 = x-smart。
+function normalizeCred(raw) {
+  const src = JSON.parse(JSON.stringify(raw || {}));
+  const cfg = src.config && typeof src.config === 'object' && !Array.isArray(src.config) ? src.config : {};
+  const legacyNodes = Array.isArray(src.nodes) && src.nodes.length ? src.nodes : src.server ? [src] : [];
+  let legacy = false;
+  if (legacyNodes.length) {
+    legacy = true;
+    // 顶层就是节点清单的旧写法：primary + nodes（或单节点）
+    if (!Array.isArray(cfg.residential && cfg.residential.nodes) && !(cfg.residential || {}).nodes) {
+      cfg.residential = Object.assign({}, cfg.residential, { nodes: legacyNodes });
+    }
+    if (src.primary && !(cfg.residential || {}).primary) {
+      cfg.residential = Object.assign({}, cfg.residential, { primary: src.primary });
+    }
+  }
+  // 手机端默认就是 flclash；用户显式写了别的（'clash'）也照办
+  if (!cfg.mode) cfg.mode = 'flclash';
+  return { cfg, legacy };
+}
 
-  // 逐条写进头部常量。备用节点也标清楚语义，免得以后有人以为「多写几条就能自动容错」。
-  const nodeLines = nodes
-    .map((n, i) => {
-      const tag =
-        n.name === primary.name
-          ? '主力（= primary）→ 住宅出口只锁这一台'
-          : '备用 → 只注入不进组；主力挂了是 REJECT，不会自动切到它';
-      return (
-        `    // ${i + 1}. ${n.name} —— ${tag}\n` +
-        '    { ' +
-        `name: ${JSON.stringify(n.name)}, server: ${JSON.stringify(n.server)}, ` +
-        `port: ${JSON.stringify(Number(n.port))}, ` +
-        `username: ${JSON.stringify(n.username)}, password: ${JSON.stringify(n.password)} },\n`
-      );
-    })
-    .join('')
-    .replace(/\n$/, '');
+function header(cfg, m) {
+  const defaultsComment = renderConfigComment(DEFAULTS);
+  const resi = cfg.residential || {};
+  const nodes = (Array.isArray(resi.nodes) ? resi.nodes : []).filter((n) => n && n.name && n.server && n.port);
+  const isPublic = !nodes.length || nodes.some((n) => n.server === PLACEHOLDER_NODE.server);
+  const primary = nodes.filter((n) => n.name === resi.primary)[0] || nodes[0] || null;
+  const credLine = !primary
+    ? '住宅节点    : （未配置）AI 走 AI 组'
+    : isPublic
+      ? `住宅节点    : ${primary.name}  ->  ${PLACEHOLDER_NODE.server}:${PLACEHOLDER_NODE.port}   (占位符，使用前请填真实凭据)`
+      : `住宅节点    : ${primary.name}  ->  ${maskHost(primary.server)}:${primary.port}` +
+        (nodes.length > 1 ? `   (+${nodes.length - 1} 台备用，只注入、不参与自动选择)` : '');
 
   const title = isPublic
     ? 'FlClash 覆写脚本（占位符版 / 可提交仓库）'
@@ -134,13 +150,35 @@ function header(cred, m) {
  * 构建命令    : node build-flclash.js
  * ${credLine}
  *
- * 本文件 = 凭据头 + smart.js 全文，与桌面端 Clash Party 同源同逻辑
+ * 本文件 = 配置 + smart.js 全文，与桌面端 Clash Party 同源同逻辑
  * （重建组/规则 + AI 走住宅 + 前置亚洲跳板 + 国内直连 + 占位节点清洗 + 应用级分流）。
- * 唯一差异：占位符版头部带 FLCLASH_NO_RESIDENTIAL = true，因为没有住宅节点可注入，
- * 该标记优先级高于 RESIDENTIAL.enabled（true / 'auto' 都会被覆盖），强制判定
- * 「没有家宽」→ 不建住宅链、AI 规则改投 AI 组（开箱即用，不会全阻断）。
+ * 配置只有一份，就是下面这个 USER_CONFIG —— 键名与桌面端覆写 YAML 的 x-smart
+ * 完全一致，同一条配置两端都能用，不用记两套。
  *
- * FlClash 模式自动跳过的桌面专属项（写了会和 App 打架）：
+ * 安装：FlClash -> 工具 -> 覆写 -> 新建 -> 类型「脚本」-> 粘贴全文
+ *       -> 对该订阅启用覆写 -> 打开 TUN
+ * ================================================================
+ */
+
+// ==========================================================
+// 配置（唯一要改的地方；键名与桌面端 x-smart 相同）
+// ==========================================================
+// 只写要改的键：对象逐字段合并，数组整体替换；不写 = 用下面的默认值。
+// 住宅凭据就在 residential.nodes 里，primary 决定锁定哪一台。
+// 桌面端等价写法（覆写 YAML，排在 smart.js 之前）：
+//   x-smart:
+//     residential: { primary: '🏠IP-JP', nodes: [...] }
+// 键表 / 合并规则 / 校验行为：docs/custom-config.md
+const USER_CONFIG = ${JSON.stringify(cfg, null, 2)};
+
+// ---------- 可用键与默认值（只作参考，不要取消注释）----------
+// 要改哪项，就在上面的 USER_CONFIG 里写哪项：
+${defaultsComment}
+
+/**
+ * 下面是运行时说明，读完可以忽略。
+ *
+ * FlClash 模式（由 config.mode = 'flclash' 打开）自动跳过的桌面专属项：
  *   dns.listen 0.0.0.0:1053    -> 跳过，端口交给 FlClash 绑定
  *   listeners 7865 住宅专用口   -> 跳过，手机上用不到
  *   ipv6 / domain-strategy      -> 跳过，交给 App
@@ -165,52 +203,23 @@ function header(cred, m) {
  *   等于废掉「注入住宅节点 + 重建分组」。检测到这种情况脚本会自动退化为
  *   「只修 DNS」，并在日志打印提示。
  *   想保留住宅出口与 AI 分流：请把 FlClash 留在 v0.8.98。
- *
- * 安装：FlClash -> 工具 -> 覆写 -> 新建 -> 类型「脚本」-> 粘贴全文
- *       -> 对该订阅启用覆写 -> 打开 TUN
- * ================================================================
  */
-// ============ 住宅节点凭据（唯一需要改的地方） ============
-// 多台静态住宅 IP 就往下加一条；primary 决定「住宅出口」锁哪一台，
-// 其余节点只注入、不参与自动选择（smart.js 的 RESIDENTIAL.pinOnly）。
-const FLCLASH_RESIDENTIAL = {
-  primary: ${JSON.stringify(primary.name)},
-  nodes: [
-${nodeLines}
-  ],
-};
-
-// ============ 配置项（可选，与桌面端 x-smart 同一套键名） ============
-// 手机上没法用覆写链，这里是唯一「重新构建也不会丢」的配置入口。
-// 只写要改的键即可（对象逐字段合并，数组整体替换）；留空 = 全用下面的默认值。
-//
-// 可选键（9 个）：residential / appProxy / traffic / aiStaticToAI / narrowTun /
-//                regionPriority / webrtcGuard / keepSubGroups / modeGuard
-// 键表、合并规则、校验行为：docs/custom-config.md
-//
-// 例：
-//   const FLCLASH_USER_CONFIG = {
-//     residential: { primary: '🏠IP-JP', upstream: { inject: 'strip' } },
-//   };
-//
-// 下面这份是本次构建时 smart.js 的 DEFAULT_CONFIG 快照，只作参考 ——
-// 不要整段取消注释（那不是完整语句），要改哪项就在 FLCLASH_USER_CONFIG 里写哪项：
-//
-${defaultsComment}
-const FLCLASH_USER_CONFIG = ${JSON.stringify(
-    cred && typeof cred.config === 'object' && cred.config ? cred.config : {},
-    null,
-    2,
-  )};
-${isPublic ? "// 占位符版没有真实凭据：告诉 smart.js 按「没有家宽」处理，AI 走 AI 组\nconst FLCLASH_NO_RESIDENTIAL = true;\n" : ''}// ==========================================================
 
 // ================= smart.js 全文（勿手改） =================
 
 `;
 }
 
-function build(cred, m) {
-  return header(cred, m) + smart;
+// smart.js 里有一行 const USER_CONFIG = {}; —— 构建时把它换成注释，
+// 真正的配置已经写在文件顶部（置顶，打开就能看见）。
+const USER_CONFIG_DECL = /^const USER_CONFIG = \{\};[^\n]*$/m;
+
+function build(cfg, m) {
+  if (!USER_CONFIG_DECL.test(smart)) {
+    throw new Error('smart.js 里找不到 `const USER_CONFIG = {};`，无法注入顶部配置');
+  }
+  const body = smart.replace(USER_CONFIG_DECL, '// USER_CONFIG 已定义在本文件顶部（构建注入）');
+  return header(cfg, m) + body;
 }
 
 // ---------- 构建期自检 ----------
@@ -483,35 +492,63 @@ function assertGenerated(targets) {
 
 const m = meta();
 
-const publicText = build(PLACEHOLDER, m);
-// 占位符版头部带 FLCLASH_NO_RESIDENTIAL：必须走「无家宽」分支，不该再出现住宅组。
+// 占位符版：节点地址是占位符（端口 0，脚本不会注入），enabled 用 'auto'
+// → 手机上找不到任何可用住宅节点，自动改走 AI 组，开箱不会把 AI 全阻断。
+const publicCfg = {
+  mode: 'flclash',
+  residential: {
+    enabled: 'auto',
+    primary: '',
+    nodes: [PLACEHOLDER_NODE],
+  },
+};
+const publicText = build(publicCfg, m);
 const targets = [{ label: 'flclash.js（占位符版）', text: publicText, expectNoResidential: true }];
 
 const credPath = path.join(ROOT, 'flclash-credentials.json');
 let privateText = null;
 if (fs.existsSync(credPath) && !process.argv.includes('--public')) {
   const cred = JSON.parse(fs.readFileSync(credPath, 'utf8'));
-  // 支持两种写法：单节点 { name, server, port, ... }，或多节点 { primary, nodes: [...] }
-  const credNodes = (Array.isArray(cred.nodes) && cred.nodes.length ? cred.nodes : [cred]).filter(
-    (n) => n && n.server && n.port,
-  );
-  const badNodes = (Array.isArray(cred.nodes) && cred.nodes.length ? cred.nodes : [cred]).filter(
-    (n) => !n || !n.server || !n.port,
-  );
-  if (!credNodes.length || badNodes.length) {
-    console.error('✗ flclash-credentials.json 里有节点缺 server/port（nodes 数组每一项都要齐全）');
+  const { cfg, legacy } = normalizeCred(cred);
+  if (legacy) {
+    console.log('· flclash-credentials.json 是旧写法（顶层 nodes / 单节点）→ 已自动折进 config.residential');
+  }
+  const resi = cfg.residential || {};
+  const all = Array.isArray(resi.nodes) ? resi.nodes : [];
+  const nodes = all.filter((n) => n && n.name && n.server && n.port);
+  if (!nodes.length) {
+    console.error('✗ flclash-credentials.json 里没有可用住宅节点（需要 name / server / port）');
     process.exit(1);
   }
-  const pinName = (credNodes.filter((n) => n.name === cred.primary)[0] || credNodes[0]).name;
+  if (nodes.length !== all.length) {
+    console.error('✗ residential.nodes 里有节点缺 name / server / port（每一项都要齐全）');
+    process.exit(1);
+  }
+  for (const n of nodes) {
+    if (!n.type) {
+      console.log(
+        `· 节点「${n.name}」没写 type → 按 http 处理（多数静态住宅是 HTTP 代理）；` +
+          'SOCKS5 端口请显式写 type: "socks5"',
+      );
+    }
+  }
   // 只有 smart.js 里 pinOnly 真的开着时，才断言「锁定」形态：
   // pinOnly: false 是合法配置（全部住宅节点可选），不该被当成回归拦下来。
   // 正则锚定行首两空格的**配置行**，避开注释里出现的 "pinOnly: true" 字样。
   const pinOnlyOn = /^ {2}pinOnly:[ \t]*true\b/m.test(smart);
-  privateText = build(cred, m);
+  // primary 可能指向订阅自带的住宅节点，所以「对不上注入的节点」只提醒不拦。
+  const pinned = nodes.filter((n) => n.name === resi.primary)[0];
+  if (resi.primary && !pinned) {
+    console.log(
+      `· residential.primary「${resi.primary}」不在 residential.nodes 里 —— ` +
+        '若订阅里也没有同名节点，住宅出口会只剩 REJECT（AI 被阻断）',
+    );
+  }
+  privateText = build(cfg, m);
   targets.push({
     label: 'flclash-private.js（私有版）',
     text: privateText,
-    expectPin: pinOnlyOn ? pinName : '',
+    expectPin: pinOnlyOn && pinned ? pinned.name : '',
   });
 }
 

@@ -27,7 +27,7 @@
 | [architecture.md](architecture.md) | 端口分工、策略组、`select`/`url-test`/`fallback`、国家优先、规则文件结构 |
 | [traffic-entry.md](traffic-entry.md) | 应用级分流、TUN vs 系统代理、路线 A/B/C、窄 TUN、App 自建 DNS |
 | [configuration.md](configuration.md) | 七个配置对象、家宽节点怎么认（`nodePattern`）、订阅自带住宅怎么接（`inject` 四模式 + `x-smart`）、DNS 用 IP 型 DoH、WebRTC guard、`dialer-proxy` 与「前置要不要按大洲拆」、住宅出口锁定（`primary` 名字匹配 / `pinMiss` / `prefer`）、无家宽三态、`auto` 边界、多出口预案（未实现） |
-| [custom-config.md](custom-config.md) | `x-smart` / `flclash-credentials.json` 的 `config` / `USER_CONFIG` 三个入口、完整键表、优先级与合并规则、类型与枚举校验 |
+| [custom-config.md](custom-config.md) | `x-smart` 与 `USER_CONFIG` 两个入口（手机端的 `config` 段就是构建注入的 `USER_CONFIG`）、完整键表、优先级与合并规则、类型与枚举校验 |
 | [clients.md](clients.md) | Claude Code、`claude-guard`、常驻会话、pf 硬阻断、Proxifier |
 | [flclash.md](flclash.md) | Android 客户端对比、`flclash-private.js` 生成与安装、构建期自检、手机端专有陷阱 |
 | [security.md](security.md) | 三层防泄漏（hook / CI / 精确名单）、`sync-sensitive.mjs`、Secret 维护 |

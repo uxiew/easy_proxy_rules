@@ -23,6 +23,11 @@ x-smart:
     #   订阅下发的长名字 → 写稳定片段：'JP-静态33'
     primary: '🏠IP-JP'
 
+    # 住宅凭据（可选）：和手机端是同一个键，写了脚本会自动注入节点并补 dialer-proxy。
+    # 你也可以继续用下面的 +proxies，两者等价；节点名要能命中 nodePattern（带 🏠 / 住宅 等）。
+    # nodes:
+    #   - { name: '🏠IP-JP', type: http, server: 203.0.113.10, port: 7012, username: 'user', password: 'pass' }
+
     # 锁不上时：'reject' = 只剩阻断（默认，最安全）｜'collect' = 退回收编
     pinMiss: 'reject'
 
@@ -85,8 +90,9 @@ x-smart:
   # keepSubGroups: true        # 保留订阅自带策略组（避免 dialer-proxy 悬空）
   # modeGuard: true            # 把内核钉在「规则」模式
 
-# ---------- 自备住宅节点（可选，和上面无关）----------
-# 需要往订阅里注入自己那台住宅时，取消注释并填真实值；
+# ---------- 自备住宅节点：两种写法等价 ----------
+# ① 写在上面 residential.nodes 里（推荐：两端同一个键，dialer-proxy 自动补）
+# ② 用 +proxies（需要额外字段时更灵活）：
 # 不注入就把整段删掉。字段说明见 residential.example.yaml。
 # +proxies:
 #   - name: '🏠IP-JP'

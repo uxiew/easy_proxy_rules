@@ -191,7 +191,7 @@ scripts/                  敏感信息扫描 + 名单同步（scan-sensitive / s
 .github/workflows/guard.yml  CI 全历史兜底扫描
 smart.js                  主脚本：建组 + 生成规则（只有逻辑，没有域名清单）
 flclash.js                FlClash 单文件覆写（占位符版，由 build-flclash.js 生成，勿手改）
-build-flclash.js          生成器：凭据头 + smart.js 全文 → flclash.js / flclash-private.js（含构建期自检）
+build-flclash.js          生成器：配置（USER_CONFIG 置顶）+ smart.js 全文 → flclash.js / flclash-private.js（含构建期自检）
 flclash-credentials.json  私有凭据（.gitignore 排除，生成私有版用）
 flclash-private.js        生成的私有版（.gitignore 排除，粘贴到手机）
 ruleset/

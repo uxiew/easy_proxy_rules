@@ -31,7 +31,8 @@ git config core.hooksPath .githooks
 node scripts/sync-sensitive.mjs      # 从本地凭据生成 .sensitive-patterns
 ```
 
-`sync-sensitive.mjs` 读 `flclash-credentials.json` 的 `server`/`username`/`password`
+`sync-sensitive.mjs` 读 `flclash-credentials.json` 的 `config.residential.nodes`
+（旧写法的顶层 `nodes` / 单节点也认）里每台的 `server`/`username`/`password`，
 和 `claude-guard/allowed-exit-ips` 的每一行，写进 `.sensitive-patterns`（已被 `.gitignore` 排除）。
 
 **换了出口 IP 或密码之后必须重跑** `node scripts/sync-sensitive.mjs`，否则新值不在名单里。

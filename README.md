@@ -55,14 +55,16 @@ x-smart:                 # ← 不带 +
   residential:
     primary: '🏠IP-JP'    # 锁这一台
     upstream: { inject: strip }
+    # 住宅凭据也在这里（和手机端同一个键）：
+    # nodes: [{ name: '🏠IP-JP', type: http, server: 1.2.3.4, port: 7012, username: u, password: p }]
   narrowTun: { enabled: false }
   keepSubGroups: true
 ```
 
-放在**排在 `smart.js` 之前**的本地覆写里即可；手机端等价写法是
-`flclash-credentials.json` 的 `config` 段（重建不丢）或脚本顶部的 `USER_CONFIG`。
-完整键表、优先级、写错了会怎样：[自定义配置](docs/custom-config.md)｜模板
-[`x-smart.example.yaml`](x-smart.example.yaml)。
+放在**排在 `smart.js` 之前**的本地覆写里即可。手机端没有覆写链：
+`flclash-credentials.json` 的 `config` 段会在构建时变成文件顶部的 `USER_CONFIG`，
+**键名与 `x-smart` 完全一样**，一条配置两端通用。完整键表、优先级、写错了会怎样：
+[自定义配置](docs/custom-config.md)｜模板 [`x-smart.example.yaml`](x-smart.example.yaml)。
 
 ---
 
@@ -133,11 +135,12 @@ x-smart:                      # 键名不要带 +
 ## 配置区看哪里
 
 `smart.js` 第 0 部分只有两个对象：`DEFAULT_CONFIG`（全部默认值）与 `USER_CONFIG`（你的覆盖），
-九个顶层键与 `x-smart` 完全一致：
+十个顶层键与 `x-smart` 完全一致：
 
 | 键 | 管什么 |
 | --- | --- |
-| `residential` | 住宅出口：锁定哪台、锁不上怎么办、跳板组 |
+| `mode` | 跑在哪：`'clash'` 桌面 / `'flclash'` 手机（手机由构建注入） |
+| `residential` | 住宅出口：锁定哪台、节点凭据、锁不上怎么办、跳板组 |
 | `appProxy` | 应用级分流：专用端口 / 进程名 / 路径正则 / Android 包名 |
 | `traffic` | 国内直连、Apple 直连 |
 | `aiStaticToAI` | AI 静态资源 / 安装包走机场（省住宅流量） |
@@ -148,7 +151,7 @@ x-smart:                      # 键名不要带 +
 | `modeGuard` | 内核被切成全局/直连时改回规则模式 |
 
 改配置**不用动脚本**：桌面端写覆写 YAML 的 `x-smart`，手机端写
-`flclash-credentials.json` 的 `config` 段。见 [自定义配置](docs/custom-config.md)。
+`flclash-credentials.json` 的 `config` 段 —— 键名完全一样，见 [自定义配置](docs/custom-config.md)。
 
 ---
 

@@ -1,5 +1,5 @@
 # ============================================================
-# 住宅出口（Webshare 静态住宅 IP）—— 覆写 YAML 模板
+# 住宅出口（自备静态住宅 IP）—— 覆写 YAML 模板
 # ============================================================
 # 用途：只放「连接信息」这种敏感内容，配合 smart.js 使用。
 #   smart.js 负责：建组「住宅出口」+ 决定哪类规则走住宅（逻辑，公开）
@@ -9,13 +9,17 @@
 # 只想要一份「全都能调」的模板（住宅 + 应用分流 + 省流量 + 窄 TUN + 地区优先）：
 #   → x-smart.example.yaml（键表见 docs/custom-config.md），本文件可以只留 +proxies
 #
+# 也可以不写 +proxies，把节点写进 x-smart 的 residential.nodes —— 和手机端
+# flclash-credentials.json 的 config.residential.nodes 是同一个键，一条配置两端通用。
+#
 # ⚠️ 没有家宽静态 IP 的用户：不要用本文件。
 #    把 smart.js 里的 residential.enabled 改成 false 即可 —— 住宅出口 / 前置-亚洲
 #    两个组都不生成，住宅节点自动移除，相关规则全部改投 AI 组，其它照旧。
 #    本文件一旦导入，里面的 +proxies 节点会让「组不存在」变成 proxy not found 拒载。
 #
 # 用法：
-#   1. Clash Party → 覆写 → 新建（或导入本地文件）→ 把下面内容粘进去、填好凭据 → 保存#   2. 设为「全局」覆写（和 smart.js 一样）。
+#   1. Clash Party → 覆写 → 新建（或导入本地文件）→ 把下面内容粘进去、填好凭据 → 保存
+#   2. 设为「全局」覆写（和 smart.js 一样）。
 #      默认 residential.enabled: true，本文件排在 smart.js 前 / 后都行：
 #      「住宅出口」组用 include-all-proxies + filter 在内核侧收编，
 #      后置注入的 🏠/IP- 节点照样进组。
@@ -38,10 +42,10 @@
 # ============================================================
 
 +proxies:
-  # ---------- 美国静态住宅（示例，把 4 个值换成 Webshare 后台的） ----------
+  # ---------- 美国静态住宅（示例，把 4 个值换成服务商后台给的） ----------
   - name: '🏠 住宅-US' # 名字前缀（🏠 或 IP-）决定它会被收编进「住宅出口」组
     # ⚠️ 按服务商给的协议填，写错就是「TCP 连得上、一握手被 reset」（见 troubleshooting 坑 30）：
-    #    HTTP 代理 → http     （Webshare 的静态住宅、多数机房代理都是这个）
+    #    HTTP 代理 → http     （静态住宅/机房代理多数是这种）
     #    SOCKS5   → socks5     HTTPS 代理（`tls: true` + 443）也是 http
     type: http
     server: 203.0.113.10 # ← 换成你的静态住宅 IP

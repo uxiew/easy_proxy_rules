@@ -231,7 +231,7 @@ rules, _ := appendRules(mappingValue(root, "rules"), mappingValue(profile, "rule
 为什么以前没事：之前的订阅都是**纯节点**（0 条 rules），追加 0 条自然无感。
 138top 那种 594 条 DOMAIN 规则的订阅一样会炸，只是报的是 `proxy not found`。
 
-现在 `smart.js` 的 `FLCLASH_MODE` 分支会自动兜底：
+现在 `smart.js` 的 FlClash 分支（`mode: 'flclash'`）会自动兜底：
 
 - 订阅 rules 引用到的规则集 → 有定义就沿用，没定义就指向 `ruleset/empty.list` 空集占位
 - 订阅 rules 引用到的组名 → 补一个 `proxies: ['REJECT']` 的占位组
@@ -295,8 +295,7 @@ AI 流量静默退回机场（出口 IP 从住宅变成机场共享 IP，**不�
 桌面手写）时组是锁定的，成员只有那一台 + `REJECT`，见 [多台住宅 IP](configuration.md)。
 只有「订阅里自带住宅节点、脚本运行时就能看到」的场景才用 `'auto'`；
 确实没有家宽就用 `false`，别指望 `auto` 替你判断。
-两个额外边界：占位符版 `FLCLASH_NO_RESIDENTIAL` 会无条件覆盖 `'auto'`；
-不跑 `main()` 的纯数据提取路径下 `'auto'` 等同 `true`（完全不探测），
+一个额外边界：不跑 `main()` 的纯数据提取路径下 `'auto'` 等同 `true`（完全不探测），
 详见 [auto 还有效吗](configuration.md)。
 
 ## 坑 22 · 别为了兜外部手写规则，把住宅组改成「成员转发 AI」

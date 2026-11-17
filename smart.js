@@ -15,7 +15,7 @@
  * 【本文件 vs 覆写 YAML 的职责边界】(新增)
  * 本文件会被提交到公共仓库，因此只放「逻辑」，不放任何服务器/账号/密码。
  * - 这里：建组「住宅出口」+ 决定"哪一类规则走哪个组"
- * - 覆写 YAML：住宅节点的 server/port/username/password/dialer-proxy（密钥）
+ * - 配置（x-smart / 手机端 config）：住宅节点的 server/port/username/password（密钥）
  * 两边通过「节点名」解耦：覆写里的节点名只要含「住宅」或「IP-」，就会被自动收编进组里。
  *
  * 【规则内容去哪了】(新增)
@@ -35,14 +35,14 @@
  *       只要每个文件都用 `+` 前缀（`+proxies` / `+rules` / `+proxy-groups`）。
  *
  * 【想改配置？】紧跟着的「第 0 部分」就是全部可调项，只有两个对象：
- *   DEFAULT_CONFIG  九个顶层键的默认值（residential / appProxy / traffic / narrowTun …）
+ *   DEFAULT_CONFIG  十个顶层键的默认值（mode / residential / appProxy / narrowTun …）
  *   USER_CONFIG     你的覆盖项，只写要改的键，对象逐字段合并
  * 再往下才是 CDN 源、节点清洗、分组、规则生成 —— 日常不用看。
  *
  * 【更推荐：不碰本文件】桌面端写覆写 YAML 的 x-smart，手机端写
- * flclash-credentials.json 的 config 段（构建时注入到 flclash.js 顶部），
- * 键名与 DEFAULT_CONFIG 完全一致。远程引用本脚本时改这里才不会被下次更新冲掉，
- * 完整键表、合并规则与校验行为见 docs/custom-config.md。
+ * flclash-credentials.json 的 config 段（构建时变成 flclash.js 顶部的 USER_CONFIG）：
+ * 两边键名完全一致，住宅凭据都在 residential.nodes 里。
+ * 远程引用本脚本时改这里才不会被下次更新冲掉，完整键表与校验行为见 docs/custom-config.md。
  */
 
 // ============================================================
@@ -54,12 +54,13 @@
 //
 // 改配置不必动本文件，按机器分开写更省事：
 //   桌面端：覆写 YAML 里的 x-smart（要排在 smart.js 之前）
-//   手机端：flclash-credentials.json 的 config 段，构建时注入到 flclash.js 顶部
+//   手机端：flclash-credentials.json 的 config 段，构建时注入成文件顶部的 USER_CONFIG
 //   单文件：直接改下面的 USER_CONFIG
 // 键表 / 合并规则 / 校验行为见 docs/custom-config.md，桌面模板见 x-smart.example.yaml。
 //
-// 九个顶层键：
-//   residential     住宅出口：锁哪一台、锁不上怎么办、跳板组
+// 十个顶层键：
+//   mode            跑在哪：'clash'（桌面）/ 'flclash'（手机）。构建脚本注入，平时不写
+//   residential     住宅出口：锁哪一台、节点凭据、锁不上怎么办、跳板组
 //   appProxy        应用级分流：专用端口 / 进程名 / 包名          ← 最常改
 //   traffic         省流量：国内直连、Apple 直连
 //   aiStaticToAI    AI 静态资源 / 安装包 → 机场（不烧住宅流量）
@@ -71,16 +72,26 @@
 
 const DEFAULT_CONFIG = {
   // ------------------------------------------------------------
+  // 跑在哪：'clash' 桌面 / 'flclash' 手机
+  // 桌面不写（默认 clash）；手机由 build-flclash.js 在文件顶部的 USER_CONFIG 里注入。
+  // 差异全是「App 已经管了、脚本别插手」的部分：DNS 端口 / listeners / IPv6 / IP-ASN。
+  // ------------------------------------------------------------
+  mode: 'clash',
+
+  // ------------------------------------------------------------
   // 住宅出口：本机 → 机场亚洲节点 → 住宅 IP
-  // 凭据不在这里 —— 节点写在覆写 YAML 的 +proxies，脚本只负责建组和写规则。
-  // 组内兜底默认只有 [住宅节点, REJECT]：节点挂了就阻断，不会静默走机场。
   // ------------------------------------------------------------
   residential: {
     // true 建住宅链 / false 不建（AI 规则改投 AI 组）/ 'auto' 看运行时有没有住宅节点
     enabled: true,
     group: '住宅出口', // 组名，规则引用它；别在覆写 YAML 里重复定义同名组
+    // 住宅节点凭据，两端同一个位置：手机必填（没有覆写链），桌面也可以用
+    // （等价于手里那份 +proxies，但 dialer-proxy 由脚本自动补）。
+    // 每项：{ name, type, server, port, username, password }，name 要能命中 nodePattern
+    // （带 🏠 / IP- / 住宅 之类），其余字段原样透传给内核（tls / sni / udp 都能写）。
+    nodes: [],
     // 锁哪一台：只写节点名。完整匹配优先，没命中再按 includes（须恰好命中 1 台）。
-    // 留空 = 不锁（全部住宅节点都进组，默认选第一台）。
+    // 留空 = 不锁（全部住宅节点都进组，默认选第一台）；写了 nodes 时留空 = 锁第一台。
     primary: '',
     pinOnly: true, // 锁定后组里只放这一台：出口 IP 悄悄换一个，比断网更难排查
     pinMiss: 'reject', // 锁不上时：'reject' 只剩 REJECT / 'collect' 全收（旧行为）
@@ -237,6 +248,15 @@ const DEFAULT_CONFIG = {
 //   };
 const USER_CONFIG = {};
 
+// 跑在哪：配置项 `mode`（'clash' 桌面 / 'flclash' 手机）。
+// 手机端只接管「组 + 规则 + 节点」，DNS / IPv6 / listeners 全部交给 App，
+// 否则会和 FlClash 自己的 DNS/TUN 打架，表现为「所有节点全部失效」。
+// 名字只此一个：桌面不写（默认 clash），手机由构建脚本注入 USER_CONFIG.mode。
+let FLCLASH_MODE = false;
+function setMode(v) {
+  FLCLASH_MODE = String(v || '').toLowerCase() === 'flclash';
+}
+
 // ------------------------------------------------------------
 // 内部别名：下面所有逻辑读这些名字；DEFAULT_CONFIG 是唯一的默认值来源，
 // 覆盖由 applyUserConfig() 就地合并进来。
@@ -250,6 +270,7 @@ let REGION_PRIORITY = DEFAULT_CONFIG.regionPriority;
 let WEBRTC_GUARD = DEFAULT_CONFIG.webrtcGuard;
 let KEEP_SUB_GROUPS = DEFAULT_CONFIG.keepSubGroups;
 let MODE_GUARD = DEFAULT_CONFIG.modeGuard;
+setMode(DEFAULT_CONFIG.mode); // 默认桌面；手机由 USER_CONFIG.mode 改成 'flclash'
 
 // ------------------------------------------------------------
 // 模式守卫：把内核钉在「规则」模式
@@ -356,7 +377,15 @@ const isResidentialOn = () =>
 // 原来指向「住宅出口」的东西，没有家宽时统一改投 AI 组（机场出口）
 const residentialPolicy = () => (isResidentialOn() ? RESIDENTIAL.group : 'AI');
 
+// 「auto」的判据：residential.nodes 里真有可用节点，或运行时看得见名字命中的节点。
+// 只数 server/port 齐全的 —— 占位符模板（YOUR_HOST / 端口 0）不算数。
 function hasResidentialNode(proxies) {
+  if (
+    Array.isArray(RESIDENTIAL.nodes) &&
+    RESIDENTIAL.nodes.some((n) => n && n.name && n.server && n.port)
+  ) {
+    return true;
+  }
   if (!Array.isArray(proxies) || proxies.length === 0) return false;
   try {
     const matched = new RegExp(RESIDENTIAL.nodePattern);
@@ -370,12 +399,8 @@ function hasResidentialNode(proxies) {
   }
 }
 
-// FlClash 占位符版由 build-flclash.js 在头部注入这个标记，桌面端永远没有
-const isFlClashPlaceholder = () =>
-  typeof FLCLASH_NO_RESIDENTIAL !== 'undefined' && FLCLASH_NO_RESIDENTIAL;
-
 // 三态开关的唯一判定入口。优先级从上到下，先命中先生效：
-//   FLCLASH_NO_RESIDENTIAL > 显式 true/false > 'auto' 运行时探测
+//   显式 true/false > 'auto' 运行时探测
 // 'auto' 仍然有效，但只在 main() 调到本函数时生效：它只负责「这次判成有家宽还是
 // 无家宽」，判成无家宽之后的处理与 false 完全一致（不建两组 / 规则改 AI /
 // 节点清理 / 7865 改绑 AI）。它判的是「运行时可见性」，不是「有没有家宽」；
@@ -436,15 +461,11 @@ function resolvePrimaryName(proxies) {
 }
 
 function resolveResidentialEnabled(config) {
-  // FlClash 占位符版（build-flclash.js 生成）没有真实凭据、不会注入住宅节点。
-  // 构建期标记优先级最高：即使把 enabled 写成 true / 'auto' 也强制判「没有家宽」，
-  // 否则「住宅出口」只剩 REJECT，别人把示例粘到手机上会看到 AI 全被阻断。
-  if (isFlClashPlaceholder()) return false;
   const setting = RESIDENTIAL.enabled;
   if (setting === true) return true;
   if (setting === false) return false;
   // 'auto'：只认「运行时真的看得到一个住宅节点」这一种证据
-  if (primaryNodeName()) return true; // FlClash 私有版构建时已注入
+  if (primaryNodeName()) return true;
   return hasResidentialNode(config && config.proxies);
 }
 
@@ -1137,13 +1158,10 @@ const getRules = ()=>{
   return [...whiteListRules, ...aiFallbackRules, ...customRules, 'MATCH, CATCH'];
 }
 
-// FlClash（手机）模式：由下方钩子置 true。
-// 手机端只接管「组 + 规则 + 节点」，DNS / IPv6 / listeners 全部交给 App，
-// 否则会和 FlClash 自己的 DNS/TUN 打架，表现为「所有节点全部失效」。
-let FLCLASH_MODE = false;
-
-// =========== 用户配置层：USER_CONFIG / FlClash 注入 / x-smart ===========
-// 三个来源，一套键名，优先级从低到高：USER_CONFIG < FLCLASH_USER_CONFIG < x-smart。
+// =========== 用户配置层：USER_CONFIG + 覆写 YAML 的 x-smart ===========
+// 两个来源，一套键名，优先级从低到高：USER_CONFIG < x-smart。
+// 手机端没有覆写链：构建脚本把 flclash-credentials.json 的 config 段直接写成
+// 文件顶部的 USER_CONFIG —— 名字只有这一个，两端读的是同一个对象。
 // 桌面端的推荐写法（写在任意一个排在 smart.js **之前**的覆写 YAML 里，比如「静态住宅节点」）：
 //   x-smart:                           # ← 不要写 +x-smart
 //     residential:
@@ -1181,8 +1199,19 @@ const CONFIG_SWITCHES = {
   },
 };
 
+// 顶层标量：值决定行为，不是开/关
+const CONFIG_SCALARS = {
+  mode: (v) => {
+    setMode(v);
+  },
+};
+
 // 只能取固定值的项：写错不是「类型不对」，而是拼错了一个枚举，必须拦下来。
 const CONFIG_ENUMS = {
+  mode: ['clash', 'flclash'],
+  // 三态开关：true / false / 'auto'。默认值是布尔，按「类型」校验会把 'auto' 挡掉，
+  // 所以这里必须先按枚举放行（以前写 enabled: 'auto' 是静默失效的）。
+  'residential.enabled': [true, false, 'auto'],
   'residential.pinMiss': ['reject', 'collect'],
   'residential.upstream.inject': ['fill', 'strip', 'override', false],
   'narrowTun.stack': ['Mixed', 'gvisor', 'system'],
@@ -1296,9 +1325,24 @@ function applyConfigLayer(label, src) {
       }
       CONFIG_SWITCHES[k](v);
       sink.applied.push(k);
+    } else if (CONFIG_SCALARS[k]) {
+      const allowed = CONFIG_ENUMS[k];
+      if (typeof v !== 'string' || (allowed && allowed.indexOf(v) < 0)) {
+        sink.bad.push(
+          `${k} 只能是 ${(allowed || []).map((x) => JSON.stringify(x)).join(' / ')}，` +
+            `收到 ${JSON.stringify(v)}`,
+        );
+        continue;
+      }
+      CONFIG_SCALARS[k](v);
+      sink.applied.push(`${k}=${v}`);
     } else {
       sink.unknown.push(
-        `${k}（可用：${[...Object.keys(CONFIG_TARGETS), ...Object.keys(CONFIG_SWITCHES)].join(' / ')}）`,
+        `${k}（可用：${[
+          ...Object.keys(CONFIG_TARGETS),
+          ...Object.keys(CONFIG_SWITCHES),
+          ...Object.keys(CONFIG_SCALARS),
+        ].join(' / ')}）`,
       );
     }
   }
@@ -1314,14 +1358,7 @@ function applyUserConfig(config) {
   /** @type {Array<[string, object]>} */
   const layers = [];
   if (isPlainObject(USER_CONFIG) && Object.keys(USER_CONFIG).length) {
-    layers.push(['脚本顶部 USER_CONFIG', USER_CONFIG]);
-  }
-  if (
-    typeof FLCLASH_USER_CONFIG !== 'undefined' &&
-    isPlainObject(FLCLASH_USER_CONFIG) &&
-    Object.keys(FLCLASH_USER_CONFIG).length
-  ) {
-    layers.push(['FlClash 构建期注入的 config', FLCLASH_USER_CONFIG]);
+    layers.push(['USER_CONFIG（脚本顶部；手机端是构建注入的那份）', USER_CONFIG]);
   }
   if (KEY && isPlainObject(config[KEY])) {
     layers.push([`覆写 YAML 的 ${KEY}`, config[KEY]]);
@@ -1331,6 +1368,65 @@ function applyUserConfig(config) {
   for (const [label, src] of layers) applyConfigLayer(label, src);
   delete config['x-smart'];
   delete config['+x-smart'];
+}
+
+// ===== 住宅节点注入：residential.nodes =====
+// 桌面和手机同一个位置。手机没有覆写链，只能靠它；桌面也可以用，省掉在 +proxies 里
+// 手写 dialer-proxy 并自己保证字段齐全。
+//   · 同名节点先删后插 —— 订阅更新后同名节点换了地址，以这里的为准；
+//   · dialer-proxy 自动补成 upstream.group，除非 upstream.enabled = false 或 inject: 'strip'；
+//   · primary 留空时锁第一台：手机没有 store-selected，不锁的话组默认选中 REJECT，
+//     手机上表现为「AI 站点全被阻断」（ChatGPT 报「非预期的 SSL 证书」）；
+//   · primary 写了但对不上任何一台 → 一个字都不改，交给 pinMiss 处理（默认阻断）。
+//     绝不自作聪明换成第一台：那就是「Claude 从日本变成美国登录」还不报错。
+function applyResidentialNodes(config) {
+  const list = (Array.isArray(RESIDENTIAL.nodes) ? RESIDENTIAL.nodes : []).filter(
+    (n) => n && n.name && n.server && n.port,
+  );
+  if (!list.length) return;
+  // enabled: false 时不注入：节点的 dialer-proxy 指向「前置-亚洲」，而那一组此时不建，
+  // 内核会 proxy not found 拒载整份配置（比「AI 走机场」严重得多）。
+  if (RESIDENTIAL.enabled === false) {
+    console.log('[住宅出口] residential.enabled = false：不注入 residential.nodes，AI 走 AI 组');
+    return;
+  }
+  const up = RESIDENTIAL.upstream || {};
+  const hop = up.enabled !== false && up.inject !== 'strip' ? up.group : '';
+  const names = new Set(list.map((n) => n.name));
+  config.proxies = (config.proxies || []).filter((p) => p && !names.has(p.name));
+  let re = null;
+  try {
+    re = new RegExp(RESIDENTIAL.nodePattern);
+  } catch {
+    re = null;
+  }
+  for (const n of list) {
+    const node = Object.assign({}, n, {
+      name: n.name,
+      // 协议按服务商给的填。写错的典型表现是「TCP 能连上、一握手就 reset」（坑 30）
+      type: n.type || 'http',
+      server: n.server,
+      port: Number(n.port),
+      udp: n.udp === undefined ? false : !!n.udp,
+    });
+    if (hop && !node['dialer-proxy']) node['dialer-proxy'] = hop;
+    config.proxies.push(node);
+    if (re && !re.test(n.name)) {
+      console.log(
+        `[住宅出口] 节点名「${n.name}」不含住宅关键词（${RESIDENTIAL.nodePattern}），` +
+          '进不了住宅组 —— 名字里带上 🏠 / IP- / 住宅 之类',
+      );
+    }
+  }
+  const rawPrimary = RESIDENTIAL.primary;
+  if (typeof rawPrimary === 'string' && !rawPrimary.trim()) {
+    RESIDENTIAL.primary = list[0].name;
+    console.log(`[住宅出口] residential.primary 留空 → 锁第一台「${list[0].name}」`);
+  }
+  console.log(
+    `[住宅出口] residential.nodes 已注入 ${list.length} 台住宅节点` +
+      `${hop ? `（dialer-proxy: ${hop}）` : '（直连住宅网关）'}`,
+  );
 }
 
 // 程序入口
@@ -1349,9 +1445,8 @@ function main(config) {
   //   2) 把覆写结果的 rules 追加在订阅 rules 前面（appendRules）。
   // 如果在这种版本上继续重建规则，规则会指向不存在的组，内核只能报错或全断网。
   // 特征：core 传给 host 的是「骨架配置」——proxies 与 rules 都是空的。
-  const __isFlClash = typeof FLCLASH_RESIDENTIAL !== 'undefined' && FLCLASH_RESIDENTIAL;
   const __skeleton =
-    __isFlClash &&
+    FLCLASH_MODE &&
     !(Array.isArray(config.proxies) && config.proxies.length > 0) &&
     !(Array.isArray(config.rules) && config.rules.length > 0);
   if (__skeleton) {
@@ -1371,60 +1466,8 @@ function main(config) {
   // 模式是 global 时它们建出来也一次不会被用到。
   enforceRuleMode(config);
 
-  // ===== FlClash 钩子（桌面端不会走到这里）=====
-  // FlClash 没有覆写链，只能跑单个脚本：把 smart.js 全文拼在凭据头后面
-  // （构建脚本 build-flclash.js 自动生成），凭据头定义全局变量 FLCLASH_RESIDENTIAL。
-  // 桌面端（Clash Party）不定义它 → typeof 守卫跳过，节点仍由 YAML 覆写注入。
-  if (typeof FLCLASH_RESIDENTIAL !== 'undefined' && FLCLASH_RESIDENTIAL) {
-    FLCLASH_MODE = true;
-    const c = FLCLASH_RESIDENTIAL;
-    // 兼容两种凭据形态：
-    //   单节点  { name, server, port, username, password }            ← 旧写法，仍然有效
-    //   多节点  { primary, nodes: [ {name,server,port,...}, ... ] }   ← 手机端一次注入多台静态 IP
-    // 为什么要支持多节点：手机上没有覆写链，多台 IP 只能靠这里注入 —— 让用户在
-    // flclash-credentials.json 里写几条，构建时一起塞进私有版，不用在手机上手改产物。
-    // 但注入 ≠ 参与选择：只有 primary 那台会进「住宅出口」组（见 RESIDENTIAL.pinOnly），
-    // 其余仅作备用，主节点挂了就是 REJECT，绝不自动顶上。
-    const credNodes = (Array.isArray(c.nodes) && c.nodes.length ? c.nodes : [c]).filter(
-      (n) => n && n.server && n.port,
-    );
-    // primary 可以写节点名（必须是 nodes 里某个 name）；写错 / 不写 → 用第一台
-    const primaryNode = credNodes.filter((n) => n.name === c.primary)[0] || credNodes[0];
-    // 显式关掉住宅出口（enabled: false）时不要注入节点：
-    // 它的 dialer-proxy 指向「前置-亚洲」，而那一组此时不会建 → proxy not found，
-    // 整份配置加载失败（比「AI 走机场」严重得多）。
-    if (!credNodes.length) {
-      console.log('[FlClash] 凭据里没有可用住宅节点（缺 server/port），AI 流量走 AI 组');
-    } else if (RESIDENTIAL.enabled === false) {
-      console.log('[FlClash] RESIDENTIAL.enabled = false：跳过住宅节点注入，AI 流量走 AI 组');
-    } else {
-      const credNames = {};
-      for (const n of credNodes) credNames[n.name] = true;
-      config.proxies = (config.proxies || []).filter((p) => p && !credNames[p.name]);
-      for (const n of credNodes) {
-        config.proxies.push({
-          name: n.name, // 必须带 🏠 或 IP- 前缀（命中 nodePattern）
-          type: 'socks5', // http + dialer-proxy 连不通（见 docs/troubleshooting.md 坑 5）
-          server: n.server,
-          port: Number(n.port),
-          username: n.username,
-          password: n.password,
-          udp: false,
-          'skip-cert-verify': false,
-          'dialer-proxy': RESIDENTIAL.upstream.group,
-        });
-      }
-      console.log(
-        `[FlClash] 已注入 ${credNodes.length} 台住宅节点，锁定「${primaryNode.name}」` +
-          `（dialer-proxy: ${RESIDENTIAL.upstream.group}）`,
-      );
-      // 关键：把「住宅出口」的默认选中项设成主节点。
-      // 否则 select 组默认落在第一位（REJECT），手机上又没有 store-selected，
-      // 每次启动 AI 站点全被阻断（ChatGPT App 报「非预期的 SSL 证书」）。
-      // 凭据的 primary 和 RESIDENTIAL.primary 是同一个概念，这里就是两者的接缝。
-      RESIDENTIAL.primary = primaryNode.name;
-    }
-  }
+  // ===== 住宅节点：residential.nodes（桌面 / 手机同一个位置）=====
+  applyResidentialNodes(config);
 
   // ===== 判定：这次到底有没有家宽 =====
   // 必须在 FlClash 注入之后、getRules()/建组之前定下来（两处都读同一个结果）。
@@ -1437,11 +1480,12 @@ function main(config) {
         'url-test 全量收编亚洲节点），AI 与账号类流量走住宅',
     );
   } else {
-    const reason = isFlClashPlaceholder()
-      ? 'FlClash 占位符版，无住宅凭据'
-      : RESIDENTIAL.enabled === false
+    const reason =
+      RESIDENTIAL.enabled === false
         ? '显式 enabled: false'
-        : `auto 未检测到 ${RESIDENTIAL.nodePattern} 节点`;
+        : RESIDENTIAL.enabled === 'auto'
+          ? `auto 未检测到 ${RESIDENTIAL.nodePattern} 节点`
+          : `没有可用的住宅节点（residential.nodes 为空，订阅里也没有名字命中 ${RESIDENTIAL.nodePattern} 的节点）`;
     console.log(
       `[住宅出口] 未启用（${reason}）：不生成「${RESIDENTIAL.group}」与「${RESIDENTIAL.upstream.group}」，` +
         'AI 与账号类规则改投 AI 组（机场出口），其余规则一字不改。',

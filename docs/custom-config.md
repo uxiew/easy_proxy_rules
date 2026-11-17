@@ -1,6 +1,6 @@
 # 自定义配置（`x-smart` / `USER_CONFIG`）
 
-`smart.js` 第 0 部分的每个开关都能从外面覆盖，**不用改脚本本身**。一套键名，三个入口。
+`smart.js` 第 0 部分的每个开关都能从外面覆盖，**不用改脚本本身**。一套键名，两个入口。
 
 > ← [文档索引](README.md) · [仓库首页](../README.md)
 
@@ -15,21 +15,23 @@ const DEFAULT_CONFIG = { ... };   // 全部默认值，键名与 x-smart 完全�
 const USER_CONFIG = {};           // 你的覆盖项，只写要改的键
 ```
 
-`DEFAULT_CONFIG` 是**唯一**的默认值来源；打包成 `flclash.js` 时，它的快照会渲染到文件顶部
-（注释形式），手机上打开就能看到全部键和当前值。
+`DEFAULT_CONFIG` 是**唯一**的默认值来源。打包成 `flclash.js` 时，`USER_CONFIG` 会被写到
+**文件最顶部**（打开就能改），`DEFAULT_CONFIG` 的快照以注释形式跟在后面。
 
-## 三个入口
+## 两个入口
 
 | 入口 | 用在哪 | 优先级 | 模板 |
 | --- | --- | --- | --- |
 | 覆写 YAML 的 `x-smart:` | 桌面端（Clash Party），推荐 | 最高 | [`x-smart.example.yaml`](../x-smart.example.yaml) |
-| `flclash-credentials.json` 的 `config` 段 | 手机（FlClash），构建时注入 | 中 | 见下文 |
-| `smart.js` 顶部的 `USER_CONFIG` | 自己 fork 的脚本 / 单文件脚本 | 最低 | 见下文 |
+| `USER_CONFIG` | 手机（构建时注入）/ 单文件脚本 | 最低 | 见下文 |
 
-后面覆盖前面，**对象逐字段合并、数组整体替换**。三个入口都是可选的，不写就用 `DEFAULT_CONFIG`。
+后面覆盖前面，**对象逐字段合并、数组整体替换**。两个入口都是可选的，不写就用 `DEFAULT_CONFIG`。
 
 > 桌面端为什么推荐 `x-smart`：`smart.js` 通常是**远程覆写**，改本地文件下次更新就被覆盖；
 > 而 `x-smart` 写在你自己那个本地 YAML 里，跟着订阅走、不跟着脚本走。
+>
+> 手机端没有覆写链，`flclash-credentials.json` 的 `config` 段会在构建时**变成文件顶部的
+> `USER_CONFIG`** —— 名字只有这一个，两端读的是同一个对象，不用记两套。
 
 ## 桌面端：写在覆写 YAML 里
 
@@ -39,6 +41,10 @@ const USER_CONFIG = {};           // 你的覆盖项，只写要改的键
 x-smart:                 # ← 不要写 +x-smart
   residential:
     primary: '🏠IP-JP'    # 锁这一台（完整名，或名字里唯一的片段）
+    # 住宅凭据也可以写在这里（等价于 +proxies，但 dialer-proxy 由脚本补），
+    # 和手机端是同一条配置：
+    # nodes:
+    #   - { name: '🏠IP-JP', type: http, server: 203.0.113.10, port: 7012, username: u, password: p }
     upstream:
       inject: strip      # 本机与住宅同国 → 直连住宅网关
     prefer: 'JP'
@@ -54,34 +60,35 @@ x-smart:                 # ← 不要写 +x-smart
 - **顺序**：YAML 排在 `smart.js` 后面时脚本已经跑完，读不到这份配置 ——
   在面板里把它拖到 `smart.js` 之上。
 
-## 手机端：两个写法
+## 手机端：写在 `flclash-credentials.json` 里
 
-**① 用 `build-flclash.js` 构建**（推荐，重建不会丢）——在 `flclash-credentials.json` 里加一段：
+住宅凭据和各项目配置用**同一个 `config` 对象**，构建时整段变成文件顶部的 `USER_CONFIG`：
 
 ```json
 {
-  "primary": "🏠IP-JP",
-  "nodes": [ { "name": "🏠IP-JP", "server": "203.0.113.10", "port": 7012, "username": "u", "password": "p" } ],
   "config": {
-    "residential": { "upstream": { "inject": "strip" }, "prefer": "JP" },
-    "appProxy": { "processes": [ { "value": "com.openai.chatgpt", "proxy": "住宅出口" } ] }
+    "mode": "flclash",
+    "residential": {
+      "primary": "🏠IP-JP",
+      "nodes": [
+        { "name": "🏠IP-JP", "type": "http", "server": "203.0.113.10",
+          "port": 7012, "username": "u", "password": "p" }
+      ],
+      "upstream": { "inject": "strip" }
+    }
   }
 }
 ```
 
-构建脚本会把它变成产物头部的 `FLCLASH_USER_CONFIG`，键名和 `x-smart` 完全一样。
+- `mode` 不用写，构建时默认就是 `"flclash"`；写了别的值（`"clash"`）会照办。
+- `nodes` 里的 `type` 按服务商给的协议填（HTTP 代理写 `http`，SOCKS5 才写 `socks5`），
+  不写默认 `http`。多写几台只作备用：**只有 `primary` 那台进组**，主力挂了是 `REJECT`。
+- 桌面端也可以把节点写在 `x-smart.residential.nodes`（同一个键，见上面的桌面示例）。
+- 旧的顶层写法（`{ "primary": ..., "nodes": [...] }`）仍然能用，构建时会自动折进
+  `config.residential` 并提示一次。
 
-**② 直接 paste 单文件脚本** ——改 `smart.js` 顶部（第 0 部分第一段）的 `USER_CONFIG`：
-
-```js
-const USER_CONFIG = {
-  residential: { primary: '🏠IP-JP', upstream: { inject: 'strip' } },
-  narrowTun: { enabled: false },
-};
-```
-
-> 注意：改 `USER_CONFIG` 只在「你自己 fork 的脚本」里活得久。远程引用（桌面端）下次更新会被覆盖，
-> 手机端每次重新构建也会被覆盖 —— 那两种情况用上面两个入口。
+**不带 `build-flclash.js`、直接 paste 单文件脚本**：改文件顶部的 `USER_CONFIG` 即可，
+键名一模一样。手机端每次重新构建会覆盖它 —— 长期使用请写进 `flclash-credentials.json`。
 
 ## 键表
 
@@ -91,8 +98,9 @@ const USER_CONFIG = {
 
 | 键 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
-| `enabled` | 布尔 / `'auto'` | `true` | 三态开关，见 [没有家宽怎么办](configuration.md#没有家宽怎么办residentialenabled-三态开关) |
-| `primary` | 字符串 | `''` | 锁哪一台：先完整匹配、再 includes（须恰好 1 台）。**写成对象 = 锁定失败 → 只剩 REJECT** |
+| `enabled` | `true` / `false` / `'auto'` | `true` | 三态开关，见 [没有家宽怎么办](configuration.md#没有家宽怎么办residentialenabled-三态开关) |
+| `nodes` | 数组 | `[]` | 住宅节点凭据 `{ name, type?, server, port, username, password, … }`，两端同一处；`dialer-proxy` 自动补 |
+| `primary` | 字符串 | `''` | 锁哪一台：先完整匹配、再 includes（须恰好 1 台）。**写成对象 = 锁定失败 → 只剩 REJECT**。留空且写了 `nodes` = 锁第一台 |
 | `pinOnly` | 布尔 | `true` | 只放 `primary` 那一台，其余不进组 |
 | `pinMiss` | `'reject'` / `'collect'` | `'reject'` | 锁不上时：只剩阻断 / 退回收编 |
 | `prefer` | 字符串 | `''` | 没配 `primary` 时按国家把节点排到组首（`'JP'`） |
@@ -135,6 +143,7 @@ const USER_CONFIG = {
 
 | 键 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
+| `mode` | `'clash'` / `'flclash'` | `'clash'` | 跑在哪：桌面 / 手机。手机端由构建注入，平时不用写 |
 | `keepSubGroups` | 布尔 | `true` | 保留订阅自带策略组，见 [坑 28](troubleshooting.md) |
 | `modeGuard` | 布尔 | `true` | 把内核钉在「规则」模式，见 [坑 31](troubleshooting.md) |
 
@@ -147,7 +156,7 @@ const USER_CONFIG = {
 | 键名拼错（`primery`） | 忽略该项 + 列出该对象可用的键 |
 | 类型不符（`pinOnly: 'true'`） | 忽略该项、保留默认 —— 字符串 `'false'` 在 JS 里也是真值，这类错必须拦 |
 | `primary` 写成对象（`{ ip: … }`） | **不保留默认**：按锁定失败处理，`住宅出口` 只剩 `REJECT` —— 默认值是「不锁 → 全部住宅节点可选」，退回它等于把出口交给运气 |
-| 枚举不符（`inject: 'STRIP'`） | 忽略该项 + 列出允许值 |
+| 枚举不符（`inject: 'STRIP'` / `mode: 'FlClash'`） | 忽略该项 + 列出允许值 |
 | 顶层键不认识（`nope: 1`） | 忽略 + 列出全部可用键 |
 
 不知道有没有生效，看一眼日志就够了：

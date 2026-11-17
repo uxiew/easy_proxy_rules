@@ -10,11 +10,12 @@
 ## 顶层键与默认值
 
 `smart.js` 第 0 部分只有两个对象：`DEFAULT_CONFIG`（全部默认值）与 `USER_CONFIG`（你的覆盖）。
-九个顶层键，键名与 `x-smart` 完全一致：
+十个顶层键，键名与 `x-smart` 完全一致：
 
 | 键 | 管什么 |
 | --- | --- |
-| `residential` | 住宅出口：锁定哪台、锁不上怎么办、跳板组 |
+| `mode` | 跑在哪：`'clash'`（桌面）/ `'flclash'`（手机）。手机由构建注入，平时不写 |
+| `residential` | 住宅出口：锁定哪台、住宅节点凭据（`nodes`）、锁不上怎么办、跳板组 |
 | `appProxy` | 应用级分流：专用端口 / 进程名 / 路径正则 / Android 包名（最常改） |
 | `traffic` | 省流量：国内直连、Apple 直连 |
 | `aiStaticToAI` | AI 静态资源 / 安装包 → 机场（不烧住宅流量） |
@@ -31,7 +32,8 @@
 
 | 配置                             | 默认              | 作用                                                                                                   |
 | ------------------------------ | --------------- | ---------------------------------------------------------------------------------------------------- |
-| `residential.enabled`          | `true`          | 住宅出口三态开关：`true` = 有家宽（默认）；`false` = **没有家宽**（两组不生成、住宅节点移除、规则改投 `AI`）；`'auto'` = **仍有效但不推荐**，只判「运行时看不看得到住宅节点」而非「有没有家宽」，看不到即按无家宽处理（有覆写顺序陷阱，且占位符版会被强制覆盖）。见下文「没有家宽怎么办」 |
+| `residential.enabled`          | `true`          | 住宅出口三态开关：`true` = 有家宽（默认）；`false` = **没有家宽**（两组不生成、住宅节点移除、规则改投 `AI`）；`'auto'` = 看运行时有没有住宅节点（`residential.nodes` 或有名字命中 `nodePattern` 的节点），看不到即按无家宽处理；占位符版 `flclash.js` 用的就是它。见下文「没有家宽怎么办」 |
+| `residential.nodes`            | `[]`            | 住宅节点凭据，桌面 / 手机同一个位置。每项 `{ name, type?, server, port, username, password, … }`，`dialer-proxy` 由脚本补；`primary` 留空时锁第一台 |
 | `residential.aiStrict`         | `true`          | AI 服务商走住宅（推荐）                                                                                        |
 | `residential.allAI`            | `false`         | 整个 `forAI` 走住宅——**别开**，`ai.yaml` 里有 `DOMAIN-REGEX,google.*`，会连 `googlevideo.com`（YouTube 视频流）一起烧住宅流量 |
 | `appProxy.ports`              | `[7865 → 住宅出口]` | 专用端口列表：端口整体绑到指定组/节点，跳过规则。见 [应用级分流](traffic-entry.md)                                                                    |
@@ -285,8 +287,8 @@ proxies: [residential.primary, 'REJECT']   // escapeToAI: true 时 → [primary,
 
 | 来源 | 谁写 `type` | 谁写 `dialer-proxy` | 你要做的 |
 | --- | --- | --- | --- |
+| `residential.nodes`（桌面 `x-smart` / 手机 `config` 段，**推荐**） | 你（不写默认 `http`） | 脚本自动补 | 填 name / server / port / 账号 |
 | 覆写 YAML `+proxies` | 你 | 你（填组名 `前置-亚洲`） | 全字段手写 |
-| FlClash 凭据 | 构建脚本（固定 `socks5`） | 构建脚本 | 只填 server/port/账号 |
 | 订阅自带 | 订阅 | 脚本自动补（`upstream.inject`） | 什么都不用写 |
 
 | 字段 | 必填 | 作用 | 写错的后果 |
@@ -335,7 +337,7 @@ primary: '住宅-JP',      // 订阅节点名带速度标记时，抄一段稳�
 
 没配 `primary` 时，组员是 `prefer` 命中的节点 + `REJECT`，再全量收编；`prefer` 只决定默认选谁，不淘汰。
 
-## 订阅自带住宅怎么接（`inject` 四模式 + `x-smart`）
+## 订阅自带住宅怎么接（`inject` 四模式）
 
 `inject` 的判据是「**本机与住宅是否同国**」，不是订阅长什么样：
 
@@ -401,20 +403,18 @@ x-smart:            # ← 不带 +（Clash Party 的 deepMerge 只对数组认 +
 | 订阅里自带 `🏠 住宅-JP` | 有家宽 | 完整住宅链，14 条规则指住宅，7865 → `住宅出口` |
 | 一个住宅节点都没有 | 无家宽 | 两组不生成，52 条规则指住宅 **0** 条 / 落 AI **19** 条，7865 → `AI` |
 | 有节点 `dialer-proxy: 前置-亚洲` 但名字不命中 `nodePattern` | 无家宽 | 该节点被移除（防悬空），其余同上 |
-| FlClash 公共版（`FLCLASH_NO_RESIDENTIAL`） | **强制无家宽** | 同上，`enabled` 写任何值都被覆盖 |
+| FlClash 公共版（`flclash.js`，`enabled: 'auto'` + 占位符节点） | 无家宽 | 同上，粘上去就能用；把 `nodes` 填成真的即走完整住宅链 |
 
 判定优先级（`resolveResidentialEnabled()` 从上到下，先命中先生效）：
 
-1. `FLCLASH_NO_RESIDENTIAL`（`flclash.js` 占位符版头部注入）→ 无条件判无家宽；
-2. `enabled: true` → 有家宽；`enabled: false` → 无家宽；
-3. `enabled: 'auto'` → `residential.primary` 有值（FlClash 私有版注入）即判有家宽，
-   否则看 `config.proxies` 里有没有名字命中 `nodePattern` 的节点（正则写坏时
+1. `enabled: true` → 有家宽；`enabled: false` → 无家宽；
+2. `enabled: 'auto'` → `residential.primary` 有值即判有家宽；否则看
+   `residential.nodes` 里有没有 `server/port` 齐全的节点（占位符 `YOUR_HOST` / 端口 0 不算），
+   再看 `config.proxies` 里有没有名字命中 `nodePattern` 的节点（正则写坏时
    `hasResidentialNode()` 兜底返回 `true`，宁可保留住宅链）。
 
-另外两个「有效」的边界，别把 `auto` 当成可靠的自动探测：
+一个「有效」的边界，别把 `auto` 当成可靠的自动探测：
 
-- `FLCLASH_NO_RESIDENTIAL` 优先级最高：`flclash.js` 公共占位符版里即使写成 `'auto'`
-  也会被**强制判无家宽**；
 - 判定只在 `main()` 里做一次并写进 `residentialActive`。若把 `smart.js` 当模块引入、
   只提取 `getRules()` 等纯数据（没跑 `main()`），`residentialActive` 为 `null`，
   `isResidentialOn()` 退回 `residential.enabled !== false` → `'auto'` **等同 `true`**、
