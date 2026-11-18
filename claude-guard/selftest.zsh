@@ -107,13 +107,13 @@ if /bin/zsh -n "$LIB" 2>/dev/null; then ok "zsh -n claude-guard.zsh"; else bad "
 if LIB="$LIB" /bin/zsh -f -c '
   source "$LIB" 2>/dev/null
   for f in claude claude-check _claude_guard_check _claude_exit_ip _claude_allowed_ips \
-           _claude_config_warn claude-guard-info claude-guard-reload \
+           _claude_config_warn claude-guard-info claude-guard-reload claude-guard-allow \
            _claude_api_reachable _claude_record_exit_ip _claude_is_blocked_cc \
-           _claude_colo_country _claude_json_field; do
+           _claude_is_idc_isp _claude_colo_country _claude_json_field; do
     (( $+functions[$f] )) || exit 1
   done
 ' >/dev/null 2>&1; then
-  ok "13 个关键函数全部加载"
+  ok "15 个关键函数全部加载"
 else
   bad "关键函数加载缺失"
 fi
@@ -340,7 +340,47 @@ else
   bad "异常夹具评分/明细异常：$(print -r -- "$chk_bad" | grep -E '100|🟢|🟠|🔴|一票否决' | tr '\n' ' ')"
 fi
 
-section "9. 速度与健壮性"
+section "9. claude-guard-allow 安全加白单测"
+allow_tmp="$FX/allow-dyn.txt"
+rm -f "$allow_tmp"
+out=$(run_clean PATH="$FX/check-bin:$PATH" LIB="$LIB" \
+  CLAUDE_EXIT_IP_SERVICES="file://$FX/ip-ok.txt" \
+  CLAUDE_GEO_URL="file://$FX/geo-ok.json" \
+  CLAUDE_ALLOWED_IPS_FILE="$allow_tmp" \
+  CLAUDE_SKIP_SENSITIVE_SYNC=1 \
+  /bin/zsh -f -c 'source "$LIB" 2>/dev/null; claude-guard-allow' 2>&1); rc=$?
+if (( rc == 0 )) && [[ -f "$allow_tmp" && "$(< "$allow_tmp")" == "203.0.113.7" && "$(stat -f '%Lp' "$allow_tmp")" == "600" ]]; then
+  ok "住宅 IP 通过归属与 ISP 核验后自动加白（权限 600）"
+else
+  bad "住宅 IP 加白失败（rc=$rc, out=$out）"
+fi
+
+out=$(run_clean PATH="$FX/check-bin:$PATH" LIB="$LIB" \
+  CLAUDE_EXIT_IP_SERVICES="file://$FX/ip-ok.txt" \
+  CLAUDE_GEO_URL="file://$FX/geo-ok.json" \
+  CLAUDE_ALLOWED_IPS_FILE="$allow_tmp" \
+  CLAUDE_SKIP_SENSITIVE_SYNC=1 \
+  /bin/zsh -f -c 'source "$LIB" 2>/dev/null; claude-guard-allow' 2>&1); rc=$?
+if (( rc == 0 )) && [[ "$(wc -l < "$allow_tmp" | tr -d ' ')" == "1" ]]; then
+  ok "重复执行 claude-guard-allow 幂等不重复追加"
+else
+  bad "重复加白幂等失败（rc=$rc）"
+fi
+
+allow_idc="$FX/allow-idc.txt"
+out=$(run_clean PATH="$FX/check-bin:$PATH" LIB="$LIB" \
+  CLAUDE_EXIT_IP_SERVICES="file://$FX/ip-other.txt" \
+  CLAUDE_GEO_URL="file://$FX/geo-bad.json" \
+  CLAUDE_ALLOWED_IPS_FILE="$allow_idc" \
+  CLAUDE_SKIP_SENSITIVE_SYNC=1 \
+  /bin/zsh -f -c 'source "$LIB" 2>/dev/null; claude-guard-allow' 2>&1); rc=$?
+if (( rc != 0 )) && [[ ! -e "$allow_idc" ]]; then
+  ok "受限地区或机房 IDC IP 被 claude-guard-allow 拒绝写入"
+else
+  bad "机房/受限 IP 未被拦截（rc=$rc, out=$out）"
+fi
+
+section "10. 速度与健壮性"
 d=$(LIB="$LIB" CLAUDE_CONFIG_DIR="$FX/cfg/only-proxy" /bin/zsh -f -c 'source "$LIB" 2>/dev/null; zmodload zsh/datetime; t=$EPOCHREALTIME; repeat 100 do _claude_config_warn; done; printf "%.3f" "$((EPOCHREALTIME-t))"' 2>/dev/null)
 print -r -- "       _claude_config_warn x100 = ${d}s"
 if [[ -n "$d" ]] && (( d < 1.0 )); then ok "配置检查 100 次 < 1s（纯内置，无外部进程）"; else bad "配置检查偏慢（$d）"; fi

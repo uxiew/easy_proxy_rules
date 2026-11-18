@@ -54,6 +54,7 @@ source "$_cg_repo/claude-guard/claude-guard.zsh"
 | --- | --- |
 | `claude` | 启动前 fail-closed：端口 → 并行（出口 IP 查询 + Anthropic API 403 封锁探测）→ 白名单精确比对 → 配置一致性告警，确认后注入 `HTTP(S)_PROXY=127.0.0.1:7865`、`TZ` 与 `ipv4first` 并记入 `.exit-ip.log` |
 | `claude-check` | 只读 8 维环境画像体检与 0–100 综合评分（含关键项一票否决）：代理链路、API 可达与出口地区、7890/7865 分流一致性与系统 PAC、ISP（住宅/IDC 识别）与 CF Edge Colo、生效配置「仅代理」判定、DNS 与时区自洽、IPv6 旁路与 24h 出口稳定性统计、评分汇总 |
+| `claude-guard-allow` | 住宅 IP 轮换后安全加白：核验当前出口不在受限区且非常见机房 IDC 后追加至 `allowed-exit-ips`（`600` 权限），并自动触发 `sync-sensitive.mjs` |
 | `claude-guard-info` | 打印当前生效的规则目录与 `guard.conf` 取值 |
 | `claude-guard-reload` | 改完 `guard.conf` 后热重载，不必新开终端 |
 

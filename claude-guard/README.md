@@ -11,7 +11,7 @@ Claude Code 终端代理守卫与多维环境体检工具，默认采用 **fail-
 
 | 文件 | 作用 | 修改后如何生效 |
 | --- | --- | --- |
-| [`claude-guard.zsh`](claude-guard.zsh) | 函数库：`claude` / `claude-check` / `claude-guard-info` / `claude-guard-reload` | 新开终端或 `source ~/.zshrc` |
+| [`claude-guard.zsh`](claude-guard.zsh) | 函数库：`claude` / `claude-check` / `claude-guard-allow` / `claude-guard-info` / `claude-guard-reload` | 新开终端或 `source ~/.zshrc` |
 | [`guard.conf`](guard.conf) | 集中配置：端口、规则端口、时区、超时、IP 服务、探测开关、日志与脚本路径 | `claude-guard-reload` 或新开终端 |
 | `allowed-exit-ips` | 出口 IP 白名单，一行一个 IPv4（不进 git，首次从 [`allowed-exit-ips.example`](allowed-exit-ips.example) 复制） | 立即生效（每次检查实时读取） |
 | `.exit-ip.log` | 放行出口日志（`600` 权限，超 200 行自动裁剪保留最近 100 条，已入 `.gitignore`） | 自动记录，供 24h 稳定性统计 |
@@ -68,7 +68,7 @@ export EASY_PROXY_RULES_HOME=/abs/path/to/easy_proxy_rules
 | 端口未监听 | Clash Party 未开、`listeners` 变更 | 打开 Clash Party，执行 `nc -z 127.0.0.1 7865` |
 | 拿不到出口 IP | 住宅节点 TLS 握手失败（`rc=35`）、订阅到期、跳板不通 | 在面板检查「住宅出口」及前置跳板 |
 | API 返回 `403` | 出口 IP 所在地区受限或被 Cloudflare/Anthropic 风控 | 更换支持地区的干净住宅节点 |
-| IP 不在白名单 | 住宅 IP 更换或策略组误切 | 先跑 `claude-check` 确认 ISP 归属，再追加至 `allowed-exit-ips` |
+| IP 不在白名单 | 住宅 IP 更换或策略组误切 | 执行 `claude-guard-allow`（自动核验支持地区与非机房 ISP 后追加，并同步 `.sensitive-patterns`） |
 
 **应急绕过**：
 

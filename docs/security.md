@@ -39,7 +39,7 @@ node scripts/sync-sensitive.mjs      # 从本地凭据生成 .sensitive-patterns
 
 同时，`claude-guard/.exit-ip.log` 已被 `.gitignore` 排除、列入 `scripts/scan-sensitive.mjs` 的 `FORBIDDEN_PATH` 禁止入库路径，并由 `sync-sensitive.mjs` 纳入精确敏感值名单（防止历史出口 IP 泄漏进仓库或提交信息）。
 
-**换了出口 IP 或密码之后必须重跑** `node scripts/sync-sensitive.mjs`，否则新值不在名单里。
+**换了出口 IP 或密码之后必须重跑** `node scripts/sync-sensitive.mjs`（若通过 `claude-guard-allow` 追加新住宅 IP 会自动触发同步），否则新值不在名单里。
 
 手动体检：
 

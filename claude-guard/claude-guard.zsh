@@ -157,6 +157,11 @@ _claude_is_blocked_cc() {
   esac
 }
 
+# 常见机房 IDC / 云厂商 ISP 特征识别（0=命中机房，1=未命中）
+_claude_is_idc_isp() {
+  [[ -n "$1" ]] && [[ "$1" =~ '(Vultr|Hetzner|DigitalOcean|OVH|Linode|Akamai Connected|Amazon|AWS|Microsoft|Azure|Google Cloud|Alibaba|Aliyun|Tencent|Oracle|Choopa|Constant Company|ColoCrossing|QuadraNet|Psychz|Leaseweb|Contabo|Hostwinds|Rackspace|Cogent|Datacamp|CDN77|M247|GigsGigs|Bandwagon|DMIT|Cloudie|Misaka|xTom|Latitude)' ]]
+}
+
 # Cloudflare 常见边缘机房（IATA 三字码）-> 国家/地区码映射（未知机房返回空，不误判）
 _claude_colo_country() {
   case "${(U)1}" in
@@ -296,7 +301,7 @@ _claude_guard_check() {
       [[ -n "$_api_pid" ]] && { kill "$_api_pid" 2>/dev/null; wait "$_api_pid" 2>/dev/null; }
       printf '\033[31m[claude 守卫] 出口 IP=%s 不在白名单 —— 已阻止启动。\033[0m\n' "$ip" >&2
       printf '  允许：%s\n' "${allowed//$'\n'/, }" >&2
-      printf '  若确认是住宅新 IP（先跑 claude-check 看 ISP）：echo %s >> %s\n' "$ip" "$f" >&2
+      printf '  住宅换新 IP 了？执行 claude-guard-allow（自动核验非机房后加白并同步脱敏名单）\n' >&2
       printf '  临时放行：CLAUDE_SKIP_IP_CHECK=1 claude ...\n' >&2
       return 1
     fi
@@ -528,7 +533,7 @@ claude-check() {
         fi
       fi
       if [[ -n "$geo_isp" ]]; then
-        if [[ "$geo_isp" =~ '(Vultr|Hetzner|DigitalOcean|OVH|Linode|Akamai Connected|Amazon|AWS|Microsoft|Azure|Google Cloud|Alibaba|Aliyun|Tencent|Oracle|Choopa|Constant Company|ColoCrossing|QuadraNet|Psychz|Leaseweb|Contabo|Hostwinds|Rackspace|Cogent|Datacamp|CDN77|M247|GigsGigs|Bandwagon|DMIT|Cloudie|Misaka|xTom)' ]]; then
+        if _claude_is_idc_isp "$geo_isp"; then
           bad "ISP 疑似机房 IDC: $geo_isp（非家宽/商宽，风控权重偏高）"
           deduct 6 "出口被识别为机房 IDC ($geo_isp)" "检查「住宅出口」策略组是否误选了机场节点"
         else
@@ -700,4 +705,66 @@ claude-guard-info() {
 claude-guard-reload() {
   _claude_guard_reload
   printf '[claude 守卫] 已重载 %s（代理 %s）\n' "$CLAUDE_GUARD_DIR/guard.conf" "$_CG_PROXY"
+}
+
+# 公开命令：住宅 IP 轮换后安全追加白名单（先核验地区与非机房 ISP，并自动同步防泄漏名单）
+# 若住宅被标成商宽/特殊段确需强制放行，传 `claude-guard-allow --force`
+claude-guard-allow() {
+  local force=0
+  [[ "${1:-}" == "--force" ]] && force=1
+  local f="${CLAUDE_ALLOWED_IPS_FILE:-$_CG_ALLOWED_IPS}" ip=""
+  if ! ip=$(_claude_exit_ip "$_CG_PORT"); then
+    printf '\033[31m[claude 守卫] 无法经 %s 获取当前出口 IP，已拒绝写入白名单。\033[0m\n' "$_CG_PROXY" >&2
+    return 1
+  fi
+  local existing="" line=""
+  existing=$(_claude_allowed_ips 2>/dev/null || true)
+  for line in ${(f)existing}; do
+    if [[ "$line" == "$ip" ]]; then
+      printf '[claude 守卫] 出口 IP=%s 已在白名单中（%s）\n' "$ip" "$f"
+      return 0
+    fi
+  done
+
+  local geo_json="" cc="" isp=""
+  geo_json=$(curl -s -A "Mozilla/5.0" --connect-timeout "$_CG_T_CONNECT" --max-time "$_CG_T_MAIN" \
+    -x "$_CG_PROXY" "${CLAUDE_GEO_URL:-https://api.ip.sb/geoip}" 2>/dev/null)
+  cc="${(U)$(_claude_json_field "$geo_json" country_code)}"
+  isp="$(_claude_json_field "$geo_json" isp)"
+  [[ -z "$isp" ]] && isp="$(_claude_json_field "$geo_json" organization)"
+  if [[ -z "$cc" && -z "$isp" && -z "${CLAUDE_GEO_URL:-}" ]]; then
+    geo_json=$(curl -s --connect-timeout "$_CG_T_CONNECT" --max-time "$_CG_T_BACKUP" \
+      -x "$_CG_PROXY" "https://ipinfo.io/json" 2>/dev/null)
+    cc="${(U)$(_claude_json_field "$geo_json" country)}"
+    isp="$(_claude_json_field "$geo_json" org)"
+  fi
+
+  if (( ! force )); then
+    if [[ -z "$cc" || -z "$isp" ]]; then
+      printf '\033[31m[claude 守卫] 无法核验 IP=%s 的归属地/ISP，已拒绝自动加白（确认无误可传 --force）。\033[0m\n' "$ip" >&2
+      return 1
+    fi
+    if _claude_is_blocked_cc "$cc"; then
+      printf '\033[31m[claude 守卫] 出口 IP=%s 位于受限地区 (%s)，拒绝加入白名单。\033[0m\n' "$ip" "$cc" >&2
+      return 1
+    fi
+    if _claude_is_idc_isp "$isp"; then
+      printf '\033[31m[claude 守卫] 出口 IP=%s 疑似机房/机场节点 (%s)，拒绝加入住宅白名单（确需放行传 --force）。\033[0m\n' "$ip" "$isp" >&2
+      return 1
+    fi
+  fi
+
+  ( umask 077; printf '%s\n' "$ip" >> "$f" ) || {
+    printf '\033[31m[claude 守卫] 写入 %s 失败\033[0m\n' "$f" >&2
+    return 1
+  }
+  printf '\033[32m✓ 已将住宅出口 %s (%s · %s) 追加至 %s\033[0m\n' "$ip" "${cc:-?}" "${isp:-未核验}" "$f"
+
+  local sync_script="$CLAUDE_GUARD_DIR/../scripts/sync-sensitive.mjs"
+  local nodebin="${CLAUDE_GUARD_NODE:-${_CG_NODE:-$(command -v node 2>/dev/null)}}"
+  if [[ "${CLAUDE_SKIP_SENSITIVE_SYNC:-0}" != "1" && -r "$sync_script" && -n "$nodebin" ]]; then
+    command "$nodebin" "$sync_script" >/dev/null 2>&1 && \
+      printf '  已自动同步本地防泄漏名单 (.sensitive-patterns)\n'
+  fi
+  return 0
 }
