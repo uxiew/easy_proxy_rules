@@ -329,6 +329,10 @@ I1106 22:49:06  run.go:307] Run: attempt 2 failed (UNAVAILABLE (code 503):
 networksetup -setdnsservers "Wi-Fi" 223.5.5.5
 # 3) 关掉 Tailscale 的 DNS 接管，否则 resolver #1 永远是 100.100.100.100
 /Applications/Tailscale.app/Contents/MacOS/Tailscale set --accept-dns=false
+# 4) 用 macOS 分域解析把 *.ts.net 单独指回 Tailscale MagicDNS（不影响默认 resolver #1），并确保系统代理绕过列表含 100.64.0.0/10 与 *.ts.net
+sudo mkdir -p /etc/resolver
+printf 'nameserver 100.100.100.100\ntimeout 2\n' | sudo tee /etc/resolver/ts.net >/dev/null
+sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder
 ```
 
 验证：`dig +short chatgpt.com` 必须返回 **`198.18.x.x`**（fake-ip）。返回真实 IP 就说明 DNS 还没进内核。
@@ -340,7 +344,7 @@ curl -s --noproxy '*' --unix-socket "$SOCK" http://localhost/rules | \
 python3 -c "import sys,json;[print(r['payload'],'hit=',r['extra']['hitCount']) for r in json.load(sys.stdin)['rules'] if 'Process' in r['type']]"
 ```
 
-副作用要知道：TUN 与 Proxifier 的系统扩展会互相干扰，二选一；关闭 Tailscale 的 DNS 接管后，`*.ts.net` 这类 MagicDNS 名字不再能解析（Tailscale 本身连接受影响，节点仍在）。
+副作用要知道：TUN 与 Proxifier 的系统扩展会互相干扰，二选一；Tailscale 需配合上方 `/etc/resolver/ts.net` 分域解析与系统代理绕过列表（`100.64.0.0/10`、`*.ts.net`）使用——不要在 Mihomo `nameserver-policy` 里写 `100.100.100.100`（macOS 上 Tailscale `utun` 的 IPv4 为 `/32` 掩码，`tun.auto-detect-interface` 会把 `DIRECT`/DNS 套接字绑到物理网卡导致超时并外泄明文查询；回滚删掉 `/etc/resolver/ts.net` 并刷新缓存即可）。
 
 ### App 自己解析 DNS / 直连 IP（WhatsApp、Talkatone 这类）
 

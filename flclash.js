@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-18 14:27:26
- * 源文件      : smart.js  sha256:d464e69d59fb  2550 行 / 128067 字节
- * 源码提交    : 2be4509
+ * 构建时间    : 2026-11-18 17:51:59
+ * 源文件      : smart.js  sha256:101bcc8f79e4  2552 行 / 128242 字节
+ * 源码提交    : 876bac4
  * 构建命令    : node build-flclash.js
  * 住宅节点    : （未配置）AI 走 AI 组
  *
@@ -1196,6 +1196,7 @@ const dnsConfig = {
   'fake-ip-filter': [
     '*.lan',
     '*.local',
+    '+.ts.net',                   // Tailscale MagicDNS：避免分配 fake-ip 把内网流量吸进 TUN（macOS 绑物理网卡会导致 utun 超时）
     '*.msftconnecttest.com',      // 微软网络连通性测试
     'localhost.ptlogin2.qq.com',  // QQ 快捷登录依赖
     '+.stun.*',                   // STUN 打洞协议
@@ -2109,6 +2110,7 @@ function main(config) {
           ...(subDns['fake-ip-filter'] || []),
           '*.lan',
           '*.local',
+          '+.ts.net',
           ...(WEBRTC_GUARD.enabled ? [] : ['+.stun.*']),
           'geosite:cn',
         ]),

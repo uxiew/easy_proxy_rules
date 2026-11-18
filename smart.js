@@ -961,6 +961,7 @@ const dnsConfig = {
   'fake-ip-filter': [
     '*.lan',
     '*.local',
+    '+.ts.net',                   // Tailscale MagicDNS：避免分配 fake-ip 把内网流量吸进 TUN（macOS 绑物理网卡会导致 utun 超时）
     '*.msftconnecttest.com',      // 微软网络连通性测试
     'localhost.ptlogin2.qq.com',  // QQ 快捷登录依赖
     '+.stun.*',                   // STUN 打洞协议
@@ -1874,6 +1875,7 @@ function main(config) {
           ...(subDns['fake-ip-filter'] || []),
           '*.lan',
           '*.local',
+          '+.ts.net',
           ...(WEBRTC_GUARD.enabled ? [] : ['+.stun.*']),
           'geosite:cn',
         ]),
