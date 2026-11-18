@@ -154,6 +154,7 @@ const DEFAULT_CONFIG = {
       { value: 'com.anthropic.claude', proxy: '住宅出口' },
       // 桌面端 Electron：真正建连的是 Helper 子进程，用路径正则匹配整个 .app
       { value: '^/Applications/Claude\\.app/', type: 'path-regex', proxy: '住宅出口' },
+      { value: '/opt/homebrew/bin/claude', type: 'path', proxy: '住宅出口' },
       { value: '^/Applications/ChatGPT\\.app/', type: 'path-regex', proxy: '住宅出口' },
       { value: '^/Applications/Antigravity\\.app/', type: 'path-regex', proxy: '住宅出口' },
       { value: '/opt/homebrew/bin/agy', type: 'path', proxy: '住宅出口' },
