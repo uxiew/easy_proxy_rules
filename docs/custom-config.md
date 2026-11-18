@@ -119,7 +119,7 @@ x-smart:                 # ← 不要写 +x-smart
 | 键 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `ports` | 数组 | `[{ residential-in, 7865, 住宅出口 }]` | 专用端口：进这个端口跳过规则；仅桌面端 |
-| `processes` | 数组 | 内置 **9 条**（4 条 Android 包名 + macOS `Claude.app` / `/opt/homebrew/bin/claude` / `ChatGPT.app` / `Antigravity.app` / `/opt/homebrew/bin/agy`） | `{ value, type?, proxy }`，`type` 可为 `path` / `path-regex` / `name-regex` / `uid` |
+| `processes` | 数组 | 内置 **9 条**（4 条 Android 包名 + macOS `Claude.app` / `claude` CLI 路径正则 / `ChatGPT.app` / `Antigravity.app` / `/opt/homebrew/bin/agy`） | `{ value, type?, proxy }`，`type` 可为 `path` / `path-regex` / `name-regex` / `uid` |
 
 数组是**整体替换**：写了 `ports` 或 `processes` 会完整覆盖默认条目（例如写 `ports` 会换掉默认的 `7865`，写 `processes` 会换掉默认的 9 条内置规则），想保留请把默认条目一并写上。
 
@@ -130,7 +130,7 @@ x-smart:                 # ← 不要写 +x-smart
 | `traffic.domesticDirect` | 布尔 | `true` | `GEOSITE,cn → DIRECT` |
 | `traffic.appleDirect` | 布尔 | `true` | Apple 全家桶直连，最省流量的一刀 |
 | `narrowTun.enabled` | 布尔 | `true` | 只把 Google 段塞进 TUN |
-| `narrowTun.includeAI` | 布尔 | `true` | 额外接管系统 DNS + fake-ip（AI 长连接要用） |
+| `narrowTun.includeAI` | 布尔 | `true` | 额外接管系统 DNS + fake-ip + Anthropic 网段（AI 长连接与直连兜底） |
 | `narrowTun.stack` | `'Mixed'` / `'gvisor'` / `'system'` | `'Mixed'` | TUN 栈 |
 | `regionPriority.enabled` | 布尔 | `true` | `AUTO` / `AI` 按国家顺序回落 |
 | `regionPriority.targets` | 对象 | `{AUTO:[…], AI:[…]}` | 组 → 地区顺序 |

@@ -3,7 +3,7 @@
 Claude Code 终端代理守卫与多维环境体检工具，默认采用 **fail-closed** 策略：端口异常、拿不到出口 IP、出口不在白名单或被 Anthropic API 403 封锁时**直接阻止启动**，不在「连不上」与「回落直连暴露真实 IP」之间赌运气。
 
 > 主仓库端口分工、规则集与住宅节点覆写见 [`../README.md`](../README.md)。  
-> **与主仓库进程规则的双保险**：IDE / GUI 直接调用 `/opt/homebrew/bin/claude` 时不经过 `~/.zshrc` 守卫，此时依赖 `~/.claude/settings.json` 中的显式代理（fail-closed）与 [`smart.js`](../smart.js) 内置的 `PROCESS-PATH` 规则共同兜底。
+> **与主仓库进程规则的双保险**：IDE / GUI 直接调用 `claude` 二进制时不经过 `~/.zshrc` 守卫，此时依赖 `~/.claude/settings.json` 中的显式代理（fail-closed）与 [`smart.js`](../smart.js) 内置的 `PROCESS-PATH-REGEX`（匹配 `/opt/homebrew/bin/claude` 与 Cask 解引用路径 `Caskroom/claude-code`）共同兜底。桌面端 `Claude.app`、WebRTC、外出热点等防漏注意事项见 [`../docs/clients.md`](../docs/clients.md)。
 
 ---
 

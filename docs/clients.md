@@ -58,9 +58,33 @@ source "$_cg_repo/claude-guard/claude-guard.zsh"
 | `claude-guard-info` | 打印当前生效的规则目录与 `guard.conf` 取值 |
 | `claude-guard-reload` | 改完 `guard.conf` 后热重载，不必新开终端 |
 
-> **CLI 终端守卫与内核 `PROCESS-PATH` 规则的互补边界**：
+> **CLI 终端守卫与内核 `PROCESS-PATH-REGEX` 规则的互补边界**：
 > - **`claude-guard`（终端前置守卫）**：仅覆盖在交互式 zsh 中通过 `claude()` 包装函数启动的会话，负责启动前 fail-closed 拦截（白名单精确匹配 + API 403 地区/风控探测）与环境变量/时区指纹注入。
-> - **内核 `PROCESS-PATH,/opt/homebrew/bin/claude,住宅出口`（流量侧兜底）**：位于 `smart.js` 的 `appProxy.processes`（需开启 TUN / 窄 TUN 且流量进内核），当通过 `command claude`、绝对路径或 IDE 内置终端等路径绕过 shell 包装函数时，仍能把该二进制流量按到「住宅出口」；但它不做白名单精确 IP 比对与 API 403 拦截，因此两者互补、各自守住不同入口。
+> - **内核 `PROCESS-PATH-REGEX,^/opt/homebrew/(bin/claude$|Caskroom/claude-code),住宅出口`（流量侧兜底）**：位于 `smart.js` 的 `appProxy.processes`（需开启窄 TUN 且流量进内核）。Homebrew Cask 安装的 `/opt/homebrew/bin/claude` 是软链接，macOS 内核 `proc_pidpath` 拿到的是解开后的真实路径 `/opt/homebrew/Caskroom/claude-code@latest/<版本>/claude`，只写精确路径会永远失配，因此必须用路径正则；当通过 `command claude` 或 IDE 内置终端绕过 shell 包装函数时，仍能把流量按到「住宅出口」。
+
+## Claude 各客户端防漏注意事项
+
+不同形态的 Claude 客户端对代理的遵循程度不同，日常按以下优先级与规矩操作：
+
+1. **优先用终端 `claude`，少用桌面端 `Claude.app`**
+   - **怎么做**：主力开发和长对话跑终端 `claude`；尽量少挂桌面端 `/Applications/Claude.app`。
+   - **为什么**：终端 `claude` 有 `settings.json` 硬绑 `127.0.0.1:7865` + `claude-guard` 两道死锁（断链报 `ECONNREFUSED` 拒绝连接，绝不回落直连）；桌面端 `Claude.app` 是 Electron 应用，依赖系统代理，旁路更多。
+
+2. **先关 `Claude.app` / 网页标签，再退出或重启 Clash Party**
+   - **怎么做**：需要退出或重启 Clash Party 前，先彻底退出 `Claude.app`（`⌘Q`）并关掉浏览器的 `claude.ai` 标签页。
+   - **为什么**：Clash Party 退出时会自动把 macOS 系统代理关掉（`HTTPEnable=0`）。后台还活着的 `Claude.app` 或网页检测到长连接断开，下一秒自动重连就会直接从物理网卡裸出国内宽带，没有终端 `7865` 那样的断链保护。
+
+3. **开启语音模式或防 WebRTC 打洞（STUN）泄露**
+   - **怎么做**：平时不用微信/会议语音时，在本地覆写 `x-smart` 打开 `webrtcGuard: { enabled: true }`；若常用 Chrome 网页版，给 Chrome 配置受管策略 `WebRtcIPHandling=disable_non_proxied_udp`（修改后需 `⌘Q` 重启 Chrome，在 `chrome://policy` 确认状态为 `Set`）。
+   - **为什么**：WebRTC（网页实时通信，语音对话 LiveKit 等会用到）走 UDP 打洞（STUN 协议），**根本不经过 `7890` 系统 HTTP/SOCKS 代理**；且 `fake-ip-filter` 默认放行 `+.stun.*` 返回真实服务器 IP，在窄 TUN 下会顺着默认路由直连国内宽带，把真实公网 IP 暴露给对端（注意：`Claude.app` 是独立 Electron 应用，不读 Chrome 的受管策略文件）。
+
+4. **桌面端 `Claude.app` 的本地 MCP 与内置虚拟机（Cowork）**
+   - **怎么做**：在 `~/Library/Application Support/Claude/claude_desktop_config.json` 配置需要联网访问海外接口的 `mcpServers` 时，在对应服务的 `"env"` 里显式加上 `"HTTPS_PROXY": "http://127.0.0.1:7865"`（不涉及 AI 风控的普通工具填 `7890`）。
+   - **为什么**：Electron 界面自身读系统代理，但它用子进程拉起的 Node / Python / 二进制 MCP 服务以及内置 Linux 虚拟机默认**不读 macOS 系统代理**。目前 `narrowTun.aiRouteAddress` 已接管 `223.5.5.5`、`198.18.0.0/16` 与 Anthropic 官方段 `160.79.104.0/21` 兜底，但显式写入 `HTTPS_PROXY` 才能保证子进程断链不裸奔。
+
+5. **外出连手机热点 / 酒店 Wi-Fi / 插新网卡时**
+   - **怎么做**：在外连热点或陌生 Wi-Fi 时，只用终端 `claude`；若必须用桌面端 `Claude.app`，先跑 `dig +short claude.ai` 确认返回 `198.18.x.x`（若返回非 `198.18` 的真实 IP，把系统 DNS 改成 `223.5.5.5` 或在面板临时开全量 TUN）。
+   - **为什么**：手机热点（常为 `172.20.10.1`）和酒店路由器（`192.168.x.1`）下发的本地 DNS 不在窄 TUN 的静态劫持列表内，会导致不读系统代理的子进程逃出 TUN；同时 USB 共享网络等新接口默认会重新拿到运营商公网 IPv6（终端敲 `claude` 时守卫会自动检测并黄字告警）。
 
 判定口径集中在 [`claude-guard/guard.conf`](../claude-guard/guard.conf)，出口 IP 白名单在
 [`claude-guard/allowed-exit-ips`](../claude-guard/allowed-exit-ips)，`settings.json` 的 `env` 参考模板在

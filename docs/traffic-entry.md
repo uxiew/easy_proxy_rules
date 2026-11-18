@@ -82,13 +82,13 @@ Android 上是**三层**机制，别混：
 > | --- | --- | --- |
 > | `com.whatsapp` / `com.talkatone.android` / `com.openai.chatgpt` / `com.anthropic.claude` | `住宅出口` | Android（包名） |
 > | `PROCESS-PATH-REGEX,^/Applications/Claude\.app/` | `住宅出口` | macOS（Claude 桌面端） |
-> | `PROCESS-PATH,/opt/homebrew/bin/claude` | `住宅出口` | macOS（Claude Code CLI） |
+> | `PROCESS-PATH-REGEX,^/opt/homebrew/(bin/claude$\|Caskroom/claude-code)` | `住宅出口` | macOS（Claude Code CLI，含 Cask 软链接真实路径） |
 > | `PROCESS-PATH-REGEX,^/Applications/ChatGPT\.app/` | `住宅出口` | macOS（ChatGPT 桌面端） |
 > | `PROCESS-PATH-REGEX,^/Applications/Antigravity\.app/` | `AI` | macOS（Antigravity 桌面端） |
 > | `PROCESS-PATH,/opt/homebrew/bin/agy` | `AI` | macOS（Antigravity CLI） |
 >
 > - **桌面端用路径正则而不是进程名**：Claude / ChatGPT / Antigravity 都是 Electron，真正建连的常是 `Xxx Helper`（network service）子进程，进程名还会被 macOS 截到 16 字符，精确匹配必漏。
-> - **`/opt/homebrew/bin/claude` 的 TUN 兜底作用**：即使用户通过 `command claude`、绝对路径 `/opt/homebrew/bin/claude` 或在 IDE 终端等场景绕过了 `claude-guard` 的 shell 包装函数，只要流量进入 TUN，内核仍能把该 CLI 进程按到 `住宅出口`（与终端守卫形成互补；未开 TUN 且无代理环境变量时仍不会进内核）。
+> - **`claude` CLI 用路径正则而非精确路径**：Homebrew Cask 安装的 `/opt/homebrew/bin/claude` 是软链接，macOS 内核 `proc_pidpath` 拿到的是 `/opt/homebrew/Caskroom/claude-code@latest/<版本>/claude`，精确写 `/opt/homebrew/bin/claude` 会永远失配。用正则同时兜住软链接目标与直接安装路径，配合窄 TUN 为绕过 shell 守卫的调用兜底。
 > - 桌面端命中指向 `住宅出口` 的规则 = 该 App 的**全部 TCP** 走住宅（含图片/静态资源）；**语音视频是 UDP**，会被导向 `udp: false` 的住宅节点而直接失败 —— 这是预料之中的取舍，见 [踩过的坑](troubleshooting.md)。
 
 **验证包名规则是否真的命中**：看 FlClash 日志里连接后面的括号
@@ -244,12 +244,14 @@ lsof -nP -a -p $(pgrep -f "Resources/bin/language_server" | head -1) -iTCP | gre
 由后台进程建常驻 WebSocket，它**不读 macOS 系统代理**，自己用系统 DNS 解析 → 拿到被污染的
 假 IP → 直连超时，桌面端报 `Pairing code unavailable: Remote control failed to connect`，配对码/二维码都生成不出来。
 
-打开后 `route-address` 额外追加三段，`dns-hijack` 置为 `any:53`：
+打开后 `route-address` 额外追加五段，`dns-hijack` 置为 `any:53`：
 
 ```text
-223.5.5.5/32     系统 DNS —— 不进 TUN 就劫持不到（需确保系统 DNS 指向它）
-119.29.29.29/32  dns.default-nameserver 里的备用项 + 换网络后备用的公网 DNS
-198.18.0.0/16    fake-ip-range —— 域名流量进内核的入口
+223.5.5.5/32      系统 DNS —— 不进 TUN 就劫持不到（需确保系统 DNS 指向它）
+119.29.29.29/32   dns.default-nameserver 里的备用项 + 换网络后备用的公网 DNS
+198.18.0.0/16     fake-ip-range —— 域名流量进内核的入口
+160.79.104.0/21   Anthropic 官方 IPv4 段 —— 兜住绕过代理与 fake-ip 直连 IP 的子进程
+2607:6bc0::/32    Anthropic 官方 IPv6 段
 ```
 
 链路：DNS 查询进内核被劫持 → Clash 返回 fake-ip → 应用连 `198.18.x.x` 进内核 →
@@ -263,7 +265,7 @@ lsof -nP -a -p $(pgrep -f "Resources/bin/language_server" | head -1) -iTCP | gre
 | --- | --- |
 | 默认路由 | 仍指向路由器网关，`netstat -rn \| grep utun1500` 里**没有** `0.0.0.0/1` |
 | 局域网 / Tailscale / 内网 | 不进 TUN（仅白名单段进 TUN） |
-| 纯 IP 直连（不查 DNS） | 仍是窄的，只有 Google 网段 |
+| 纯 IP 直连（不查 DNS） | 仍是窄的，仅接管 Google 网段与 Anthropic 官方段（`160.79.104.0/21`） |
 | **域名流量** | **全部进内核**——任何域名被解析成 fake-ip 后，连接都会落到 TUN；国内域名经 `geosite:cn` 过滤后仍返回真实 IP 直连 |
 | 出站分流 | 不变，仍按规则链走 |
 
