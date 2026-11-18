@@ -76,19 +76,20 @@ Android 上是**三层**机制，别混：
 | ② 进内核后走哪个组      | `appProxy.processes`（包名） | 同一个 VPN 内，Telegram 走 US、Chrome 走 AUTO |
 | ③ 同一 App 内按域名细分 | `rules`                   | 例如 Chrome 里 claude.ai 走住宅、其余走 AUTO    |
 
-> **仓库默认已启用 6 条**（见 `smart.js` 的 `appProxy.processes`）：
+> **仓库默认已启用 9 条**（见 `smart.js` 的 `DEFAULT_CONFIG.appProxy.processes`）：
 >
 > | 规则 | 目标 | 生效端 |
-> |---|---|---|
-> | `com.whatsapp` / `com.talkatone.android` / `com.openai.chatgpt` / `com.anthropic.claude` | 住宅出口 | Android（包名） |
-> | `PROCESS-PATH-REGEX,^/Applications/Claude\.app/` | 住宅出口 | macOS |
-> | `PROCESS-PATH-REGEX,^/Applications/ChatGPT\.app/` | 住宅出口 | macOS |
+> | --- | --- | --- |
+> | `com.whatsapp` / `com.talkatone.android` / `com.openai.chatgpt` / `com.anthropic.claude` | `住宅出口` | Android（包名） |
+> | `PROCESS-PATH-REGEX,^/Applications/Claude\.app/` | `住宅出口` | macOS（Claude 桌面端） |
+> | `PROCESS-PATH,/opt/homebrew/bin/claude` | `住宅出口` | macOS（Claude Code CLI） |
+> | `PROCESS-PATH-REGEX,^/Applications/ChatGPT\.app/` | `住宅出口` | macOS（ChatGPT 桌面端） |
+> | `PROCESS-PATH-REGEX,^/Applications/Antigravity\.app/` | `AI` | macOS（Antigravity 桌面端） |
+> | `PROCESS-PATH,/opt/homebrew/bin/agy` | `AI` | macOS（Antigravity CLI） |
 >
-> 桌面端两条用**路径正则**而不是进程名：Claude / ChatGPT 都是 Electron，真正建连的常是
-> `Xxx Helper`（network service）子进程，进程名还会被 macOS 截到 16 字符，精确匹配必漏。
->
-> 桌面端命中这条 = 该 App 的**全部 TCP** 走住宅（含图片/静态资源）；**语音视频是 UDP**，
-> 会被导向 `udp: false` 的住宅节点而直接失败 —— 这是预料之中的取舍，见 [踩过的坑](troubleshooting.md)。
+> - **桌面端用路径正则而不是进程名**：Claude / ChatGPT / Antigravity 都是 Electron，真正建连的常是 `Xxx Helper`（network service）子进程，进程名还会被 macOS 截到 16 字符，精确匹配必漏。
+> - **`/opt/homebrew/bin/claude` 的 TUN 兜底作用**：即使用户通过 `command claude`、绝对路径 `/opt/homebrew/bin/claude` 或在 IDE 终端等场景绕过了 `claude-guard` 的 shell 包装函数，只要流量进入 TUN，内核仍能把该 CLI 进程按到 `住宅出口`（与终端守卫形成互补；未开 TUN 且无代理环境变量时仍不会进内核）。
+> - 桌面端命中指向 `住宅出口` 的规则 = 该 App 的**全部 TCP** 走住宅（含图片/静态资源）；**语音视频是 UDP**，会被导向 `udp: false` 的住宅节点而直接失败 —— 这是预料之中的取舍，见 [踩过的坑](troubleshooting.md)。
 
 **验证包名规则是否真的命中**：看 FlClash 日志里连接后面的括号
 
@@ -165,7 +166,7 @@ curl -s -x http://127.0.0.1:7890 https://chatgpt.com/cdn-cgi/trace | grep -E "^i
 卡住时的现场（`lsof -nP -a -p <lsp-pid> -iTCP`）：
 
 ```
-TCP 192.168.31.228:56057->172.217.116.4:443            (SYN_SENT)   ← Google
+TCP <本机内网IP>:56057->172.217.116.4:443            (SYN_SENT)   ← Google
 TCP [2409:...]:56056->[2001:4860:4845:400::]:443       (SYN_SENT)   ← Google IPv6
 ```
 
@@ -215,7 +216,7 @@ $ netstat -rn -f inet | grep utun1500
 172.217         198.18.0.1   UGSc   utun1500
 ...
 $ netstat -rn -f inet | grep ^default
-default         192.168.31.1 UGScg  en0        ← 没被夺走
+default         <路由器网关IP> UGScg  en0        ← 没被夺走
 ```
 
 判定 `language_server` 真的活了：源地址变成 `198.18.0.1` 且 `ESTABLISHED`
@@ -223,7 +224,7 @@ default         192.168.31.1 UGScg  en0        ← 没被夺走
 ```bash
 lsof -nP -a -p $(pgrep -f "Resources/bin/language_server" | head -1) -iTCP | grep -v LISTEN
 # TCP 198.18.0.1:65183->172.253.120.126:443 (ESTABLISHED)   ← 对了
-# TCP 192.168.31.228:65100->172.253.120.126:443 (SYN_SENT)  ← 还在直连，段漏了
+# TCP <本机内网IP>:65100->172.253.120.126:443 (SYN_SENT)    ← 还在直连，段漏了
 ```
 
 进内核后仍然按进程规则分流，连接页里能看到 `🏠 住宅出口`：
@@ -237,18 +238,17 @@ lsof -nP -a -p $(pgrep -f "Resources/bin/language_server" | head -1) -iTCP | gre
 > `172.253.0.0/16` 就是补出来的 —— 少了它会看到 `172.253.120.x` 一直 `SYN_SENT`。
 > 某天 Antigravity 换后端、又卡住，用上面的 `lsof` 看它连哪个段再补。
 
-##### AI 客户端长连接（`includeAI`，2026-11-07）
+##### AI 客户端长连接（`includeAI`）
 
 `narrowTun.includeAI` 解决另一类直连：ChatGPT 桌面端的 Remote Control / Codex enrollment
 由后台进程建常驻 WebSocket，它**不读 macOS 系统代理**，自己用系统 DNS 解析 → 拿到被污染的
-假 IP（实测 `chatgpt.com` → `108.160.169.174`）→ 直连超时，桌面端报
-`Pairing code unavailable: Remote control failed to connect`，配对码/二维码都生成不出来。
+假 IP → 直连超时，桌面端报 `Pairing code unavailable: Remote control failed to connect`，配对码/二维码都生成不出来。
 
 打开后 `route-address` 额外追加三段，`dns-hijack` 置为 `any:53`：
 
 ```text
-223.5.5.5/32     系统 DNS —— 不进 TUN 就劫持不到（这台机器 scutil --dns 只有它）
-119.29.29.29/32  dns.default-nameserver 里的备用项 + 换网络后可能的系统 DNS
+223.5.5.5/32     系统 DNS —— 不进 TUN 就劫持不到（需确保系统 DNS 指向它）
+119.29.29.29/32  dns.default-nameserver 里的备用项 + 换网络后备用的公网 DNS
 198.18.0.0/16    fake-ip-range —— 域名流量进内核的入口
 ```
 
@@ -257,56 +257,43 @@ lsof -nP -a -p $(pgrep -f "Resources/bin/language_server" | head -1) -iTCP | gre
 
 ###### 边界：这不是全量 TUN，也**不要**改成全量 TUN
 
-契约是「默认路由永远不动」。打开 `includeAI` 后入口侧的变化要说清，别自己骗自己：
+契约是「默认路由永远不动」，入口侧各维度的实际行为如下：
 
 | 维度 | 状态 |
 | --- | --- |
-| 默认路由 | 仍是 `192.168.31.1`，`netstat -rn \| grep utun1500` 里**没有** `0.0.0.0/1` |
-| 局域网 / Tailscale / 内网 | 不进 TUN（只有白名单段） |
-| 纯 IP 直连（不查 DNS） | 仍是窄的，只有 Google 13 段 |
-| **域名流量** | **全部进内核**——任何域名被解析成 fake-ip 后，连接都会落到 TUN |
-| 出站分流 | 不变，仍按规则链走（国内域名经 `geosite:cn` 过滤返回真实 IP，直连不走代理） |
+| 默认路由 | 仍指向路由器网关，`netstat -rn \| grep utun1500` 里**没有** `0.0.0.0/1` |
+| 局域网 / Tailscale / 内网 | 不进 TUN（仅白名单段进 TUN） |
+| 纯 IP 直连（不查 DNS） | 仍是窄的，只有 Google 网段 |
+| **域名流量** | **全部进内核**——任何域名被解析成 fake-ip 后，连接都会落到 TUN；国内域名经 `geosite:cn` 过滤后仍返回真实 IP 直连 |
+| 出站分流 | 不变，仍按规则链走 |
 
-也就是说：窄 TUN 从「按 IP 窄」变成了「按域名归内核 + 按规则出口」，出口行为没变，
-但**机器整体对内核的依赖变重了**（内核挂了 DNS 就断，比之前「只有 Google 服务挂」影响大）。
-这是这个方案的已知代价，不要用「反正都接管了」当理由把 `route-address` 改成 `0.0.0.0/0`。
+也就是说：窄 TUN 从「按 IP 窄」变成了「按域名归内核 + 按规则出口」，整机 DNS 对内核的依赖变重了
+（内核挂了 DNS 就断），但不要用「反正都接管了」当理由把 `route-address` 改成 `0.0.0.0/0`。
+将 `includeAI` 设为 `false` 即可恢复「只接管 Google 段」的旧行为。
 
-###### 换网络必须自查一次
+###### 换网络自查与验证
 
-劫持成立的前提是「系统 DNS 的地址恰好被路由进 TUN」。这台机器现在是 `223.5.5.5`，
-换个 Wi-Fi 后如果路由器把 DNS 改成 `192.168.31.1` 或别的 ISP DNS，查询就不进 TUN →
-不劫持 → `chatgpt.com` 又解析回污染 IP → 现象和没修之前一模一样，而且很难再排查一遍。
+劫持成立的前提是「系统 DNS 的地址恰好被路由进 TUN」。如果换了 Wi-Fi 后路由器把 DNS 改成路由器自身地址（如 `192.168.1.1`）或其它未进 TUN 的 ISP DNS，查询就不会被劫持，导致长连接重新失败。换网或修改后可用以下命令验证：
 
 ```bash
-scutil --dns | grep "nameserver\[0\]"   # 不是 223.5.5.5 / 119.29.29.29 就得往 aiRouteAddress 里补
+scutil --dns | grep "nameserver\[0\]"   # 不是 223.5.5.5 / 119.29.29.29 时需切系统 DNS 或补进 aiRouteAddress
 dig +short chatgpt.com                  # 应返回 198.18.x.x，返回真实 IP = 劫持已失效
-```
-
-**默认路由仍是 `192.168.31.1`**，局域网 / Tailscale / 纯 IP 直连不受影响；但整机 DNS 查询
-会由内核接管（境外域名返回 fake-ip，国内域名经 `geosite:cn` 过滤后仍返回真实 IP 直连）。
-`includeAI: false` 即恢复「只接管 Google 段」的旧行为。
-
-验证（不用点 GUI）：
-
-```bash
-dig +short chatgpt.com                     # 应返回 198.18.x.x
-curl -4 --noproxy '*' -o /dev/null -w '%{http_code}\n' https://chatgpt.com/  # 000 → 200
-netstat -rn -f inet | grep utun1500       # 有 198.18/16、223.5.5.5，没有 0.0.0.0/1
+curl -4 --noproxy '*' -o /dev/null -w '%{http_code}\n' https://chatgpt.com/  # 应返回 200
+netstat -rn -f inet | grep utun1500     # 应含 198.18/16、223.5.5.5，且没有 0.0.0.0/1
 ```
 
 > ⚠️ Clash Party 面板的 TUN 开关会写回 `mihomo.yaml` 的 `tun.enable`，与脚本输出不一致。
-> 三处要同时对齐：`smart.js` 的 `narrowTun`、`override/19eecbc78fc.js` 副本、
-> `mihomo.yaml` 的 `tun.enable`。只改脚本会被面板覆盖成 `false`。
+> 若通过本地覆写副本加载 `smart.js`，需保证 `smart.js`（或 `x-smart`）里的 `narrowTun` 与
+> 面板 `mihomo.yaml` 的 `tun.enable` 一致，否则只改脚本可能被面板的 `tun.enable: false` 覆盖。
 
 ###### 同一站点的「页面」和「登录态」必须同出口
 
-`includeAI` 只解决「连不上」，不解决「登录态割裂」。2026-11-07 的教训：`muse.ai` 的页面
-走 `RULE-SET,proxy → AUTO[新加坡]`，而它的登录态在 `auth.meta.com` / `accounts.meta.com`
-（`RULE-SET,aiStrict → 住宅出口`），OAuth 在两个出口 IP 之间跳 → 会话绑不上 →
-`muse.ai/access` 白屏 / `401 Authentication required` / 反复弹登录。
+`includeAI` 只解决「连不上」，不解决「登录态割裂」。例如 `muse.ai` 的页面若走机场 `AUTO`，
+而它的登录态域名 `auth.meta.com` / `accounts.meta.com` 走 `住宅出口`，OAuth 在两个出口 IP
+之间跳会导致会话绑不上，表现为白屏、`401 Authentication required` 或反复弹登录。
 
 规则：**一个 AI 产品的所有域名必须落在同一梯队**。新增站点时先确认它的认证域走哪条规则，
-再决定主域放哪。`meta.com` / `muse.ai` 这类现在统一在 `ai-strict.list` 的 Meta 段里。
+再决定主域放哪。`meta.com` / `muse.ai` 这类现在统一收在 `ai-strict.list` 的 Meta 段里。
 
 ##### 报错先分「链路」还是「服务端」
 
@@ -332,7 +319,7 @@ I1106 22:49:06  run.go:307] Run: attempt 2 failed (UNAVAILABLE (code 503):
 
 #### 路线 A（TUN）还要处理 DNS
 
-**根因：DNS 被污染。** 就算 TUN 接管了流量，App 仍然自己做 DNS。系统 DNS 若指向路由器（`192.168.31.1`）或 Tailscale MagicDNS（`100.100.100.100`），这些地址走 LAN / Tailscale 路由，**不进 TUN**，`dns-hijack: any:53` 劫持不到，解析结果就是被污染的假 IP。实测 `chatgpt.com` 被解析成 `114.43.24.59`，`codex` 反复拨这个死 IP、16 秒超时，界面永远转圈。
+**根因：DNS 被污染。** 就算 TUN 接管了流量，App 仍然自己做 DNS。系统 DNS 若指向路由器网关或 Tailscale MagicDNS（`100.100.100.100`），这些地址走 LAN / Tailscale 路由，**不进 TUN**，`dns-hijack: any:53` 劫持不到，解析结果就是被污染的假 IP（如 `chatgpt.com` 解析到失效 IP），导致后台长连接反复超时。
 
 ```bash
 # 1) 开 TUN：Clash Party 首页「虚拟网卡 / TUN」开关，或 mihomo.yaml 里 tun.enable: true
@@ -346,7 +333,8 @@ networksetup -setdnsservers "Wi-Fi" 223.5.5.5
 
 ```bash
 # 看进程规则到底命中了没有（hitCount 不涨 = 流量没进内核）
-curl -s --unix-socket /tmp/mihomo-party-501-58401.sock http://localhost/rules | \
+SOCK=$(ls -t /tmp/mihomo-party-*.sock | head -1)
+curl -s --noproxy '*' --unix-socket "$SOCK" http://localhost/rules | \
 python3 -c "import sys,json;[print(r['payload'],'hit=',r['extra']['hitCount']) for r in json.load(sys.stdin)['rules'] if 'Process' in r['type']]"
 ```
 

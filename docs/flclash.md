@@ -128,10 +128,7 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
 | `ipv6: false` / `domain-strategy` | 设置       | **跳过**          | 交给 App，避免 IPv6-only 网络下出问题                  |
 | `IP-ASN` 规则                       | 保留       | **跳过**          | 需要 ASN 数据库，手机上没有会让内核启动卡 75 秒（见 [坑 13](troubleshooting.md)）         |
 
-手机端 DNS 只做三件事：`enhanced-mode` 保持 fake-ip、上游换成 IP 型 DoH、  
-补上 `fake-ip-filter`（含 `geosite:cn`）。**绝不写 `listen`**。  
-实测：节点域名 `hk02.poke-mon.xyz` / `ptxlv6-01.78778m.cn` 全部走  
-`https://1.12.12.12:443/dns-query` 解析，日志里零 `UDP 53`、零 `i/o timeout`。
+手机端 DNS 只做三件事：`enhanced-mode` 保持 fake-ip、上游换成 IP 型 DoH、补上 `fake-ip-filter`（含 `geosite:cn`），**绝不写 `listen`**——确保节点域名（如 `node-a.example.com`）走加密 DoH 解析，避免明文 `UDP 53` 阻断导致失效（详见 [坑 15](troubleshooting.md)）。
 
 
 ## 全局模式是陷阱
@@ -159,9 +156,9 @@ curl -s -m 20 -x http://127.0.0.1:7890 -o /dev/null -w "%{http_code}\n" https://
 
 ## 为什么改成全量规则而非订阅自带规则
 
-订阅的规则把 `github.com`/`x.com` 路由到它自己的  
-「落云」组，该组的「自动选择」依赖订阅给的成员列表——订阅侧一坏（比如 url-test 选中  
-占位节点）手机就跟着全挂。全量重建后这些域名走 `forGlobal/github → AUTO`（真节点，  
+订阅自带规则往往把 `github.com`/`x.com` 路由到订阅自己的策略组（如某订阅自带组），
+该组的「自动选择」依赖订阅给的成员列表——订阅侧一坏（比如 url-test 选中
+占位节点）手机就跟着全挂。全量重建后这些域名走 `forGlobal/github → AUTO`（真节点，
 占位节点已剔），和电脑端行为一致。
 
 
@@ -178,5 +175,4 @@ curl -s -m 20 -x http://127.0.0.1:7890 -o /dev/null -w "%{http_code}\n" https://
 **v2rayNG** 只能做「订阅 + 域名/IP 分流 + 分应用」，做不到 AI 走住宅——  
 Xray 没有策略组和 `dialer-proxy` 的 UI，硬做要手写完整 JSON 且没有自动切换，不值得。
 
-7865 专用端口（listeners）在手机上没有用途（没有 Proxifier/Claude Code），  
-但保留无害；`residential.dedicatedPort` 设 0 可关。
+`7865` 等 `appProxy.ports` 专用端口仅用于桌面端（Proxifier / Claude Code）；在 `mode: 'flclash'` 下脚本会自动跳过 `listeners`，手机端无需额外配置关闭。

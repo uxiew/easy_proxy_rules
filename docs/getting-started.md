@@ -23,14 +23,18 @@
 ## 一分钟验证
 
 ```bash
-# AI 域名应走住宅 IP
+# AI 域名应走住宅 IP（7890 规则端口）
 curl -x http://127.0.0.1:7890 https://claude.ai/cdn-cgi/trace | grep -E '^ip=|^loc='
 
-# 7865 专用端口：访问任何域名都应返回住宅 IP
+# 7865 住宅专用端口：访问任何域名都应返回住宅 IP 与家宽 ISP
 curl -x socks5h://127.0.0.1:7865 https://claude.ai/cdn-cgi/trace | grep -E '^ip=|^loc='
+curl -x http://127.0.0.1:7865 -s -A "Mozilla/5.0" https://api.ip.sb/geoip | jq '{ip,country,city,asn,isp}'
+# 或改用 ipinfo.io（避免裸 curl 访问 api.ip.sb 被 Cloudflare 返回 HTML）：
+# curl -x http://127.0.0.1:7865 -s https://ipinfo.io/json
 ```
 
-> 别用 `api.ip.sb` 验证住宅出口——它走 `forGlobal → AUTO`，显示机场 IP 是正常的。
+> - **注意端口差异**：走 **7890（规则端口）** 访问 `api.ip.sb` 会落入 `forGlobal → AUTO`，显示机场 IP 是正常的；只有走 **7865（住宅专用端口）** 时查到的才是住宅出口（`api.ip.sb/geoip` 需带 `-A "Mozilla/5.0"`，或改用 `https://ipinfo.io/json`）。
+> - **Claude Code 用户快捷入口**：加载 [`claude-guard`](clients.md#启动守卫与环境体检claude-guard) 后可直接运行 `claude-check`，一键完成双端口出口一致性、API 401/403、ISP 类型与 Edge Colo 自动核验，并输出 0–100 综合评分。
 
 `ip=` 是住宅 IP 就说明链路通了。首次使用若「住宅出口」落在 `REJECT`（AI 站点打不开），
 去面板里手动选一次住宅节点，`store-selected` 会记住；手机端由构建脚本锁定主节点，不用这步。

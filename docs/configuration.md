@@ -1,32 +1,14 @@
 # 配置项详解
 
-`smart.js` 第 0 部分配置的逐项说明，含住宅出口三态、住宅锁定与多台 IP、DNS、WebRTC
-与未实现的多出口预案。
+`smart.js` 第 0 部分（`DEFAULT_CONFIG`）各配置项的作用、边界与多台住宅 IP 策略。
 
-> ← [文档索引](README.md) · [仓库首页](../README.md)
+> ← [文档索引](README.md) · [仓库首页](../README.md) · [自定义配置（`x-smart` / `USER_CONFIG`）](custom-config.md)
 
 ---
 
-## 顶层键与默认值
+## 默认值与配置入口
 
-`smart.js` 第 0 部分只有两个对象：`DEFAULT_CONFIG`（全部默认值）与 `USER_CONFIG`（你的覆盖）。
-十个顶层键，键名与 `x-smart` 完全一致：
-
-| 键 | 管什么 |
-| --- | --- |
-| `mode` | 跑在哪：`'clash'`（桌面）/ `'flclash'`（手机）。手机由构建注入，平时不写 |
-| `residential` | 住宅出口：锁定哪台、住宅节点凭据（`nodes`）、锁不上怎么办、跳板组 |
-| `appProxy` | 应用级分流：专用端口 / 进程名 / 路径正则 / Android 包名（最常改） |
-| `traffic` | 省流量：国内直连、Apple 直连 |
-| `aiStaticToAI` | AI 静态资源 / 安装包 → 机场（不烧住宅流量） |
-| `narrowTun` | 窄 TUN：只把 Google 段塞进内核（救 `language_server`） |
-| `regionPriority` | `AUTO` / `AI` 的国家优先顺序（JP → SG → KR → 港台 → 美英德法加 → 欧洲 → OT 兜底） |
-| `webrtcGuard` | 可选：拦 STUN 探测（默认关，会打断语音） |
-| `keepSubGroups` | 保留订阅自带策略组（节点的 `dialer-proxy` 可能引用它们） |
-| `modeGuard` | 内核被切成全局/直连时改回「规则」模式 |
-
-默认值都在 `DEFAULT_CONFIG` 里，**推荐用 `x-smart` 覆盖而不是改脚本**：
-[自定义配置](custom-config.md) 有完整键表、优先级与校验行为。
+`smart.js` 第 0 部分包含十个顶层配置键，**推荐通过覆写 YAML 的 `x-smart` 或构建配置 `USER_CONFIG` 覆盖，而不直接修改脚本**。完整键表、合并优先级与校验报错说明见 [自定义配置](custom-config.md)。
 
 ### 逐个键的默认值与作用
 
@@ -37,7 +19,7 @@
 | `residential.aiStrict`         | `true`          | AI 服务商走住宅（推荐）                                                                                        |
 | `residential.allAI`            | `false`         | 整个 `forAI` 走住宅——**别开**，`ai.yaml` 里有 `DOMAIN-REGEX,google.*`，会连 `googlevideo.com`（YouTube 视频流）一起烧住宅流量 |
 | `appProxy.ports`              | `[7865 → 住宅出口]` | 专用端口列表：端口整体绑到指定组/节点，跳过规则。见 [应用级分流](traffic-entry.md)                                                                    |
-| `appProxy.processes`          | 8 条（WhatsApp / Talkatone / ChatGPT / Claude / Antigravity / agy） | 进程/包名规则，插在 `rules` 最前。桌面写进程名，Android 写包名 |
+| `appProxy.processes`          | **9 条**（4 条 Android 包名 + macOS `Claude.app` / `/opt/homebrew/bin/claude` / `ChatGPT.app` / `Antigravity.app` / `/opt/homebrew/bin/agy`） | 进程/包名规则，插在 `rules` 最前。桌面写进程名或路径，Android 写包名 |
 | `residential.escapeToAI`       | `false`         | 是否把 `AI` 放进「住宅出口」当手动逃生口。默认 `false` = 住宅挂了只能阻断，不会静默换机场 IP                                             |
 | `residential.dedicatedPort`    | `0`（已迁移）        | **旧字段**，仅兼容用：填非 0 值且 `appProxy.ports` 里没有 `residential-in` 时自动补一条                                   |
 | `residential.upstream.enabled` | `true`          | 建「前置-亚洲」组：住宅节点的 `dialer-proxy` 指向它                                                                   |
@@ -79,16 +61,13 @@ const modeGuard = false;   // 想交还面板控制时改成 false
 
 ## DNS：一律用 IP 型 DoH，不要域名型
 
-`nameserver` / `proxy-server-nameserver` / `nameserver-policy` 里全部写成  
+`nameserver` / `proxy-server-nameserver` / `nameserver-policy` 里全部写成
 `https://1.12.12.12/dns-query` 这种**带 IP 的 DoH**，不写 `https://doh.pub/dns-query`。
 
-原因：域名型 DoH 必须先解析 `doh.pub` 才能建连，而这一步只能靠 `default-nameserver` 的明文 UDP 53。  
-一旦网络把外部 UDP 53 掐掉（2026-11-04 实测本机正是如此），就会变成  
-「解析 DoH 域名 → 超时 → 所有解析失败 → **连百度都打不开**」。  
-IP 型 DoH 不需要任何引导，少一环就少一个死法（详见 [坑 15](troubleshooting.md)）。
+原因：域名型 DoH 必须先靠明文 UDP 53 解析 `doh.pub` 才能建连；一旦所处网络阻断外部 UDP 53，
+就会陷入引导死锁导致全部域名解析超时。IP 型 DoH 无需域名引导，详因与排查命令见 [坑 15](troubleshooting.md)。
 
-`default-nameserver` 只负责解析**节点域名**（`jp.jisu16.top` 这类），所以放路由器 DNS 优先、  
-公网 IP 兜底即可。
+`default-nameserver` 只负责解析节点域名（如 `node.example.com`），放路由器 DNS 优先、公网 IP 兜底即可。
 
 ## WebRTC 探测要不要拦（`webrtcGuard`）
 
@@ -96,7 +75,7 @@ IP 型 DoH 不需要任何引导，少一环就少一个死法（详见 [坑 15]
 [`ruleset/webrtc-guard.list`](../ruleset/webrtc-guard.list) 提供一份**默认关闭**的拦截清单：
 `DST-PORT 3478/5349/19302-19309` + `DOMAIN-KEYWORD,stun` → `REJECT`（11 条）。
 
-开关在 `smart.js` 第 0 部分 ⑦：
+开关在 `DEFAULT_CONFIG.webrtcGuard`（可用 `x-smart` 覆盖）：
 
 ```js
 const webrtcGuard = {
@@ -259,26 +238,21 @@ proxies: [residential.primary, 'REJECT']   // escapeToAI: true 时 → [primary,
 想让内核在健康检查判死后主动落到 `REJECT`，只有 `fallback[pin, REJECT]` 这一条路，但那会把
 「冷启动 5 分钟 AI 全挂」重新引回来（见下一段），所以不用。
 
-**为什么不用 `url-test` / `fallback` 自动择优**（试过，已回退）：它们的健康检查要经过  
-`dialer-proxy: 前置-亚洲`，而 `前置-亚洲` 自己也是 `url-test`。冷启动时两者并发，  
-住宅节点的第一次检查在 `前置-亚洲` 还没选出节点时执行 → 判 0ms 失败 → `fallback` 会立刻退到
-备选（`REJECT` 或另一台住宅 IP），要等 `interval`（300s）才重测。实测开机后 5 分钟内 AI 全挂。
-所以改成**确定性的默认选中项**：不猜、不测、不改。
+**为什么不用 `url-test` / `fallback` 自动择优**：它们的健康检查要经过 `dialer-proxy: 前置-亚洲`，
+而 `前置-亚洲` 自己也是 `url-test`。冷启动并发时，住宅节点的首次检查往往在 `前置-亚洲`
+选出节点前执行而判 0ms 失败，导致立刻退到备选并卡满一个 `interval`（300s）。
+因此改为确定性的 `select` 默认选中项：不猜、不测、不自动切。
 
-**实测（mihomo v1.19.32，同一份配置只改兜底项，且不提供住宅节点）**：
+**各兜底写法在无住宅节点时的内核行为（mihomo v1.19.32）**：
 
-| 兜底写法                             | 组内实际成员                       | 当前选择 `now`   | 后果          |
-| -------------------------------- | ---------------------------- | ------------ | ----------- |
-| 不写（空组）                           | `["COMPATIBLE"]`             | `COMPATIBLE` | 直连，真实 IP 泄漏 |
-| `['AI']`                         | `["AI"]`                     | `AI`         | 静默走机场       |
-| `['REJECT']`                     | `["REJECT"]`                 | `REJECT`     | 阻断          |
-| `[primary, 'REJECT', 'AI']`（当年测法，带逃生口） | `["🏠 住宅-JP","REJECT","AI"]` | `🏠 住宅-JP`   | 直接走住宅，无手动步骤 |
+| 兜底写法 | 组内实际成员 | 当前选择 `now` | 后果 |
+| --- | --- | --- | --- |
+| 不写（空组） | `["COMPATIBLE"]` | `COMPATIBLE` | 直连，真实 IP 泄漏 |
+| `['AI']` | `["AI"]` | `AI` | 静默走机场 |
+| `['REJECT']` | `["REJECT"]` | `REJECT` | 阻断 |
+| `[primary, 'REJECT', 'AI']`（开启 `escapeToAI` 且节点存在） | `["🏠 住宅-JP","REJECT","AI"]` | `🏠 住宅-JP` | 直接走住宅；节点消失后 `now` 回落 `REJECT`，仅手动可切 `AI` |
 
-现在默认不带 `AI`（`escapeToAI: false`），成员就是前两项，上面几行的结论不变。
-
-再验证「已选中住宅节点、随后节点消失」：`members` 变为 `["REJECT","AI"]`，  
-`now` 回落到 `REJECT`，**不是 `AI`**，也不是 `COMPATIBLE`；此时 `PUT` 切到 `AI`  
-返回 204、`now` 变 `AI`，逃生口确实可用。
+默认不带 `AI`（`escapeToAI: false`），成员只有前两项。
 
 **桌面端首次使用**（`primary` 留空）：默认是 `REJECT`，AI 类站点打不开——在面板里把「住宅出口」  
 切到住宅节点一次即可，`store-selected: true` 会记住。  
@@ -360,26 +334,17 @@ primary: '住宅-JP',      // 订阅节点名带速度标记时，抄一段稳�
 
 ### 写在覆写 YAML 里（`x-smart`）
 
-`primary` / `inject` / `prefer` 是「每台机器都不一样」的，写死在脚本顶部等于每换一次订阅就 fork 一份。
-可以直接写在**排在 `smart.js` 之前**的覆写 YAML 里：
+建议把本机差异项（`primary` / `inject` / `prefer` 等）写在**排在 `smart.js` 之前**的本地覆写 YAML 里，避免改动主脚本：
 
 ```yaml
-x-smart:            # ← 不带 +（Clash Party 的 deepMerge 只对数组认 + 前缀）
+x-smart:            # ← 不带 +，且必须排在 smart.js 之前
   residential:
     primary: '住宅-JP'
     prefer: 'JP'
     # upstream 不写 = fill（挂前置）。只有人在海外才写 inject: strip
 ```
 
-- 对象**逐字段覆盖**：只写 `upstream.inject` 不会把 `upstream.group` 抹掉；
-- 读完会把 `x-smart` 从配置里删掉，内核看不到这个字段；
-- **顺序很关键**：YAML 排在 `smart.js` 后面时脚本已经跑完，读不到这份配置 ——
-  在面板里把它拖到 `smart.js` 之上。
-
-`x-smart` 能覆盖的**不只是住宅**：第 0 部分的所有对象（`appProxy` / `traffic` /
-`narrowTun` / `regionPriority` / `webrtcGuard` / `aiStaticToAI`）和两个顶层开关
-（`keepSubGroups` / `modeGuard`）都能写。完整键表、手机端写法、写错了会怎样，
-见 [自定义配置](custom-config.md) 与模板 [`x-smart.example.yaml`](../x-smart.example.yaml)。
+`x-smart` 支持第 0 部分的全部顶层键，逐字段合并后会自动从最终配置中剔除。完整键表、手机端 `USER_CONFIG` 写法与校验行为见 [自定义配置](custom-config.md) 与模板 [`x-smart.example.yaml`](../x-smart.example.yaml)。
 
 ## 没有家宽怎么办（`residential.enabled` 三态开关）
 
@@ -396,18 +361,16 @@ x-smart:            # ← 不带 +（Clash Party 的 deepMerge 只对数组认 +
 **`false` 和 `'auto'` 判成「没有家宽」后，行为完全一致**：两组都不生成、住宅链节点移除、
 相关规则全部改投 `AI`、7865 改绑 `AI`。区别只在「这次判定是谁做的」。
 
-### `'auto'` 还有效吗？——有效，代码没删，但它判的不是「有没有家宽」
+### `'auto'` 的判定边界：它只看「脚本运行时能不能看见节点」
 
-判定逻辑仍在 `resolveResidentialEnabled()` 里，2026-11-13 的改动只是把
-「判成无家宽之后做什么」统一成和 `false` 一样，并**没有取消 `auto` 模式**。
-它判的是「脚本这次运行时能不能看到住宅节点」：看不到就按无家宽处理，
-所以**有家宽也会被误判成没有**（见下文顺序陷阱）。另外它只在跑完整 `main()` 时生效。
-实测四种输入：
+`'auto'` 模式仍可用，判定逻辑在 `resolveResidentialEnabled()` 中，判成无家宽后的行为与 `false` 完全一致。
+但需要注意：它判的是「脚本这次运行时能不能看到住宅节点」（而非你是否真的配了家宽），
+因此**有家宽也可能因覆写顺序被误判成没有**，且只在跑完整 `main()` 时生效。四种常见场景：
 
 | 输入 | 判定 | 结果 |
 | --- | --- | --- |
-| 订阅里自带 `🏠 住宅-JP` | 有家宽 | 完整住宅链，14 条规则指住宅，7865 → `住宅出口` |
-| 一个住宅节点都没有 | 无家宽 | 两组不生成，52 条规则指住宅 **0** 条 / 落 AI **19** 条，7865 → `AI` |
+| 订阅里自带 `🏠 住宅-JP` | 有家宽 | 完整住宅链，AI 规则指住宅，7865 → `住宅出口` |
+| 一个住宅节点都没有 | 无家宽 | 两组不生成，AI 规则改投 `AI`，7865 → `AI` |
 | 有节点 `dialer-proxy: 前置-亚洲` 但名字不命中 `nodePattern` | 无家宽 | 该节点被移除（防悬空），其余同上 |
 | FlClash 公共版（`flclash.js`，`enabled: 'auto'` + 占位符节点） | 无家宽 | 同上，粘上去就能用；把 `nodes` 填成真的即走完整住宅链 |
 
@@ -440,12 +403,9 @@ x-smart:            # ← 不带 +（Clash Party 的 deepMerge 只对数组认 +
 
 **成员里永远不写 `AI`，前置组里永远不写 `DIRECT`**。住宅出口只允许「住宅 / 阻断」两种结果；
 前置组出现 DIRECT 就等于把机场跳板这层拆掉，住宅流量可能裸连住宅 IP。
-曾经做过一版「组名常驻 + `住宅出口` 成员塞 `AI` 纯转发 + `前置-亚洲` 降级惰性 select」，
-用来兜住外部覆写里手写的 `DOMAIN, challenges.cloudflare.com, 住宅出口`：结果是住宅组变成
-能切到机场共享 IP 的普通组、前置组丢光亚洲节点还混进 DIRECT，语义全乱，已回退。
-那些手写规则本来就该自己修（`ruleset/ai-strict.list` 里已有对应域名，删掉手写行即可）。
+若外部覆写里曾手写 `DOMAIN, challenges.cloudflare.com, 住宅出口` 等规则，在 `enabled: false` 时直接删掉手写行即可（`ruleset/ai-strict.list` 已包含对应域名）。
 
-「换成 `AI`」的落点：4 条 Android 包名 + 4 条桌面进程/路径 + `IP-ASN`/`IP-CIDR`/`IP-CIDR6`
+「换成 `AI`」的落点：4 条 Android 包名 + 3 条桌面路径（`Claude.app` / `/opt/homebrew/bin/claude` / `ChatGPT.app`）+ `IP-ASN`/`IP-CIDR`/`IP-CIDR6`
 （Anthropic 段）+ `RULE-SET,aiStrict` + `RULE-SET,residential` + `GEOSITE,anthropic` + 7865 端口。
 **规则条数、顺序、其它分流全部不变**，只是「住宅出口」这个词被换成了「AI」。
 `false` 时 7865 改绑 `AI` 而不是删掉，免得已经填了 `127.0.0.1:7865` 的应用变成 connection refused。
@@ -553,43 +513,3 @@ primary: '🏠 住宅-JP',   // 完整名（含 emoji，一字不差）；也可
 第二台住宅节点，见 [验证分流是否生效](verification.md)。
 
 > 新 IP 上线前先查一次欺诈评分（如 ip.net.coffee / scamalytics），脏 IP 别拿来登录账号。
-
-## 多出口同时分流（设计预案，**未实现**）
-
-上面那套「主力 + 备用」是「同一时间只用一个出口」。如果想两个住宅 IP **同时在线**、按服务商分流  
-（如 Claude→日本住宅、OpenAI→美国住宅），需要给 smart.js 加一套多出口机制。  
-方案已经想清楚，记录在此，需要时照此落地（预计 50 行重构 + 一份规则清单 + FlClash 同步）：
-
-**1. 三件套结构**。每个出口 = 出口组（select）+ 上游组（url-test）+ 规则集（rule-provider）：
-
-```js
-residential.extraExits = [
-  {
-    enabled: true,
-    group: '住宅-US',                              // 出口组，规则引用它
-    nodeFilter: '住宅.*(US|美)|WS.*(US|美)',        // 收编哪些节点
-    upstream: { group: '前置-美国', region: 'US' }, // region 复用 smartGroups 的地区 filter
-    rules: [{ provider: 'aiStrictUS', file: 'ai-strict-us.list' }],
-  },
-];
-```
-
-**2. 节点归属必须互斥**。主出口（住宅出口）要加 `exclude-filter` 排除其它出口的  
-`nodeFilter`——`🏠 住宅-US` 同时含「住宅」和「US」，不排除的话它会进两个组，分流错乱。
-
-**3. 上游组必须排除住宅节点**。`前置-美国` 的 filter 含 `US`，会把 `🏠 住宅-US`
-自己收进去形成 dialer 环（实测复现过），`exclude-filter` 里必须带上 `nodePattern`。
-
-**4. 规则集按服务商拆文件**。`ai-strict.list` 保留主出口的服务商，新增  
-`ai-strict-us.list` 放另一个出口的。想挪服务商 = 在两个文件之间搬域名行，不改代码。
-
-**5. 共享域名只能选一个家**。`challenges.cloudflare.com`（Turnstile 人机验证）是  
-Claude 和 OpenAI 登录页**共用**的，一条规则只能指向一个出口。主站和验证不同出口  
-会被风控判会话异常，所以它跟谁，另一家的登录验证就带着对方的出口 IP——这是  
-双出口方案固有的缝隙，只能权衡（建议跟使用最频繁、风控最严的那家走）。
-
-**6. 没配节点要能兜底**。出口组里放一个 `AI` 作兜底成员：该出口的节点没配或挂掉时，  
-对应服务商走机场，整体不断流。注意兜底成员引用的组必须真实存在。
-
-**7. FlClash 侧的差异**。手机脚本里出口组**不能**引用 `AI` 兜底——FlClash 常配精简  
-订阅，没有叫 AI 的组，引用不存在的组整个配置校验失败（实测）。出口组只放节点自身。

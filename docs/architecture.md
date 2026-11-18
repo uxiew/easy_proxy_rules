@@ -166,7 +166,7 @@ python3 -c "import sys,json;d=json.load(sys.stdin)['proxies'];[print(g,d[g]['typ
 # OT URLTest <某个亚洲节点>
 ```
 
-再跑一次真实请求确认出口国家（`https://api.ip.sb/geoip` 会回 `Osaka` 之类）。
+再跑一次真实请求确认出口国家（如 `curl -x http://127.0.0.1:7890 -s -A "Mozilla/5.0" https://api.ip.sb/geoip` 或 `https://ipinfo.io/json`）。
 
 ### 订阅自带的策略组会被保留
 
@@ -216,7 +216,8 @@ assets/                   图标资源
 claude-guard/             Claude Code 启动守卫 + 环境体检（详见 [claude-guard/README.md](../claude-guard/README.md)）
 ├── claude-guard.zsh      函数库：~/.zshrc 只 source 这一个文件
 ├── guard.conf            集中配置：端口 / 超时 / 白名单 / node 路径
-├── allowed-exit-ips      出口 IP 白名单（缺失或为空 → 拒绝启动）
+├── allowed-exit-ips      出口 IP 白名单（.gitignore 排除，缺失或为空 → 拒绝启动）
+├── .exit-ip.log          24h 出口稳定性日志（含真实出口 IP，受 .gitignore / scan-sensitive / sync-sensitive 保护）
 ├── config-check.mjs      生效配置「仅代理」判定（Node，零网络）
 ├── zshrc.snippet         ~/.zshrc 加载器片段（install / uninstall 用）
 ├── install.sh / uninstall.sh / selftest.zsh

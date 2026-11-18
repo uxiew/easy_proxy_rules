@@ -50,12 +50,16 @@ source "$_cg_repo/claude-guard/claude-guard.zsh"
 # <<< easy_proxy_rules / claude-guard <<<
 ```
 
-| 命令                  | 作用                                                     |
-| ------------------- | ------------------------------------------------------ |
-| `claude`            | 启动前 fail-closed：端口 → 出口 IP → 白名单 → 配置一致性             |
-| `claude-check`      | 只读体检：代理链路、生效配置「仅代理」判定、DNS、环境指纹                      |
-| `claude-guard-info` | 打印当前生效的规则目录与 `guard.conf` 取值                          |
-| `claude-guard-reload` | 改完 `guard.conf` 后热重载，不必新开终端                         |
+| 命令 | 作用 |
+| --- | --- |
+| `claude` | 启动前 fail-closed：端口 → 并行（出口 IP 查询 + Anthropic API 403 封锁探测）→ 白名单精确比对 → 配置一致性告警，确认后注入 `HTTP(S)_PROXY=127.0.0.1:7865`、`TZ` 与 `ipv4first` 并记入 `.exit-ip.log` |
+| `claude-check` | 只读 8 维环境画像体检与 0–100 综合评分（含关键项一票否决）：代理链路、API 可达与出口地区、7890/7865 分流一致性与系统 PAC、ISP（住宅/IDC 识别）与 CF Edge Colo、生效配置「仅代理」判定、DNS 与时区自洽、IPv6 旁路与 24h 出口稳定性统计、评分汇总 |
+| `claude-guard-info` | 打印当前生效的规则目录与 `guard.conf` 取值 |
+| `claude-guard-reload` | 改完 `guard.conf` 后热重载，不必新开终端 |
+
+> **CLI 终端守卫与内核 `PROCESS-PATH` 规则的互补边界**：
+> - **`claude-guard`（终端前置守卫）**：仅覆盖在交互式 zsh 中通过 `claude()` 包装函数启动的会话，负责启动前 fail-closed 拦截（白名单精确匹配 + API 403 地区/风控探测）与环境变量/时区指纹注入。
+> - **内核 `PROCESS-PATH,/opt/homebrew/bin/claude,住宅出口`（流量侧兜底）**：位于 `smart.js` 的 `appProxy.processes`（需开启 TUN / 窄 TUN 且流量进内核），当通过 `command claude`、绝对路径或 IDE 内置终端等路径绕过 shell 包装函数时，仍能把该二进制流量按到「住宅出口」；但它不做白名单精确 IP 比对与 API 403 拦截，因此两者互补、各自守住不同入口。
 
 判定口径集中在 [`claude-guard/guard.conf`](../claude-guard/guard.conf)，出口 IP 白名单在
 [`claude-guard/allowed-exit-ips`](../claude-guard/allowed-exit-ips)，`settings.json` 的 `env` 参考模板在

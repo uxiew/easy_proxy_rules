@@ -31,9 +31,13 @@ git config core.hooksPath .githooks
 node scripts/sync-sensitive.mjs      # 从本地凭据生成 .sensitive-patterns
 ```
 
-`sync-sensitive.mjs` 读 `flclash-credentials.json` 的 `config.residential.nodes`
-（旧写法的顶层 `nodes` / 单节点也认）里每台的 `server`/`username`/`password`，
-和 `claude-guard/allowed-exit-ips` 的每一行，写进 `.sensitive-patterns`（已被 `.gitignore` 排除）。
+`sync-sensitive.mjs` 汇总以下本地敏感源并写入 `.sensitive-patterns`（所有源文件与输出均已被 `.gitignore` 排除）：
+
+- `flclash-credentials.json` 的 `config.residential.nodes`（兼容旧写法顶层 `nodes` / 单节点）中每台的 `server`/`username`/`password`；
+- `claude-guard/allowed-exit-ips` 的每一行有效 IPv4；
+- `claude-guard/.exit-ip.log`（`claude-guard` 每次放行时以 `600` 权限记录的 24h 出口稳定性日志，含真实出口 IP 与时间戳）。
+
+同时，`claude-guard/.exit-ip.log` 已被 `.gitignore` 排除、列入 `scripts/scan-sensitive.mjs` 的 `FORBIDDEN_PATH` 禁止入库路径，并由 `sync-sensitive.mjs` 纳入精确敏感值名单（防止历史出口 IP 泄漏进仓库或提交信息）。
 
 **换了出口 IP 或密码之后必须重跑** `node scripts/sync-sensitive.mjs`，否则新值不在名单里。
 

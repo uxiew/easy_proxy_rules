@@ -1,6 +1,6 @@
 # 踩过的坑（改配置前必看）
 
-32 条实测踩坑记录，按编号引用；改规则、换订阅、换客户端之前先扫一遍。
+实测踩坑记录，按编号索引（保留稳定编号，便于代码注释与文档交叉引用）；改规则、换订阅、换客户端之前先扫一遍。
 
 > ← [文档索引](README.md) · [仓库首页](../README.md)
 
@@ -142,10 +142,9 @@ FlClash 的 TUN 自己管 DNS，脚本再覆盖会抢端口/绕成环。手机�
 
 ## 坑 15 · 网络阻断外部 UDP 53 时，域名型 DoH 会死在引导阶段（表现为「直连也超时」）
 
-2026-11-04 实测：`dig @223.5.5.5` / `@119.29.29.29` / `@8.8.8.8` 全部 `i/o timeout`
-（连续 3 次都一样），但 `ping 223.5.5.5` 通、路由器 DNS `192.168.31.1` 能正常解析。
-原来的 `default-nameserver: ['223.5.5.5', …]` 配上 `nameserver: ['https://doh.pub/dns-query', …]`
-正好踩中死循环：**要解析 `doh.pub` 得先有 DNS，而唯一可用的入口是被阻断的 UDP 53**。
+部分网络环境会阻断外部明文 UDP 53（表现为 `dig @223.5.5.5` / `@119.29.29.29` / `@8.8.8.8` 全部 `i/o timeout`），但 `ping 223.5.5.5` 正常、路由器内网 DNS（如 `192.168.1.1`）可正常解析。
+如果配置里写的是 `default-nameserver: ['223.5.5.5', …]` 配上 `nameserver: ['https://doh.pub/dns-query', …]`，
+就会踩中死循环：**要解析 `doh.pub` 得先有 DNS，而唯一可用的入口是被阻断的 UDP 53**。
 症状不是「代理连不上」，而是**所有直连域名解析失败**——内核日志刷
 `dial DIRECT (match GeoSite/cn) … error: dns resolve failed: read udp …->223.5.5.5:53: i/o timeout`，
 用户感知就是「直连也超时、百度都打不开」。
@@ -153,21 +152,19 @@ FlClash 的 TUN 自己管 DNS，脚本再覆盖会抢端口/绕成环。手机�
 修法两条，缺一不可：
 
 - DoH 一律写成 **IP 型**：`https://1.12.12.12/dns-query`（DNSPod）。
-  它不需要任何域名引导，加密查询也不存在明文污染——实测
-  `www.google.com` / `www.youtube.com` / `x.com` / `github.com` 全返回真实 IP，
-  `jp.jisu16.top → 140.238.53.202`（真实 Oracle 东京）。
-- `default-nameserver` 把路由器 DNS 放第一位兜底（`192.168.31.1`），后面再挂公网 IP，
+  它不需要任何域名引导，加密查询也不存在明文污染——`www.google.com` / `www.youtube.com` /
+  `x.com` / `github.com` 与节点域名（如 `node.example.com`）都能解析出真实 IP。
+- `default-nameserver` 把路由器内网 DNS 放前面兜底（如 `192.168.1.1`，按实际网关地址填写），后面再挂公网 IP，
   换到 UDP 53 正常的网络时仍然工作。
 
-顺带把 `https://1.1.1.1` / `https://8.8.8.8` 从 `nameserver` / `fallback` 里拿掉了：
-它们在本机直连是 `000`（5s 超时），只能经代理访问（3.2s，且 8.8.8.8 返回 400），
-留在主链路上只会拖慢每一次解析。
+顺带把 `https://1.1.1.1` / `https://8.8.8.8` 从直连 `nameserver` / `fallback` 里拿掉了：
+它们在国内直连容易超时，留在主链路上只会拖慢每一次解析。
 
 排查命令：
 
 ```bash
 dig +time=2 +tries=1 @223.5.5.5 www.baidu.com        # 超时 → UDP 53 被阻断
-dig +time=2 +tries=1 @192.168.31.1 www.baidu.com     # 有结果 → 路由器 DNS 可用
+dig +time=2 +tries=1 @<路由器DNS> www.baidu.com       # 有结果 → 路由器 DNS 可用
 curl -s -H 'accept: application/dns-json' \
   'https://1.12.12.12/dns-query?name=www.baidu.com&type=A'   # 200 → IP 型 DoH 可用
 ```
@@ -230,7 +227,7 @@ rules, _ := appendRules(mappingValue(root, "rules"), mappingValue(profile, "rule
 （`节点选择`、`🛑 广告拦截`…）时则是 `proxy [xxx] not found`。
 
 为什么以前没事：之前的订阅都是**纯节点**（0 条 rules），追加 0 条自然无感。
-138top 那种 594 条 DOMAIN 规则的订阅一样会炸，只是报的是 `proxy not found`。
+部分自带数百条 DOMAIN 规则的订阅一样会炸，只是报的是 `proxy not found`。
 
 现在 `smart.js` 的 FlClash 分支（`mode: 'flclash'`）会自动兜底：
 
@@ -295,27 +292,9 @@ AI 流量静默退回机场（出口 IP 从住宅变成机场共享 IP，**不�
 后置覆写注入的 `🏠 住宅-JP` 照样进组，**排前排后都一样**；`primary` 有值（FlClash 构建 /
 桌面手写）时组是锁定的，成员只有那一台 + `REJECT`，见 [多台住宅 IP](configuration.md)。
 只有「订阅里自带住宅节点、脚本运行时就能看到」的场景才用 `'auto'`；
-确实没有家宽就用 `false`，别指望 `auto` 替你判断。
+确实没有家宽就用 `false`（并同步删掉外部覆写中手写指向 `住宅出口` 的规则，以免报 `proxy not found`），别指望 `auto` 替你判断。
 一个额外边界：不跑 `main()` 的纯数据提取路径下 `'auto'` 等同 `true`（完全不探测），
-详见 [auto 还有效吗](configuration.md)。
-
-## 坑 22 · 别为了兜外部手写规则，把住宅组改成「成员转发 AI」
-
-2026-11-13 走过一次弯路：为了修复用户覆写里手写的
-`DOMAIN, challenges.cloudflare.com, 住宅出口`（组被删掉后报 `rules[0] ... not found`），
-做成「组名常驻 + 成员塞 `AI` 纯转发」，并把 `前置-亚洲` 降级成惰性 `select`：
-
-```text
-住宅出口 = [AI, REJECT]                 ← 变成能切到机场共享 IP 的普通组
-前置-亚洲 = select [首个亚洲节点, DIRECT] ← 亚洲节点全丢，还混进 DIRECT
-```
-
-两处都破坏了原设计：住宅出口只允许「住宅 / 阻断」，前置组出现 DIRECT 等于拆掉机场跳板。
-正确修法是**改外部覆写**：`ruleset/ai-strict.list` 里已有
-`DOMAIN-SUFFIX,challenges.cloudflare.com` 和 `DOMAIN-SUFFIX,withpersona.com`，
-把手写的 `DOMAIN,` 行删掉即可。节点上的 `dialer-proxy: 前置-亚洲` 也不需要靠
-「把前置组偷偷建回来」兜底：`enabled: false` 时脚本会把这类住宅链节点直接移除，
-两个组名彻底不存在，符合「没有家宽就不需要住宅和前置组」。
+详见 [auto 的判定边界](configuration.md)。
 
 ## 坑 23 · Android 上 `detectradar` 报 WebRTC/DNS 暴露，不是配置写错，是平台边界
 
@@ -383,8 +362,9 @@ DNS 暴露。原因不在 YAML，也不在构建产物：
 **订阅给的家宽节点不是**——订阅只保证「这个节点能连」，它不知道你要不要跳板。
 于是很容易出现「配了住宅链，实际却是裸直连海外住宅」：能通，但慢、抖，还以为是住宅商的问题。
 
-2026-11-17 起 `residential.upstream.inject`（默认 `true`）会给命中的节点补上 `dialer-proxy`，
-server/port/密码一个字不动；`type: http` 的跳过（坑 5）。
+`residential.upstream.inject`（默认 `true` / `'fill'`）会给命中的住宅节点（包括 `type: http`，
+对应 `upstream.allowHttp: true`，见 [坑 5](#坑-5--type-http-配-dialer-proxy能用但只从-v119x-起)）
+补上 `dialer-proxy`，server/port/密码一个字不动；仅当节点缺少 `type` 字段，或显式把 `allowHttp` 设为 `false` 时才跳过。
 人在海外、直连网关干净可达时，这一跳是纯绕路 → 把 `inject` 设 `'strip'`
 （人在国内别这么干，直连海外网关会被墙，见坑 32）。
 
@@ -453,7 +433,7 @@ curl -s -m 10 -x http://127.0.0.1:7865 http://www.gstatic.com/generate_204 -o /d
 
 # 3) 内核日志：本机 → 住宅端口，读的第一下就被 reset
 grep 'dial 住宅出口.*error' <内核日志>
-# ... error: read tcp 192.168.31.24:56094->203.0.113.10:7012: read: connection reset by peer
+# ... error: read tcp <本机内网IP>:56094->203.0.113.10:7012: read: connection reset by peer
 ```
 
 **能连上 ≠ 能用**。握手阶段被 reset 只有四种原因，全在住宅商那侧：

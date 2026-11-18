@@ -119,9 +119,9 @@ x-smart:                 # ← 不要写 +x-smart
 | 键 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `ports` | 数组 | `[{ residential-in, 7865, 住宅出口 }]` | 专用端口：进这个端口跳过规则；仅桌面端 |
-| `processes` | 数组 | `[]` | `{ value, type?, proxy }`，`type` 可为 `path` / `path-regex` / `name-regex` |
+| `processes` | 数组 | 内置 **9 条**（4 条 Android 包名 + macOS `Claude.app` / `/opt/homebrew/bin/claude` / `ChatGPT.app` / `Antigravity.app` / `/opt/homebrew/bin/agy`） | `{ value, type?, proxy }`，`type` 可为 `path` / `path-regex` / `name-regex` / `uid` |
 
-数组是**整体替换**：写 `ports` 就等于把默认的 7865 那条也换掉，想保留就一起写上。
+数组是**整体替换**：写了 `ports` 或 `processes` 会完整覆盖默认条目（例如写 `ports` 会换掉默认的 `7865`，写 `processes` 会换掉默认的 9 条内置规则），想保留请把默认条目一并写上。
 
 ### `traffic` / `narrowTun` / `regionPriority` / `webrtcGuard` / `aiStaticToAI`
 

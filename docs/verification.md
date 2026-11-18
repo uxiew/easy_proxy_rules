@@ -6,17 +6,20 @@
 
 ---
 
-最快的两条命令：`ip=` 是住宅 IP，说明「规则 → 组 → 节点」这条链通了。
+最快的验证方式（Claude Code 用户也可直接跑 `claude-check` 一键体检）：
 
 ```bash
-# 看某个域名实际走了哪个出口（Claude 域名会走住宅）
+# Claude Code 用户一键核验（双端口出口一致性 / API 401·403 / ISP 类型 / Edge Colo / 0–100 评分）
+claude-check
+
+# 看某个域名实际走了哪个出口（7890 规则端口下 Claude 域名应走住宅）
 curl -x http://127.0.0.1:7890 https://claude.ai/cdn-cgi/trace | grep -E '^ip=|^loc='
 
 # 验证住宅专用端口（7865）—— 访问任何域名都应返回住宅 IP
 curl -x socks5h://127.0.0.1:7865 https://claude.ai/cdn-cgi/trace | grep -E '^ip=|^loc='
 ```
 
-> 别用 `api.ip.sb` 验证住宅出口——它走 `forGlobal → AUTO`，显示机场 IP 是正常的。
+> **关于 `api.ip.sb` 的端口差异**：只有走 **7890（规则端口）** 时，`api.ip.sb` 才会落入 `forGlobal → AUTO`（显示机场 IP 属正常）；走 **7865（住宅专用端口）** 时跳过规则直接走「住宅出口」，查的就是住宅出口。注意 `api.ip.sb/geoip` 需带 `-A "Mozilla/5.0"`，否则裸 `curl` 可能被 Cloudflare 返回 HTML，也可改用 `https://ipinfo.io/json`。
 
 最直接的证据是内核日志，它会打出命中的规则和最终出口：
 
@@ -171,8 +174,9 @@ grep -c "name: 前置-" work/config.yaml
 curl -s http://127.0.0.1:9090/proxies | jq '.proxies["住宅出口"] | {now, all: (.all|length), all0: .all[0]}'
 #   期望：now = 那台东京住宅，all 长度 2（[那台, REJECT]）
 
-# ③ 出口到底是不是家宽 —— 看 ASN，不看城市
-curl -x http://127.0.0.1:7865 -s https://api.ip.sb/geoip | jq '{ip,country,city,asn,isp}'
+# ③ 出口到底是不是家宽 —— 看 ASN，不看城市（走 7865 住宅端口；加 UA 防 Cloudflare 返回 HTML，或改查 ipinfo.io/json）
+curl -x http://127.0.0.1:7865 -s -A "Mozilla/5.0" https://api.ip.sb/geoip | jq '{ip,country,city,asn,isp}'
+# 兜底：curl -x http://127.0.0.1:7865 -s https://ipinfo.io/json | jq '{ip,country,city,org}'
 #   住宅 IP 的 asn/isp 会显示运营商名（如 NTT / KDDI），机场节点显示机房名（Vultr / Hetzner）
 ```
 
