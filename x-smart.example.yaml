@@ -84,7 +84,8 @@ x-smart:
 
   # ---------- 其它 ----------
   # webrtcGuard:
-  #   enabled: false           # true = 拦 STUN 探测（会打断语音/视频）
+  #   enabled: false           # true = 拦 STUN 探测（自动移除 +.stun.* 假 IP 豁免；会打断语音/视频）
+  #   blockQuic: true          # true = 拦 UDP 443（QUIC 秒退 TCP 443，消除无 UDP 住宅首包挂起，不影响语音）
   # aiStaticToAI:              # AI 静态资源 / 安装包 → 机场（不烧住宅流量）
   #   - 'DOMAIN-SUFFIX,oaistatic.com'
   #   - 'DOMAIN-SUFFIX,downloads.claude.ai'

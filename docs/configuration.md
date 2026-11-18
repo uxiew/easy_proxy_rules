@@ -34,7 +34,8 @@
 | `residential.upstream.filter`  | 显式亚洲关键词         | 跳板池节点名匹配：日/港/台/韩/新/越/马/泰/菲（多字词，见 [坑 8](troubleshooting.md)）。**已与 `smartGroups.JP` 解耦**，改地区组不会连带改跳板池                         |
 | `traffic.domesticDirect`       | `true`          | 追加 `GEOSITE,cn → DIRECT`（`GEOIP,CN` 对 fake-ip 域名无效）                                                  |
 | `traffic.appleDirect`          | `true`          | Apple 全家桶直连（iCloud 同步/App Store 原来走机场，最费流量）                                                          |
-| `webrtcGuard.enabled`         | `false`         | 拦截常见 STUN 探测：`DST-PORT 3478/5349/19302-19309` + `DOMAIN-KEYWORD,stun` → `REJECT`。**会同时打断 Google Meet、微信语音、游戏语音**，且拦不住「从未进入内核的 UDP」。见下文「WebRTC 探测要不要拦」 |
+| `webrtcGuard.enabled`         | `false`         | 拦截常见 STUN 探测：`DST-PORT 3478/5349/19302-19309` + `DOMAIN-KEYWORD,stun` → `REJECT`（开启时自动把 `+.stun.*` 移出 `fake-ip-filter` 以便进窄 TUN）。**会同时打断 Google Meet、微信语音、游戏语音** |
+| `webrtcGuard.blockQuic`       | `true`          | 拦截 `UDP 443`（QUIC / HTTP3）：立即 `REJECT` 让客户端毫秒级回退标准 TCP 443，消除无 UDP 住宅代理上的 QUIC 超时挂起与 UDP 443 旁路，不影响语音通话 |
 
 ## 模式守卫（`modeGuard`）
 
@@ -77,14 +78,15 @@ const modeGuard = false;   // 想交还面板控制时改成 false
 
 开关在 `DEFAULT_CONFIG.webrtcGuard`（可用 `x-smart` 覆盖）：
 
-```js
-const webrtcGuard = {
-  enabled: false, // true = 拦截；会打断网页通话，见下
-};
+```yaml
+x-smart:
+  webrtcGuard:
+    enabled: false    # true = 拦截 STUN（同时移出 fake-ip-filter 的 +.stun.*）；会打断网页/微信语音
+    blockQuic: true   # true = 拦截 UDP 443（QUIC 立即退回 TCP 443，不影响语音）
 ```
 
-规则插入点固定在**内网/必要技术规则之后、AI 业务规则之前**——放前面会把内网和节点流量一起拦掉，
-放后面会被进程规则、AI 规则先接走，等于没装。关着的时候连 `rule-providers` 都不生成，
+规则插入点固定在**内网回环（`LAN`/`private`）之后、进程规则与 AI 业务规则之前**（同时前置 `IP-CIDR6,2607:6bc0::/32,REJECT` 迫使 Anthropic IPv6 立即回退 IPv4，避免无 IPv6 出站能力的 HTTP 住宅代理返回 `502`）——放前面会把内网流量拦掉，
+放后面会被 `Claude.app` 等进程规则和 AI 规则抢先接走，等于没装。`enabled: false` 时不生成 `webrtcGuard` 的 `rule-provider`，
 不会产生任何下载请求。
 
 **它拦不到什么（别把它当成「关闭 WebRTC」）：**

@@ -86,6 +86,10 @@ source "$_cg_repo/claude-guard/claude-guard.zsh"
    - **怎么做**：在外连热点或陌生 Wi-Fi 时，只用终端 `claude`；若必须用桌面端 `Claude.app`，先跑 `dig +short claude.ai` 确认返回 `198.18.x.x`（若返回非 `198.18` 的真实 IP，把系统 DNS 改成 `223.5.5.5` 或在面板临时开全量 TUN）。
    - **为什么**：手机热点（常为 `172.20.10.1`）和酒店路由器（`192.168.x.1`）下发的本地 DNS 不在窄 TUN 的静态劫持列表内，会导致不读系统代理的子进程逃出 TUN；同时 USB 共享网络等新接口默认会重新拿到运营商公网 IPv6（终端敲 `claude` 时守卫会自动检测并黄字告警）。
 
+6. **Office / 浏览器里的 Claude 扩展（如 Microsoft 365 Claude 加载项）**
+   - **怎么做**：保持 macOS 系统代理开启（`127.0.0.1:7890`）即可，**不要**去写宽泛的 `PROCESS-NAME-REGEX,.*Claude.*` 进程规则。
+   - **为什么**：macOS 上的 Office 加载项运行在系统 `WebKit` 容器内，本身遵循系统代理 `7890`，其访问的 `anthropic.com`（含 `assets-proxy` / `s-cdn` 子域）、`claude.ai` 与 `servd-anthropic-website.b-cdn.net` 均已被 `ai-strict.list` 导向「住宅出口」；乱加宽泛进程名正则不仅在 macOS 16 字节进程名截断下容易失配，还会把无关下载工具卷进按量计费的住宅流量。
+
 判定口径集中在 [`claude-guard/guard.conf`](../claude-guard/guard.conf)，出口 IP 白名单在
 [`claude-guard/allowed-exit-ips`](../claude-guard/allowed-exit-ips)，`settings.json` 的 `env` 参考模板在
 [`claude-guard/claude-settings.example.json`](../claude-guard/claude-settings.example.json)。

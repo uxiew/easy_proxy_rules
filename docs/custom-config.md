@@ -136,7 +136,8 @@ x-smart:                 # ← 不要写 +x-smart
 | `regionPriority.targets` | 对象 | `{AUTO:[…], AI:[…]}` | 组 → 地区顺序 |
 | `regionPriority.othersGroup` | 字符串 | `'OT'` | 「其它地区」兜底组，`''` = 不留 |
 | `regionPriority.interval` | 数字 | `120` | fallback 组检查间隔（秒） |
-| `webrtcGuard.enabled` | 布尔 | `false` | 拦 STUN 探测，**会打断语音** |
+| `webrtcGuard.enabled` | 布尔 | `false` | 拦 STUN 探测（开启后联动从 `fake-ip-filter` 移除 `+.stun.*`），**会打断语音** |
+| `webrtcGuard.blockQuic` | 布尔 | `true` | 拦 UDP 443（QUIC 秒退 TCP 443），防无 UDP 住宅节点挂起与 QUIC 旁路，**不影响语音** |
 | `aiStaticToAI` | 字符串数组 | 4 条 | AI 静态资源 / 安装包走机场（不烧住宅） |
 
 ### 顶层开关
