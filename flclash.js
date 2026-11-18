@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-18 12:42:29
- * 源文件      : smart.js  sha256:8c21af906657  2529 行 / 126610 字节
- * 源码提交    : 6b94761
+ * 构建时间    : 2026-11-18 14:04:38
+ * 源文件      : smart.js  sha256:f14e8cff982d  2532 行 / 126959 字节
+ * 源码提交    : df4a952
  * 构建命令    : node build-flclash.js
  * 住宅节点    : （未配置）AI 走 AI 组
  *
@@ -102,8 +102,8 @@ const USER_CONFIG = {
 //         "proxy": "住宅出口"
 //       },
 //       {
-//         "value": "/opt/homebrew/bin/claude",
-//         "type": "path",
+//         "value": "^/opt/homebrew/(bin/claude$|Caskroom/claude-code)",
+//         "type": "path-regex",
 //         "proxy": "住宅出口"
 //       },
 //       {
@@ -139,7 +139,9 @@ const USER_CONFIG = {
 //     "aiRouteAddress": [
 //       "223.5.5.5/32",
 //       "119.29.29.29/32",
-//       "198.18.0.0/16"
+//       "198.18.0.0/16",
+//       "160.79.104.0/21",
+//       "2607:6bc0::/32"
 //     ],
 //     "routeAddress": [
 //       "142.250.0.0/15",
@@ -386,7 +388,8 @@ const DEFAULT_CONFIG = {
       { value: 'com.anthropic.claude', proxy: '住宅出口' },
       // 桌面端 Electron：真正建连的是 Helper 子进程，用路径正则匹配整个 .app
       { value: '^/Applications/Claude\\.app/', type: 'path-regex', proxy: '住宅出口' },
-      { value: '/opt/homebrew/bin/claude', type: 'path', proxy: '住宅出口' },
+      // Homebrew Cask 的 /opt/homebrew/bin/claude 是软链接，内核 proc_pidpath 拿到的是解引用后的 Caskroom/<ver>/claude
+      { value: '^/opt/homebrew/(bin/claude$|Caskroom/claude-code)', type: 'path-regex', proxy: '住宅出口' },
       { value: '^/Applications/ChatGPT\\.app/', type: 'path-regex', proxy: '住宅出口' },
       { value: '^/Applications/Antigravity\\.app/', type: 'path-regex', proxy: 'AI' },
       { value: '/opt/homebrew/bin/agy', type: 'path', proxy: 'AI' },
@@ -420,11 +423,13 @@ const DEFAULT_CONFIG = {
   // ------------------------------------------------------------
   narrowTun: {
     enabled: true, // false = 完全不动 tun，交给面板
-    includeAI: true, // 额外接管「系统 DNS + fake-ip 段」，收进 ChatGPT 后台常驻连接
+    includeAI: true, // 额外接管「系统 DNS + fake-ip + Anthropic 网段」，收进后台常驻与直连 IP 连接
     aiRouteAddress: [
       '223.5.5.5/32', // 系统 DNS
       '119.29.29.29/32', // 备用 DNS，兜住路由器下发的 ISP DNS
       '198.18.0.0/16', // fake-ip 段，域名流量进内核的入口
+      '160.79.104.0/21', // Anthropic 官方 IPv4 段：防子进程绕过代理与 fake-ip 直连 IP 裸出
+      '2607:6bc0::/32', // Anthropic 官方 IPv6 段
     ],
     // 实测见过的 Google 段（并集，不是官方完整列表）；换了后端就用 lsof 看它连哪
     routeAddress: [
