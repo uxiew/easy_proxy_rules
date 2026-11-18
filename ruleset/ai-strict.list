@@ -57,8 +57,11 @@ DOMAIN-SUFFIX,auth0.com
 
 # --- Claude 的 KYC 与反欺诈 ---
 
-# 证件核验（Persona Identities）
+# 证件核验与通知回跳（Persona Identities）
 DOMAIN-SUFFIX,withpersona.com
+DOMAIN-SUFFIX,frompersona.com
+# 如遇 KYC 地址自动补全校验，可临时取消下一行注释（平时不开以免网页内嵌地图走住宅）：
+# DOMAIN,maps.googleapis.com
 # 注册/支付反欺诈打分
 DOMAIN-SUFFIX,sift.com
 DOMAIN-SUFFIX,siftscience.com
@@ -84,13 +87,17 @@ DOMAIN-SUFFIX,signalr.net
 DOMAIN-SUFFIX,statsigapi.net
 DOMAIN-SUFFIX,featuregates.org
 DOMAIN,cdn.growthbook.io
-DOMAIN,browser-intake-us5-datadoghq.com
 DOMAIN,cdn.usefathom.com
-# 服务端日志摄取（CLI / 桌面端上报用，与上面的 browser-intake 是同一厂商的两个入口）。
-# 2026-11-14 实测：原来只有 ai.yaml 的 DOMAIN-KEYWORD,datadog 兜住，首条命中落到
-# forAI → AI 组（机场大阪），和主站出口不一致。精确域名放这里，排在上面的 aiStrict 更前，即可钉回住宅。
-DOMAIN,http-intake.logs.us5.datadoghq.com
-DOMAIN,http-intake.logs.datadoghq.com
+# Datadog 遥测：必须全后缀 + 连字符独立根域一起覆盖，否则漏网请求会掉进后面
+# ai.yaml 的 DOMAIN-KEYWORD,datadog（走机场 AI 组），造成遥测 IP 与主站住宅 IP 分裂。
+# 注意 browser-intake-*-datadoghq.com 中间是连字符不是点，不属于 datadoghq.com 子域。
+DOMAIN-SUFFIX,datadoghq.com
+DOMAIN-SUFFIX,datadoghq.eu
+DOMAIN,browser-intake-datadoghq.com
+DOMAIN,browser-intake-us3-datadoghq.com
+DOMAIN,browser-intake-us5-datadoghq.com
+DOMAIN,browser-intake-eu1-datadoghq.com
+DOMAIN,browser-intake-ap1-datadoghq.com
 # 前端报错上报（流量极小）
 DOMAIN-SUFFIX,sentry.io
 
@@ -176,8 +183,6 @@ DOMAIN-SUFFIX,cohere.ai
 # 其他有账号体系的 AI 服务
 # ------------------------------------------------------------
 DOMAIN-SUFFIX,poe.com
-DOMAIN-SUFFIX,meta.ai
-DOMAIN-SUFFIX,metademolab.com
 # Cursor IDE（含 cursor.sh / api）
 DOMAIN-SUFFIX,cursor.com
 DOMAIN-SUFFIX,cursor.sh
