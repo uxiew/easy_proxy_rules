@@ -1,6 +1,8 @@
 #!url=https://gitee.com/uxiew/share/raw/main/rules.module
 #!name=！个人自定义规则
 #!desc=解决未被添加到配置文件，和模块中的一些网址。
+# 注意：本模块仅作早期通用补充规则，不含静态住宅链式跳板与完整 ai-strict.list；
+#       在 iOS 上运行 Claude App 的链式节点与防封要求见 docs/clients.md。
 
 # sr: 2025-3-26 23:35:19
 [General]

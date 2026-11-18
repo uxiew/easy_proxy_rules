@@ -1,6 +1,6 @@
-# 桌面客户端接入
+# 客户端接入与防封注意事项
 
-Claude Code、启动守卫、常驻会话、pf 硬阻断与 Proxifier 的接法。
+Claude Code、启动守卫、桌面端与移动端（Android / iOS）防漏防封清单、pf 硬阻断与 Proxifier 接法。
 
 > ← [文档索引](README.md) · [仓库首页](../README.md)
 
@@ -62,7 +62,19 @@ source "$_cg_repo/claude-guard/claude-guard.zsh"
 > - **`claude-guard`（终端前置守卫）**：仅覆盖在交互式 zsh 中通过 `claude()` 包装函数启动的会话，负责启动前 fail-closed 拦截（白名单精确匹配 + API 403 地区/风控探测）与环境变量/时区指纹注入。
 > - **内核 `PROCESS-PATH-REGEX,^/opt/homebrew/(bin/claude$|Caskroom/claude-code),住宅出口`（流量侧兜底）**：位于 `smart.js` 的 `appProxy.processes`（需开启窄 TUN 且流量进内核）。Homebrew Cask 安装的 `/opt/homebrew/bin/claude` 是软链接，macOS 内核 `proc_pidpath` 拿到的是解开后的真实路径 `/opt/homebrew/Caskroom/claude-code@latest/<版本>/claude`，只写精确路径会永远失配，因此必须用路径正则；当通过 `command claude` 或 IDE 内置终端绕过 shell 包装函数时，仍能把流量按到「住宅出口」。
 
-## Claude 各客户端防漏注意事项
+判定口径集中在 [`claude-guard/guard.conf`](../claude-guard/guard.conf)，出口 IP 白名单在
+[`claude-guard/allowed-exit-ips`](../claude-guard/allowed-exit-ips)，`settings.json` 的 `env` 参考模板在
+[`claude-guard/claude-settings.example.json`](../claude-guard/claude-settings.example.json)。
+自检：在本仓库执行 `zsh claude-guard/selftest.zsh`（全程用临时夹具，不碰真实配置、不联网）。
+
+> ⚠️ **这里原先贴过一份内联守卫代码，已废弃**：它用 `awk '/name: .*住宅-JP/'` 从 mihomo 配置取期望节点 IP，  
+> 但面板里节点实际叫 `🏠 住宅-JP`，匹配恒为空 → `expect` 为空时 IP 一致性校验被静默跳过，  
+> 等于「看着 OK、实则不设防」。现行版本改成显式白名单，**白名单缺失或为空直接拒绝启动**。
+
+细节（fail-closed 判定顺序、速度约定、`claude-check` 输出解读、故障排查）见
+[`claude-guard/README.md`](../claude-guard/README.md)。
+
+## 桌面端防漏注意事项（Claude.app / 网页 / 加载项）
 
 不同形态的 Claude 客户端对代理的遵循程度不同，日常按以下优先级与规矩操作：
 
@@ -76,7 +88,7 @@ source "$_cg_repo/claude-guard/claude-guard.zsh"
 
 3. **开启语音模式或防 WebRTC 打洞（STUN）泄露**
    - **怎么做**：平时不用微信/会议语音时，在本地覆写 `x-smart` 打开 `webrtcGuard: { enabled: true }`；若常用 Chrome 网页版，给 Chrome 配置受管策略 `WebRtcIPHandling=disable_non_proxied_udp`（修改后需 `⌘Q` 重启 Chrome，在 `chrome://policy` 确认状态为 `Set`）。
-   - **为什么**：WebRTC（网页实时通信，语音对话 LiveKit 等会用到）走 UDP 打洞（STUN 协议），**根本不经过 `7890` 系统 HTTP/SOCKS 代理**；且 `fake-ip-filter` 默认放行 `+.stun.*` 返回真实服务器 IP，在窄 TUN 下会顺着默认路由直连国内宽带，把真实公网 IP 暴露给对端（注意：`Claude.app` 是独立 Electron 应用，不读 Chrome 的受管策略文件）。
+   - **为什么**：WebRTC（网页实时通信，语音对话 LiveKit 等会用到）走 UDP 打洞（STUN 协议），**根本不经过 `7890` 系统 HTTP/SOCKS 代理**；默认 `webrtcGuard.enabled: false` 时 `fake-ip-filter` 会放行 `+.stun.*` 返回真实服务器 IP（开启 `enabled: true` 后脚本会自动移出该豁免），在窄 TUN 下会顺着默认路由直连国内宽带，把真实公网 IP 暴露给对端（注意：`Claude.app` 是独立 Electron 应用，不读 Chrome 的受管策略文件）。
 
 4. **桌面端 `Claude.app` 的本地 MCP 与内置虚拟机（Cowork）**
    - **怎么做**：在 `~/Library/Application Support/Claude/claude_desktop_config.json` 配置需要联网访问海外接口的 `mcpServers` 时，在对应服务的 `"env"` 里显式加上 `"HTTPS_PROXY": "http://127.0.0.1:7865"`（不涉及 AI 风控的普通工具填 `7890`）。
@@ -90,17 +102,53 @@ source "$_cg_repo/claude-guard/claude-guard.zsh"
    - **怎么做**：保持 macOS 系统代理开启（`127.0.0.1:7890`）即可，**不要**去写宽泛的 `PROCESS-NAME-REGEX,.*Claude.*` 进程规则。
    - **为什么**：macOS 上的 Office 加载项运行在系统 `WebKit` 容器内，本身遵循系统代理 `7890`，其访问的 `anthropic.com`（含 `assets-proxy` / `s-cdn` 子域）、`claude.ai` 与 `servd-anthropic-website.b-cdn.net` 均已被 `ai-strict.list` 导向「住宅出口」；乱加宽泛进程名正则不仅在 macOS 16 字节进程名截断下容易失配，还会把无关下载工具卷进按量计费的住宅流量。
 
-判定口径集中在 [`claude-guard/guard.conf`](../claude-guard/guard.conf)，出口 IP 白名单在
-[`claude-guard/allowed-exit-ips`](../claude-guard/allowed-exit-ips)，`settings.json` 的 `env` 参考模板在
-[`claude-guard/claude-settings.example.json`](../claude-guard/claude-settings.example.json)。
-自检：在本仓库执行 `zsh claude-guard/selftest.zsh`（全程用临时夹具，不碰真实配置、不联网）。
+## 移动端安全使用指南（Android / iOS 与社区经验）
 
-> ⚠️ **这里原先贴过一份内联守卫代码，已废弃**：它用 `awk '/name: .*住宅-JP/'` 从 mihomo 配置取期望节点 IP，  
-> 但面板里节点实际叫 `🏠 住宅-JP`，匹配恒为空 → `expect` 为空时 IP 一致性校验被静默跳过，  
-> 等于「看着 OK、实则不设防」。现行版本改成显式白名单，**白名单缺失或为空直接拒绝启动**。
+### 操作分工结论
 
-细节（fail-closed 判定顺序、速度约定、`claude-check` 输出解读、故障排查）见
-[`claude-guard/README.md`](../claude-guard/README.md)。
+| 操作场景 | 结论 | 原因 |
+| --- | --- | --- |
+| 日常对话、查资料（已养稳老号） | ✅ Android 配齐下述 5 项后可用 | 与桌面端共用同一台静态住宅 IP（`pinOnly: true`），不会跨国跳变 |
+| 注册新号、网页绑卡、申诉、触发 Persona 身份/人脸核验 | ❌ **一律回桌面端操作** | 原生 App 与 Persona SDK 无需定位权限，即可通过系统电话接口读取国内 SIM 卡 MCC（如大陆 `460` / 香港 `454`）与东八区时区；插卡状态下操作极易撞风控 |
+
+### Android（FlClash）必查 5 项（缺一不可）
+
+1. **重贴最新 `flclash-private.js`**
+   - **怎么做**：每次 `smart.js` 或 `ruleset/ai-strict.list` 更新后，运行 `node build-flclash.js` 重新粘贴并重载覆写。
+   - **为什么**：手机端不会自动拉取本地私有产物，必须重新导入才能让 `UDP 443 REJECT`（禁 QUIC）、`2607:6bc0::/32 REJECT`（防 IPv6 `502`）与新增风控域名生效。
+2. **FlClash 版本锁在 `v0.8.98`**
+   - **怎么做**：不要升级到 `v0.9.1+`。
+   - **为什么**：新版会用订阅原文覆盖脚本注入的住宅节点与「住宅出口」组，导致整套住宅锁定失效（见 [坑 19](troubleshooting.md)）。
+3. **开启系统级 Kill Switch 与后台保活**
+   - **怎么做**：进入 **系统设置 → 网络和互联网 → VPN → FlClash 右侧齿轮**，同时打开 **「始终开启的 VPN」** 与 **「阻断未经过 VPN 的连接」**，并将 FlClash 电池策略设为 **「无限制」**。
+   - **为什么**：手机熄屏休眠或 Wi-Fi 切 5G 瞬间若 FlClash 被系统杀掉，未开启硬阻断会让后台存活的 Claude App 直接走国内蜂窝网裸连；开启后 VPN 一断整机即断网。
+4. **系统「私人 DNS」设为「关闭」**
+   - **怎么做**：在系统网络设置里将「私人 DNS」明确设为 **关闭**（不要选「自动」或第三方 DoT）。
+   - **为什么**：853 端口加密解析会绕过 `fake-ip` 劫持（见 [坑 23](troubleshooting.md)）。
+5. **保持「规则」模式，分应用代理勾选浏览器与 WebView**
+   - **怎么做**：出站保持「规则」模式；若开启分应用代理白名单，除 `Claude`（`com.anthropic.claude`）外，**必须同时勾选默认浏览器（如 Chrome）与 `Android System WebView`**。
+   - **为什么**：手机切「全局」默认命中 `GLOBAL -> DIRECT` 全直连（见 [坑 16](troubleshooting.md)）；Claude App 点击登录走 OAuth 时会调起系统浏览器或 WebView，漏勾则登录那一跳直接国内裸出。
+
+### iOS（Shadowrocket / Stash）必查 4 项
+
+1. **别直接拿根目录 `rules.module` 跑 Claude**
+   - **怎么做**：手工在客户端配置住宅 HTTP 节点的「代理通过（链式前置）」并导入完整 `ai-strict` 规则后再用。
+   - **为什么**：[`rules.module`](../rules.module) 仅是早期通用补充规则，**不含**住宅链式代理与 `ai-strict.list`。
+2. **关闭 Claude 的「后台 App 刷新」且用完划掉后台**
+   - **怎么做**：前往 **设置 → 通用 → 后台 App 刷新** 关掉 Claude；每次使用前先确认状态栏 `VPN` 图标稳定亮起再打开 App，用完上划退出。
+   - **为什么**：普通商店版 iOS VPN 缺乏 Android 那样的系统级无条件硬阻断，且 Shadowrocket「按需连接（On Demand）」在后台推送/唤醒重连完成前的首包可能裸出运营商网络，造成「后台 IP 闪烁」触发 `suspicious signals` 自动封号。
+3. **关闭「位置」与「本地网络」权限**
+   - **怎么做**：在 **设置 → 隐私与安全性** 拒绝 Claude 访问位置与本地网络。
+   - **为什么**：防止 App 通过 GPS、周边 Wi-Fi 列表或局域网扫描暴露真实物理环境。
+4. **订阅支付优选同区 App Store 官方礼品卡内购（IAP）**
+   - **怎么做**：若通过 iOS 内购升级 Pro/Max，使用**与固定住宅 IP 同国家**的原生 Apple ID（如日本住宅配日区账号、美国住宅配美区账号），并通过苹果官网等正规渠道自购礼品卡充值。
+   - **为什么**：网页端用虚拟信用卡直连 Stripe 极易因高危卡 BIN 触发连带封号；切忌在淘宝/闲鱼购买低价来路不明的礼品卡（「黑卡」会同时封禁 Apple ID 与 Claude 账号）。
+
+### 社区高频翻车警示（Reddit `r/ClaudeAI` / X 实测）
+
+- **警惕亚洲旅游卡 / 廉价漫游 eSIM 陷阱**：大量东南亚/日本漫游流量卡底层走香港（CMI / CSL / CUniq）漫游回传，出口实际落在香港（`loc=HK`，不在 Anthropic 支持地区）。直连打开会直接报 `Country not supported` 或封号——用漫游卡前先测出口归属地，不符则照常挂住宅链。
+- **严禁多端跨国瞬移**：手机与电脑同时登录同一账号时，出口必须锁在同一国家（最好就是同一台静态住宅 IP），切忌电脑走日本住宅、手机挂美国或新加坡机场交替发消息。
+- **上号前 10 秒验收**：用手机默认浏览器访问 `https://claude.ai/cdn-cgi/trace`，确认 `ip=` 为目标住宅 IP、`loc=` 为对应支持国（如 `JP`），再打开 Claude App。
 
 ## Claude Code 常驻会话（`~/.claude/remote` 的 ccd-cli）
 

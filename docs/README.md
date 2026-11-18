@@ -13,7 +13,7 @@
 | 想配多台住宅 IP、让指定 IP 挂了只阻断不换 IP | [配置项详解](configuration.md) 的「多台住宅 IP」 |
 | 搞清楚 7890 / 7865 的区别、有哪些组 | [端口、分组与文件结构](architecture.md) |
 | 解决「规则写对了但 App 一直转圈」 | [流量怎么进内核](traffic-entry.md) |
-| 配 Claude Code / Proxifier / pf 硬阻断 | [桌面客户端接入](clients.md) |
+| 配 Claude Code、桌面与移动端防漏防封清单 | [客户端接入与防封注意事项](clients.md) |
 | 生成手机覆写、理解构建期自检 | [FlClash 与构建产物](flclash.md) |
 | 确认某条规则到底命中了什么 | [验证分流是否生效](verification.md) |
 | 排查报错、换订阅后的怪现象 | [踩过的坑](troubleshooting.md) |
@@ -28,7 +28,7 @@
 | [traffic-entry.md](traffic-entry.md) | 应用级分流、TUN vs 系统代理、路线 A/B/C、窄 TUN、App 自建 DNS |
 | [configuration.md](configuration.md) | 配置项详解：住宅三态开关、节点识别与锁定、多台住宅 IP、跳板策略、DNS 与 WebRTC 边界 |
 | [custom-config.md](custom-config.md) | `x-smart` 与 `USER_CONFIG` 两个入口、完整键表、优先级与合并规则、类型与枚举校验 |
-| [clients.md](clients.md) | Claude Code、`claude-guard` / `claude-check`、常驻会话、pf 硬阻断、Proxifier |
+| [clients.md](clients.md) | Claude Code、`claude-guard` / `claude-check`、桌面与移动端（Android / iOS）防漏防封清单、pf 硬阻断、Proxifier |
 | [flclash.md](flclash.md) | Android 客户端对比、`flclash-private.js` 生成与安装、构建期自检、手机端专有陷阱 |
 | [security.md](security.md) | 三层防泄漏（hook / CI / 精确名单）、`sync-sensitive.mjs`、`.exit-ip.log` 与 Secret 维护 |
 | [troubleshooting.md](troubleshooting.md) | 实测踩坑与排错指南，按编号索引 |

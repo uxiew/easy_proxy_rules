@@ -56,6 +56,8 @@ FlClash 没有覆写链（不能 script + YAML 叠加），所以用构建脚本
 3. 全文复制 → FlClash → 工具 → 覆写 → 新建 → 类型「脚本」→ 粘贴
 4. 对订阅启用该覆写 → 开 TUN
 
+> 在手机上登录使用 Claude App 前，务必核对系统级 VPN Kill Switch、关闭「私人 DNS」、WebView 分应用及 SIM 卡/后台刷新边界，详见 [客户端接入与防封注意事项](clients.md)。
+
 **smart.js 改动后必须重新生成**（`node build-flclash.js`）并重新粘贴到手机，否则手机跑的还是旧逻辑。  
 生成器头部注释有提醒；`flclash.js`（占位符版）也会一并重新生成提交，方便对照。
 

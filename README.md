@@ -104,7 +104,7 @@ x-smart:
 | 查阅 `x-smart` / `USER_CONFIG` 完整键表 | [自定义配置](docs/custom-config.md) |
 | 理解端口、策略组与规则文件 | [端口、分组与文件结构](docs/architecture.md) |
 | 排查「规则写对了但一直转圈」 | [流量怎么进内核](docs/traffic-entry.md) |
-| 接入 Claude Code / Proxifier | [桌面客户端接入](docs/clients.md) |
+| 接入 Claude Code / 桌面与移动端防封清单 | [客户端接入与防封注意事项](docs/clients.md) |
 | 使用 Claude Code 终端守卫与环境体检 | [claude-guard](claude-guard/README.md) |
 | 构建手机端 FlClash 单文件覆写 | [FlClash 与构建产物](docs/flclash.md) |
 | 排查异常与常见问题 | [常见问题与踩坑排查](docs/troubleshooting.md) |
@@ -148,4 +148,4 @@ residential.example.yaml  住宅节点本地覆写模板
 x-smart.example.yaml      自定义配置模板
 ```
 
-其他辅助文件：PAC 脚本（[`PAC.js`](PAC.js)）、iOS Shadowrocket 模块（[`rules.module`](rules.module)）。
+其他辅助文件：PAC 脚本（[`PAC.js`](PAC.js)）、iOS Shadowrocket 模块（[`rules.module`](rules.module)，通用补充规则，不含住宅链；iOS 用 Claude 见 [客户端接入与防封注意事项](docs/clients.md)）。
