@@ -34,6 +34,7 @@ const FORBIDDEN_PATH = [
   /^flclash-credentials\.json$/,
   /^flclash-private\.js$/,
   /^claude-guard\/allowed-exit-ips$/,
+  /^claude-guard\/\.exit-ip\.log$/,
   /^\.sensitive-patterns$/,
   /\.(pem|key|p12|pfx|bundle)$/i,
   /(^|\/)\.env(\.|$)/,

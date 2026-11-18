@@ -8,6 +8,7 @@
  * 数据来源（都在 .gitignore 内）：
  *   - flclash-credentials.json      → config.residential.nodes（旧写法 nodes / 单节点也认）
  *   - claude-guard/allowed-exit-ips → 每一行有效 IPv4
+ *   - claude-guard/.exit-ip.log     → 历史出口 IP 记录
  *
  * 只写清单，不回显任何值。
  */
@@ -26,6 +27,8 @@ const add = (v, why) => {
   const t = String(v ?? '').trim();
   if (t.length < 6) return;          // 太短易误伤（如 "jp"、"443"）
   if (/^YOUR_|placeholder|example|xxx/i.test(t)) return;
+  // RFC 5737 文档示例网段与回环地址属于公开占位符（selftest / README 合法使用）
+  if (/^(?:192\.0\.2|198\.51\.100|203\.0\.113|127\.\d+\.\d+)\.\d+$/.test(t)) return;
   values.add(t);
   sources.push(why);
 };
@@ -58,6 +61,15 @@ if (existsSync(allowPath)) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
     add(line, 'allowed-exit-ips');
+  }
+}
+
+const exitLogPath = resolve(ROOT, 'claude-guard/.exit-ip.log');
+if (existsSync(exitLogPath)) {
+  for (const raw of readFileSync(exitLogPath, 'utf8').split('\n')) {
+    const parts = raw.trim().split('\t');
+    const ip = parts[parts.length - 1];
+    if (ip && /^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip)) add(ip, 'exit-ip.log');
   }
 }
 
