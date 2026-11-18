@@ -37,6 +37,17 @@ DOMAIN-SUFFIX,claudeusercontent.com
 DOMAIN-SUFFIX,claudemcpclient.com
 # Claude Code MCP 内容
 DOMAIN-SUFFIX,claudemcpcontent.com
+# 官方其他产品域（Claude Code Antspace 云端环境 / 快捷入口 / 学院 / 开发者域，手机端无 geosite 兜底时靠这里钉住宅）
+DOMAIN-SUFFIX,claude.app
+DOMAIN-SUFFIX,claude.dev
+DOMAIN-SUFFIX,claude.new
+DOMAIN-SUFFIX,claudepages.dev
+DOMAIN-SUFFIX,claudestudio.com
+DOMAIN-SUFFIX,claudeacademy.com
+DOMAIN-SUFFIX,chatbotclaude.com
+DOMAIN-SUFFIX,ant.dev
+DOMAIN-SUFFIX,anthropic.team
+DOMAIN-SUFFIX,antspace.dev
 # 登录托管页（漏了会一直跳登录）
 DOMAIN,anthropic.auth0.com
 DOMAIN,anthropic.com.cdn.cloudflare.net
@@ -52,8 +63,13 @@ DOMAIN-SUFFIX,challenges.cloudflare.com
 # Arkose Labs 验证码（OpenAI 注册/登录常用）
 DOMAIN-SUFFIX,arkoselabs.com
 DOMAIN-SUFFIX,client-api.arkoselabs.com
-# Auth0 登录托管（anthropic.auth0.com 之外的其他入口）
+# hCaptcha 人机验证
+DOMAIN-SUFFIX,hcaptcha.com
+# Auth0 与 WorkOS（Claude / OpenAI / Cursor 企业与 SSO 登录托管）
 DOMAIN-SUFFIX,auth0.com
+DOMAIN-SUFFIX,workos.com
+DOMAIN-SUFFIX,workoscdn.com
+DOMAIN-SUFFIX,authkit.app
 
 # --- Claude 的 KYC 与反欺诈 ---
 
@@ -76,8 +92,10 @@ DOMAIN-SUFFIX,livekit.run
 # 客服窗口
 DOMAIN-SUFFIX,intercom.io
 DOMAIN-SUFFIX,intercomcdn.com
-# 订阅付款
+# 订阅付款与 Stripe Radar 设备指纹信标（m.stripe.network 若掉进机场易触发拒卡）
 DOMAIN-SUFFIX,stripe.com
+DOMAIN-SUFFIX,stripe.network
+DOMAIN-SUFFIX,stripecdn.com
 # 实时推送
 DOMAIN-SUFFIX,signalr.net
 
@@ -86,18 +104,18 @@ DOMAIN-SUFFIX,signalr.net
 # 功能开关 / AB 实验
 DOMAIN-SUFFIX,statsigapi.net
 DOMAIN-SUFFIX,featuregates.org
-DOMAIN,cdn.growthbook.io
-DOMAIN,cdn.usefathom.com
+DOMAIN-SUFFIX,growthbook.io
+DOMAIN-SUFFIX,usefathom.com
 # Datadog 遥测：必须全后缀 + 连字符独立根域一起覆盖，否则漏网请求会掉进后面
 # ai.yaml 的 DOMAIN-KEYWORD,datadog（走机场 AI 组），造成遥测 IP 与主站住宅 IP 分裂。
-# 注意 browser-intake-*-datadoghq.com 中间是连字符不是点，不属于 datadoghq.com 子域。
+# 用 DOMAIN-SUFFIX 同时覆盖 rum.browser-intake-datadoghq.com 等子域。
 DOMAIN-SUFFIX,datadoghq.com
 DOMAIN-SUFFIX,datadoghq.eu
-DOMAIN,browser-intake-datadoghq.com
-DOMAIN,browser-intake-us3-datadoghq.com
-DOMAIN,browser-intake-us5-datadoghq.com
-DOMAIN,browser-intake-eu1-datadoghq.com
-DOMAIN,browser-intake-ap1-datadoghq.com
+DOMAIN-SUFFIX,browser-intake-datadoghq.com
+DOMAIN-SUFFIX,browser-intake-us3-datadoghq.com
+DOMAIN-SUFFIX,browser-intake-us5-datadoghq.com
+DOMAIN-SUFFIX,browser-intake-eu1-datadoghq.com
+DOMAIN-SUFFIX,browser-intake-ap1-datadoghq.com
 # 前端报错上报（流量极小）
 DOMAIN-SUFFIX,sentry.io
 
@@ -113,6 +131,8 @@ DOMAIN-SUFFIX,openai.com
 #    不要把它挪进 AI_STATIC_TO_AI 或 directExtra。
 DOMAIN-SUFFIX,chatgpt.com
 DOMAIN-SUFFIX,chatgptapi.com
+DOMAIN-SUFFIX,oaistatsig.com
+DOMAIN,cdn.openaimerge.com
 # 网页静态资源
 # ⚠️ oaistatic.com / openaicom.imgix.net 实际走的是机场 AI 组，不是住宅：
 #    smart.js 的 AI_STATIC_TO_AI 排在 RULE-SET,aiStrict 之前，已经把它们抢先摘走。
