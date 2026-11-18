@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-18 12:07:15
- * 源文件      : smart.js  sha256:a5a7927b838e  2522 行 / 126259 字节
- * 源码提交    : c4078d6
+ * 构建时间    : 2026-11-18 12:42:29
+ * 源文件      : smart.js  sha256:8c21af906657  2529 行 / 126610 字节
+ * 源码提交    : 6b94761
  * 构建命令    : node build-flclash.js
  * 住宅节点    : （未配置）AI 走 AI 组
  *
@@ -1174,7 +1174,7 @@ const dnsConfig = {
   'default-nameserver': ['192.168.31.1', '223.5.5.5', '119.29.29.29'],
 
   // 解析节点域名的 DNS：用 **IP 型 DoH**，既不走 UDP 53，也不需要用域名去引导
-  //   实测 jp.jisu16.top → 140.238.53.202（真实 Oracle 东京），未被污染
+  //   实测代理节点域名 → 真实海外落地 IP，无明文抢答污染
   'proxy-server-nameserver': [
     'https://1.12.12.12/dns-query',   // DNSPod（腾讯）IP 型 DoH
     'https://120.53.53.53/dns-query', // DNSPod 备用 IP
@@ -1312,8 +1312,15 @@ const getRules = ()=>{
     // 必须排在 RULE-SET,forAI 之前：ai.yaml 里就有 DOMAIN-SUFFIX,anthropic.com，
     // 放在后面的话 forAI 先命中，Claude 会走机场，住宅出口永远轮不到。
     // 规则集内容见 ruleset/ai-strict.list（含 Claude 的 Turnstile、auth0、Persona、遥测）。
+    // 桌面端额外挂一条 GEOSITE,anthropic 分类兜底（排在 AI_STATIC_TO_AI 之后，不卷安装包），
+    // 防止 Anthropic 新增子域在 ai-strict.list 更新前掉进后面的 forAI（机场）；手机端跳过防旧版缺库。
     // 没有家宽时整条规则保留，只把落点从住宅换成 AI（aiTarget），不会漏到 AUTO。
-    ...(RESIDENTIAL.aiStrict ? [`RULE-SET,aiStrict, ${aiTarget}`] : []),
+    ...(RESIDENTIAL.aiStrict
+      ? [
+          `RULE-SET,aiStrict, ${aiTarget}`,
+          ...(FLCLASH_MODE ? [] : [`GEOSITE,anthropic, ${aiTarget}`]),
+        ]
+      : []),
 
     // 住宅出口：非 AI 的账号/支付/电商，清单在 ruleset/residential.list
     // 没有家宽时同样保留，落点换成 AI：这些站点仍需固定出口，只是不再是住宅 IP。
