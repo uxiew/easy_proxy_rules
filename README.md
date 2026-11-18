@@ -130,7 +130,7 @@ node scripts/scan-sensitive.mjs --all  # 手动全量扫描防泄漏
 
 1. **公开仓库禁止明文凭据**：内核直接从 raw 拉取 `ruleset/`，真实住宅 IP、账号与密码**严禁**提交到仓库或 commit message，三层防泄漏机制见 [防泄漏](docs/security.md)。
 2. **规则集远端生效**：`ruleset/` 改动需推送到远端并重新拉取规则集才生效。
-3. **内核旁路边界**：Android `VpnService` 绕过应用、系统私人 DNS、浏览器 DoH 会跳过内核分流，排查见 [常见问题与踩坑排查](docs/troubleshooting.md)。
+3. **内核旁路边界**：Android `VpnService` 绕过应用、系统私人 DNS、浏览器 DoH 会跳过内核分流，排查见 [常见问题与踩坑排查](docs/troubleshooting.md)；与 Tailscale 共存需额外配置系统代理绕过及分域解析，见 [流量怎么进内核](docs/traffic-entry.md#路线-atun还要处理-dns)。
 
 ---
 

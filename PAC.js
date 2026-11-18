@@ -8,6 +8,7 @@ const DIRECT_DOMAINS = [
   '*.local', // 本地网络发现
   '*.lan', // 局域网常见后缀
   '*.home', // 家庭网络常见后缀
+  '*.ts.net', // Tailscale MagicDNS 域名
   '*.m.jd.com', // 微信/QQ内置浏览器内的JD
   '*.m.taobao.com', // 微信/QQ内置浏览器内的淘宝
   '*.weixin.qq.com', // 微信相关
@@ -114,6 +115,7 @@ function FindProxyForURL(url, host) {
     isInNet(host, '10.0.0.0', '255.0.0.0') || // Class A private range
     isInNet(host, '172.16.0.0', '255.240.0.0') || // Class B private range
     isInNet(host, '192.168.0.0', '255.255.0.0') || // Class C private range
+    isInNet(host, '100.64.0.0', '255.192.0.0') || // CGNAT / Tailscale (100.64.0.0/10)
     isInNet(host, '127.0.0.0', '255.0.0.0') || // Loopback addresses
     host == '::1' || // IPv6 loopback
     isInNet(host, 'fc00::', 'ff00::') // IPv6 unique local addresses

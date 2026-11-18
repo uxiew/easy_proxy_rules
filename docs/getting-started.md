@@ -50,6 +50,7 @@ curl -x http://127.0.0.1:7865 -s -A "Mozilla/5.0" https://api.ip.sb/geoip | jq '
 | 手机 `detectradar` 报 WebRTC / DNS 暴露 | [坑 23](troubleshooting.md)（平台边界，不是配置错） |
 | 没有家宽静态 IP，不想建住宅组 | [没有家宽怎么办](configuration.md)（设 `enabled: false`） |
 | 改了规则集没生效 | [坑 4](troubleshooting.md)（本仓库规则走 raw，别挂镜像） |
+| Tailscale 内网（`*.ts.net` / `100.64.0.0/10`）打不开或 502 | 需在系统代理绕过列表放行 `100.64.0.0/10` 与 `*.ts.net`，macOS 窄 TUN 另需配分域解析见 [流量怎么进内核](traffic-entry.md#路线-atun还要处理-dns) |
 
 ## 下一步读什么
 
