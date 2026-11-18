@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-18 14:04:38
- * 源文件      : smart.js  sha256:f14e8cff982d  2532 行 / 126959 字节
- * 源码提交    : df4a952
+ * 构建时间    : 2026-11-18 14:27:26
+ * 源文件      : smart.js  sha256:d464e69d59fb  2550 行 / 128067 字节
+ * 源码提交    : 2be4509
  * 构建命令    : node build-flclash.js
  * 住宅节点    : （未配置）AI 走 AI 组
  *
@@ -194,7 +194,8 @@ const USER_CONFIG = {
 //     "interval": 120
 //   },
 //   "webrtcGuard": {
-//     "enabled": false
+//     "enabled": false,
+//     "blockQuic": true
 //   },
 //   "keepSubGroups": true,
 //   "modeGuard": true
@@ -465,11 +466,14 @@ const DEFAULT_CONFIG = {
   },
 
   // ------------------------------------------------------------
-  // 拦 STUN 探测（默认关）：REJECT 3478/5349/19302-19309 + 域名含 stun
-  // 会同时打断 Meet / 微信语音 / Discord / 游戏语音，只在不用语音时打开
+  // UDP / 协议防漏守卫：
+  //   enabled    拦 STUN 打洞（3478/5349/19302-19309 + stun 域名），会打断微信/会议语音，默认关
+  //   blockQuic  拦 UDP 443（QUIC / HTTP3），迫使浏览器与客户端 1ms 内回退标准 TCP 443，
+  //              既消除无 UDP 住宅节点上的 QUIC 首包挂起，也堵住 UDP 443 旁路，不影响语音通话，默认开
   // ------------------------------------------------------------
   webrtcGuard: {
     enabled: false,
+    blockQuic: true,
   },
 
   // ------------------------------------------------------------
@@ -1167,6 +1171,7 @@ const dnsConfig = {
   ipv6: false,                   // 关闭 IPv6 解析，减少因本地不支持 IPv6 导致的奇葩网络问题
   'use-system-hosts': true,      // 优先读取系统 hosts 文件
   'respect-rules': true,         // 让 DNS 按照节点规则去解析，避免代理节点的 DNS 泄漏
+  'prefer-h3': false,            // 禁用 DoH 的 HTTP/3（UDP 443），避免国内网络 UDP QoS 导致解析抖动
   'cache-algorithm': 'arc',      // 缓存淘汰算法，arc 比 lru 性能更好
 
   // ⚠️ 2026-11-04 实测修复：本机网络对外部 UDP 53 全部阻断
@@ -1255,8 +1260,21 @@ const getRules = ()=>{
   const applePolicy = TRAFFIC.appleDirect ? 'DIRECT' : 'AI';
 
   const  whiteListRules= [
-    // ===== 应用级分流：进程 / 包名 / UID（必须排在规则最前面）=====
-    // 进程规则一旦命中就直接决定出口；排在任何 DOMAIN 规则之后都会被截胡。
+    // ===== 1. 局域网与本机回环（必须最前：避免进程规则把访问本机 MCP/内网服务的流量误送海外）=====
+    'GEOIP,LAN, DIRECT, no-resolve',
+    'RULE-SET,private, DIRECT',
+    'RULE-SET,lancidr, DIRECT,no-resolve',
+
+    // ===== 2. 协议防漏与 IPv6 快速回退闸门（必须排在进程规则与域名规则之前）=====
+    //   - 排在进程规则后面会被 Claude.app / com.anthropic.claude 等进程规则抢先接走，等于没装；
+    //   - UDP 443（QUIC）立即 REJECT：让客户端毫秒级无缝退回 TCP 443，消除无 UDP 住宅节点上的首包超时；
+    //   - Anthropic IPv6（2607:6bc0::/32）立即 REJECT：静态住宅 HTTP 代理大多无 IPv6 出站能力，
+    //     送过去会回 502 Bad Gateway，前置 REJECT 可触发 Happy Eyeballs 立即走 IPv4 住宅出口。
+    ...(WEBRTC_GUARD.blockQuic ? ['AND,((NETWORK,udp),(DST-PORT,443)),REJECT'] : []),
+    ...(WEBRTC_GUARD.enabled ? ['RULE-SET,webrtcGuard, REJECT'] : []),
+    ...(RESIDENTIAL.aiStrict ? ['IP-CIDR6,2607:6bc0::/32,REJECT,no-resolve'] : []),
+
+    // ===== 3. 应用级分流：进程 / 包名 / UID（排在全部业务域名规则之前）=====
     // 配置见文件顶部 APP_PROXY.processes。数组为空时不产生任何规则，等于没改。
     // 注意：值里不能带逗号，否则会被当成策略名截断。
     ...APP_PROXY.processes
@@ -1277,23 +1295,11 @@ const getRules = ()=>{
       return `${kind},${value},${target}`;
     }),
 
-    // 局域网与私有地址
-    'GEOIP,LAN, DIRECT, no-resolve',
-    'RULE-SET,private, DIRECT',
+    // P2P / 下载工具直连
     'RULE-SET,applications, DIRECT',
-    'RULE-SET,lancidr, DIRECT,no-resolve',
 
-    // ===== WebRTC 常见 STUN 探测拦截（可选，默认关，见顶部 ⑦）=====
-    // 位置很关键：必须排在所有必要技术规则之后、任何业务规则之前。
-    //   - 放前面会把内网/节点流量一起拦掉；
-    //   - 放后面会被进程规则、AI 规则先接走，等于没装。
-    // 打开后会打断依赖 STUN 的语音/视频，取舍见 WEBRTC_GUARD 注释。
-    ...(WEBRTC_GUARD.enabled ? ['RULE-SET,webrtcGuard, REJECT'] : []),
-
-    // ===== Anthropic 的 IP 段 → 住宅出口（必须，否则同一账号两个出口 IP）=====
-    // 原来这三条在 ruleset/ai.yaml 里，跟着 forAI 走 AI 组：
-    // 域名走住宅、程序直连 IP 走机场 → 风控看到「同一会话两个 IP」，比用脏 IP 更糟。
-    // fake-ip 模式下域名请求不会命中 IP 规则，但 Claude 桌面端 / SDK 直连 IP 时会。
+    // ===== 4. Anthropic 的 IPv4 段与 ASN → 住宅出口（必须，否则同一账号两个出口 IP）=====
+    // fake-ip 模式下域名请求不会命中 IP 规则，但桌面端 / SDK 直连 IP 时会。
     // 没有家宽时落点同样是 aiTarget = AI，保持「这类 IP 和 AI 域名同一个出口」。
     ...(RESIDENTIAL.aiStrict
       ? [
@@ -1303,7 +1309,6 @@ const getRules = ()=>{
           //    所以 FlClash 模式跳过它，只保留不依赖数据库的 IP-CIDR。
           ...(FLCLASH_MODE ? [] : [`IP-ASN,399358,${aiTarget},no-resolve`]),
           `IP-CIDR,160.79.104.0/21,${aiTarget},no-resolve`,
-          `IP-CIDR6,2607:6bc0::/32,${aiTarget},no-resolve`,
         ]
       : []),
 
@@ -2060,7 +2065,14 @@ function main(config) {
   //   3) 所以这里只做一件事：**把上游换成 IP 型 DoH（走 443，不受 UDP 53 影响）**，
   //      其余（ipv6 / use-hosts / respect-rules）沿用订阅，端口完全不碰。
   if (!FLCLASH_MODE) {
-    config.dns = dnsConfig;
+    // 开启 webrtcGuard 时必须把 +.stun.* 从 fake-ip-filter 移出：
+    // 否则 STUN 域名返回真实公网 IP 不进窄 TUN，RULE-SET,webrtcGuard 根本收不到包。
+    config.dns = WEBRTC_GUARD.enabled
+      ? {
+          ...dnsConfig,
+          'fake-ip-filter': dnsConfig['fake-ip-filter'].filter((x) => x !== '+.stun.*'),
+        }
+      : dnsConfig;
   } else {
     const subDns = config.dns && typeof config.dns === 'object' ? config.dns : {};
     // 订阅里的 DoH 基本都是**域名型**（doh.pub / dns.alidns.com / dns.google…）。
@@ -2090,10 +2102,17 @@ function main(config) {
       ...subDns, // 保留订阅的 ipv6 / use-hosts / respect-rules / cache-algorithm 等
       'enhanced-mode': 'fake-ip', // 海外域名给假 IP → 出口侧解析，DNS 归属与出口一致
       'fake-ip-range': '198.18.0.1/16',
-      // 订阅的 fake-ip-filter 比我们全（NTP / captive portal / 游戏域名），合并而不是覆盖
+      // 订阅的 fake-ip-filter 比我们全（NTP / captive portal / 游戏域名），合并而不是覆盖；
+      // 开启 webrtcGuard 时剔除 +.stun.*，确保 STUN 域名拿到 fake-ip 被规则拦截。
       'fake-ip-filter': [
-        ...new Set([...(subDns['fake-ip-filter'] || []), '*.lan', '*.local', '+.stun.*', 'geosite:cn']),
-      ],
+        ...new Set([
+          ...(subDns['fake-ip-filter'] || []),
+          '*.lan',
+          '*.local',
+          ...(WEBRTC_GUARD.enabled ? [] : ['+.stun.*']),
+          'geosite:cn',
+        ]),
+      ].filter((x) => !(WEBRTC_GUARD.enabled && x === '+.stun.*')),
       // 只接受纯 IP，仅作兜底（IP 型 DoH 不需要它引导，正常情况下用不到）
       'default-nameserver': ['223.5.5.5', '119.29.29.29'],
       // 节点域名 + 普通域名 + 直连域名，全部走 IP 型 DoH，彻底摆脱 UDP 53
