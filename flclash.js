@@ -3,9 +3,9 @@
  * ================================================================
  * 由 build-flclash.js 自动生成 —— 请勿手改，改 smart.js 后重新构建
  *
- * 构建时间    : 2026-11-18 11:44:17
- * 源文件      : smart.js  sha256:510f5992bfef  2522 行 / 126279 字节
- * 源码提交    : f2d2240
+ * 构建时间    : 2026-11-18 12:07:15
+ * 源文件      : smart.js  sha256:a5a7927b838e  2522 行 / 126259 字节
+ * 源码提交    : c4078d6
  * 构建命令    : node build-flclash.js
  * 住宅节点    : （未配置）AI 走 AI 组
  *
@@ -114,12 +114,12 @@ const USER_CONFIG = {
 //       {
 //         "value": "^/Applications/Antigravity\\.app/",
 //         "type": "path-regex",
-//         "proxy": "住宅出口"
+//         "proxy": "AI"
 //       },
 //       {
 //         "value": "/opt/homebrew/bin/agy",
 //         "type": "path",
-//         "proxy": "住宅出口"
+//         "proxy": "AI"
 //       }
 //     ]
 //   },
@@ -388,8 +388,8 @@ const DEFAULT_CONFIG = {
       { value: '^/Applications/Claude\\.app/', type: 'path-regex', proxy: '住宅出口' },
       { value: '/opt/homebrew/bin/claude', type: 'path', proxy: '住宅出口' },
       { value: '^/Applications/ChatGPT\\.app/', type: 'path-regex', proxy: '住宅出口' },
-      { value: '^/Applications/Antigravity\\.app/', type: 'path-regex', proxy: '住宅出口' },
-      { value: '/opt/homebrew/bin/agy', type: 'path', proxy: '住宅出口' },
+      { value: '^/Applications/Antigravity\\.app/', type: 'path-regex', proxy: 'AI' },
+      { value: '/opt/homebrew/bin/agy', type: 'path', proxy: 'AI' },
     ],
   },
 

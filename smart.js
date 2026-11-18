@@ -156,8 +156,8 @@ const DEFAULT_CONFIG = {
       { value: '^/Applications/Claude\\.app/', type: 'path-regex', proxy: '住宅出口' },
       { value: '/opt/homebrew/bin/claude', type: 'path', proxy: '住宅出口' },
       { value: '^/Applications/ChatGPT\\.app/', type: 'path-regex', proxy: '住宅出口' },
-      { value: '^/Applications/Antigravity\\.app/', type: 'path-regex', proxy: '住宅出口' },
-      { value: '/opt/homebrew/bin/agy', type: 'path', proxy: '住宅出口' },
+      { value: '^/Applications/Antigravity\\.app/', type: 'path-regex', proxy: 'AI' },
+      { value: '/opt/homebrew/bin/agy', type: 'path', proxy: 'AI' },
     ],
   },
 
