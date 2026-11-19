@@ -21,11 +21,7 @@
 # ============================================================
 
 payload:
-
   # ========== 宽泛匹配（只能走机场：会命中大量非 AI 流量）==========
-  - DOMAIN-KEYWORD,anthropic
-  - DOMAIN-KEYWORD,claude
-  - DOMAIN-KEYWORD,openai
   - DOMAIN-KEYWORD,sentry
   - DOMAIN-KEYWORD,datadog
   - DOMAIN-KEYWORD,sift
@@ -55,6 +51,9 @@ payload:
   - DOMAIN-KEYWORD,google
 
   # ========== 非严格 AI / 目录站 / 中转（走机场，不烧住宅流量）==========
+  - DOMAIN-SUFFIX,windsurf.build
+  - DOMAIN-SUFFIX,windsurf.com
+  - DOMAIN-SUFFIX,devin.ai
   - DOMAIN-SUFFIX,mcp.so
   - DOMAIN-SUFFIX,modelcontextprotocol.io
   - DOMAIN-SUFFIX,immersivetranslate.com

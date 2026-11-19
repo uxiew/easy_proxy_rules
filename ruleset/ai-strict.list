@@ -23,6 +23,7 @@
 # ------------------------------------------------------------
 
 # api / console / docs / support 全在这一个后缀下
+DOMAIN-KEYWORD,anthropic
 DOMAIN-SUFFIX,anthropic.com
 DOMAIN-SUFFIX,claude.ai
 # docs.claude.com、support.claude.com
