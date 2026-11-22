@@ -158,7 +158,10 @@ const DEFAULT_CONFIG = {
       { value: '^/opt/homebrew/(bin/claude$|Caskroom/claude-code)', type: 'path-regex', proxy: '住宅出口' },
       { value: '^/Applications/ChatGPT\\.app/', type: 'path-regex', proxy: '住宅出口' },
       { value: '^/Applications/Antigravity\\.app/', type: 'path-regex', proxy: 'AI' },
-      { value: '/opt/homebrew/bin/agy', type: 'path', proxy: 'AI' },
+      // devin 的 bin 入口是软链接，内核 proc_pidpath 拿到的是解引用后的 Caskroom 路径，
+      // 不能用 ^/opt/homebrew/bin/devin 匹配（与上面 claude 同一机制）。
+      { value: '^/opt/homebrew/bin/agy', type: 'path-regex', proxy: 'AI' },
+      { value: '^/opt/homebrew/Caskroom/devin-cli/', type: 'path-regex', proxy: 'AI' },
     ],
   },
 

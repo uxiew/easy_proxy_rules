@@ -1,9 +1,9 @@
 # >>> easy_proxy_rules / claude-guard >>>
 # Claude 代理守卫 / 环境体检：代码、配置、文档统一维护在
-#   ~/Projects/easy_proxy_rules/claude-guard/  （见其 README.md）
+#   ~/xdw/easy_proxy_rules/claude-guard/  （见其 README.md）
 # 本文件只负责加载。想改仓库位置，在这段之前写：
 #   export EASY_PROXY_RULES_HOME=/abs/path/to/easy_proxy_rules
-_cg_repo="${EASY_PROXY_RULES_HOME:-$HOME/Projects/easy_proxy_rules}"
+_cg_repo="${EASY_PROXY_RULES_HOME:-$HOME/xdw/easy_proxy_rules}"
 _cg_lib="$_cg_repo/claude-guard/claude-guard.zsh"
 typeset -g CLAUDE_GUARD_DIR="$_cg_repo/claude-guard"
 if [[ -r "$_cg_lib" ]]; then

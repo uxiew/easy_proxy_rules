@@ -5,7 +5,7 @@
 set -e
 
 HERE="${${(%):-%x}:A:h}"
-[[ -f "$HERE/claude-guard.zsh" ]] || HERE="$HOME/Projects/easy_proxy_rules/claude-guard"
+[[ -f "$HERE/claude-guard.zsh" ]] || HERE="$HOME/xdw/easy_proxy_rules/claude-guard"
 LIB="$HERE/claude-guard.zsh"
 SNIP="$HERE/zshrc.snippet"
 ZRC="$HOME/.zshrc"

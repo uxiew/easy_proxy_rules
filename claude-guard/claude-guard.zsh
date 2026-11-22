@@ -2,7 +2,7 @@
 # claude-guard.zsh — Claude Code 代理守卫 / 环境体检（zsh 函数库）
 #
 # 加载方式（~/.zshrc 里只需一行，见 install.sh）：
-#   source "$HOME/Projects/easy_proxy_rules/claude-guard/claude-guard.zsh"
+#   source "$HOME/xdw/easy_proxy_rules/claude-guard/claude-guard.zsh"
 #
 # 设计约定：
 #   · 启动守卫只做 nc + 并行（出口 IP 查询 + Anthropic API 403 探测）+ 纯本地白名单/配置比对。
@@ -18,7 +18,7 @@ zmodload -F zsh/datetime b:strftime p:EPOCHSECONDS 2>/dev/null || true
 # ---- 自举：定位本目录（.zshrc 可显式给 CLAUDE_GUARD_DIR，否则由 %x 推导）----
 typeset -g CLAUDE_GUARD_DIR="${CLAUDE_GUARD_DIR:-${${(%):-%x}:A:h}}"
 if [[ ! -r "$CLAUDE_GUARD_DIR/guard.conf" ]]; then
-  typeset -g CLAUDE_GUARD_DIR="$HOME/Projects/easy_proxy_rules/claude-guard"
+  typeset -g CLAUDE_GUARD_DIR="$HOME/xdw/easy_proxy_rules/claude-guard"
 fi
 
 # ---- 默认值（guard.conf 缺失/写错也不会让守卫失效）----

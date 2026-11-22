@@ -45,7 +45,7 @@ Clash Party 退出后端口消失，客户端拿到的是 `ECONNREFUSED`，**不
 
 ```zsh
 # >>> easy_proxy_rules / claude-guard >>>
-_cg_repo="${EASY_PROXY_RULES_HOME:-$HOME/Projects/easy_proxy_rules}"
+_cg_repo="${EASY_PROXY_RULES_HOME:-$HOME/xdw/easy_proxy_rules}"
 source "$_cg_repo/claude-guard/claude-guard.zsh"
 # <<< easy_proxy_rules / claude-guard <<<
 ```

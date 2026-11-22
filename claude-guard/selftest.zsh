@@ -7,7 +7,7 @@
 # 退出码：0 = 全通过，1 = 有失败项。
 
 HERE="${${(%):-%x}:A:h}"
-[[ -f "$HERE/claude-guard.zsh" ]] || HERE="$HOME/Projects/easy_proxy_rules/claude-guard"
+[[ -f "$HERE/claude-guard.zsh" ]] || HERE="$HOME/xdw/easy_proxy_rules/claude-guard"
 LIB="$HERE/claude-guard.zsh"
 MJS="$HERE/config-check.mjs"
 NODE="/opt/homebrew/bin/node"

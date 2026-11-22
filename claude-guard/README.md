@@ -27,11 +27,11 @@ Claude Code 终端代理守卫与多维环境体检工具，默认采用 **fail-
 
 ```bash
 # 1. 幂等安装加载器到 ~/.zshrc（安装/卸载前均会自动备份 ~/.zshrc）
-zsh ~/Projects/easy_proxy_rules/claude-guard/install.sh
+zsh ~/xdw/easy_proxy_rules/claude-guard/install.sh
 
 # 2. 准备白名单（填入你的住宅出口 IPv4）
-cp ~/Projects/easy_proxy_rules/claude-guard/allowed-exit-ips.example \
-   ~/Projects/easy_proxy_rules/claude-guard/allowed-exit-ips
+cp ~/xdw/easy_proxy_rules/claude-guard/allowed-exit-ips.example \
+   ~/xdw/easy_proxy_rules/claude-guard/allowed-exit-ips
 
 # 3. 生效并查看状态
 source ~/.zshrc
