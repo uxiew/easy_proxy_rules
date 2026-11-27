@@ -38,7 +38,8 @@ x-smart:
 
 `{ value: 'com.whatsapp', remove: true }` 的匹配键是 `type + value`，不是模糊匹配：
 写了 `type: 'name-regex'` 就删不掉默认那条 `PROCESS-NAME`；`value` 大小写差一个字符也删不掉。
-删不掉时日志会打「删除 0」，看到它就去核对默认条目的原始写法（`smart.js` 顶部 `DEFAULT_CONFIG`）。
+删不掉时那条 `[配置覆写]` 日志会是「无变化」，看到它就去核对默认条目的原始写法
+（`smart.js` 顶部 `DEFAULT_CONFIG`）。
 
 ## 4. PF 断网兜底的三个边界
 
