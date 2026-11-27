@@ -146,7 +146,9 @@ const DEFAULT_CONFIG = {
     ],
     // type 省略 = 进程名；'path' = 绝对路径；'path-regex' = 路径正则；
     // 'name-regex' = 进程名正则；'uid' = Android
-    // ⚠️ 名字写错不会报错，只会永不命中。Android 上进程名就是包名。
+    // ⚠️ 名字写错不会报错，只会永不命中。Android 上进程名就是包名；
+    //    macOS 上进程名是可执行文件名（Cue / Cue Helper），**不是** bundle id，
+    //    所以 ai.manus.agents 这种 bundle id 只能配一条 path-regex 才在桌面生效。
     processes: [
       { value: 'com.whatsapp', proxy: '住宅出口' },
       { value: 'com.talkatone.android', proxy: '住宅出口' },
@@ -252,13 +254,22 @@ const DEFAULT_CONFIG = {
 };
 
 // ------------------------------------------------------------
-// 你的覆盖项：只写要改的键（对象逐字段合并，数组整体替换）
+// 你的覆盖项：只写要改的键
+//   对象：逐字段合并（写 upstream.inject 不会把 group 抹掉）
+//   数组：追加 + 按身份去重覆盖（写一条 processes 不会顶掉默认 10 条）
+//   删默认项：{ value: 'xxx', remove: true }；只要自己的：{ mode: 'replace', items: [...] }
 // ------------------------------------------------------------
 //   const USER_CONFIG = {
 //     residential: { primary: '🏠IP-JP', prefer: 'JP' },
 //     appProxy: { ports: [{ name: 'ai-in', port: 7866, proxy: 'AI' }] },
 //   };
 const USER_CONFIG = {};
+
+// 默认值快照：applyUserConfig() 每次合成配置前都从这里重建目标对象。
+// 合并是「就地改」的（就地才能让别处已经拿到的数组/对象引用继续有效），
+// 代价是同一个 JS 上下文里第二次跑 main() 会把上一轮的补丁叠上来 ——
+// 客户端复用上下文、构建脚本自检、手工复现都会踩到，所以入口处统一回滚一次。
+const DEFAULT_SNAPSHOT = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
 
 // 跑在哪：配置项 `mode`（'clash' 桌面 / 'flclash' 手机）。
 // 手机端只接管「组 + 规则 + 节点」，DNS / IPv6 / listeners 全部交给 App，
@@ -280,6 +291,25 @@ let AI_STATIC_TO_AI = DEFAULT_CONFIG.aiStaticToAI;
 let NARROW_TUN = DEFAULT_CONFIG.narrowTun;
 let REGION_PRIORITY = DEFAULT_CONFIG.regionPriority;
 let WEBRTC_GUARD = DEFAULT_CONFIG.webrtcGuard;
+
+// WebRTC / STUN 拦截清单，内容必须与 ruleset/webrtc-guard.list 逐条一致
+// （build-flclash.js 会比对，漂移就构建失败）。
+// 为什么不用 rule-provider 远程拉取：这是安全兜底，而规则集托管在
+// raw.githubusercontent.com —— CDN 不可达时 provider 会静默变成空集，
+// 表现为「开关打开了但照样泄露」，比没开更难排查。
+const WEBRTC_GUARD_RULES = [
+  'DST-PORT,3478',
+  'DST-PORT,5349',
+  'DST-PORT,19302',
+  'DST-PORT,19303',
+  'DST-PORT,19304',
+  'DST-PORT,19305',
+  'DST-PORT,19306',
+  'DST-PORT,19307',
+  'DST-PORT,19308',
+  'DST-PORT,19309',
+  'DOMAIN-KEYWORD,stun',
+];
 let KEEP_SUB_GROUPS = DEFAULT_CONFIG.keepSubGroups;
 let MODE_GUARD = DEFAULT_CONFIG.modeGuard;
 setMode(DEFAULT_CONFIG.mode); // 默认桌面；手机由 USER_CONFIG.mode 改成 'flclash'
@@ -915,19 +945,9 @@ const ruleProviders = {
     url: `${RAW_BASE}/auto-extra.list`,
     path: './ruleset/uxiew/auto-extra.yaml',
   },
-  // WebRTC 常见 STUN 探测拦截（可选，见顶部 ⑦ WEBRTC_GUARD）。
-  // 只在打开时才定义 provider：关着的时候不产生任何下载请求。
-  ...(WEBRTC_GUARD.enabled
-    ? {
-        webrtcGuard: {
-          ...ruleProviderCommon,
-          behavior: 'classical',
-          format: 'text',
-          url: `${RAW_BASE}/webrtc-guard.list`,
-          path: './ruleset/uxiew/webrtc-guard.yaml',
-        },
-      }
-    : {}),
+  // WebRTC / STUN 拦截不在这里注册 provider：
+  //   · 规则已由 WEBRTC_GUARD_RULES 内联进 rules（见顶层常量），不需要远程规则集；
+  //   · 顶层对象是静态求值，早于 applyUserConfig()，任何依赖开关的条件展开都拿不到真实配置。
 };
 
 // ===========================
@@ -1040,7 +1060,7 @@ const getRules = ()=>{
     //   - Anthropic IPv6（2607:6bc0::/32）立即 REJECT：静态住宅 HTTP 代理大多无 IPv6 出站能力，
     //     送过去会回 502 Bad Gateway，前置 REJECT 可触发 Happy Eyeballs 立即走 IPv4 住宅出口。
     ...(WEBRTC_GUARD.blockQuic ? ['AND,((NETWORK,udp),(DST-PORT,443)),REJECT'] : []),
-    ...(WEBRTC_GUARD.enabled ? ['RULE-SET,webrtcGuard, REJECT'] : []),
+    ...(WEBRTC_GUARD.enabled ? WEBRTC_GUARD_RULES.map((r) => `${r},REJECT`) : []),
     ...(RESIDENTIAL.aiStrict ? ['IP-CIDR6,2607:6bc0::/32,REJECT,no-resolve'] : []),
 
     // ===== 3. 应用级分流：进程 / 包名 / UID（排在全部业务域名规则之前）=====
@@ -1201,7 +1221,10 @@ const getRules = ()=>{
 // ⚠️ 为什么不是 `+x-smart`：Clash Party 的 deepMerge 只对**数组**认 `+` 前缀
 //    （`+proxies` / `+rules`）；对象键不认，写 `+x-smart` 会得到一个叫「+x-smart」的键。
 //    两种写法这里都兼容，但正确写法是不带 `+`。
-// 合并规则：对象递归合并（upstream 只写 inject 不会把 group 抹掉），数组/标量整体替换。
+// 合并规则：对象递归合并（upstream 只写 inject 不会把 group 抹掉）；
+// 数组「追加 + 按身份去重覆盖」，默认值永远在，只写自己新增的那几条就行；
+// 要删默认项写 { value: 'x', remove: true }（字符串数组写 { remove: 'x' }），
+// 要整体替换写 { mode: 'replace', items: [...] }。标量直接替换。
 // 每一项都过类型校验；键名写错就报警并列可用键 —— 静默吞掉一个错键，等于让人以为它生效了。
 // 读完整段会从配置里删掉，避免内核因为陌生字段报警。
 
@@ -1278,6 +1301,141 @@ function sameKind(cur, v) {
   return typeof v === typeof cur;
 }
 
+// ---------------- 数组补丁：追加 + 同名覆盖（而不是整体替换） ----------------
+// 原来的语义是「数组整体替换」：只想加一条 appProxy.processes，也得把 10 条默认规则
+// 原样抄一份；抄件一多，默认值以后升级两边就漂了（踩过）。现在对齐 JS 的数组追加直觉：
+//   · 默认值在前，补丁里的项依次并进去；
+//   · 身份相同的项不重复，原位覆盖 —— 想改默认项的 proxy，把它重写一遍就行；
+//   · 删默认项：{ value: 'com.whatsapp', remove: true }；字符串数组写 { remove: 'xxx' }；
+//   · 只要自己的、不要默认：{ mode: 'replace', items: [...] }。
+// 身份怎么算：对象取 type + (value | name | port)，字符串取自身。
+// 这样 processes 里 `path-regex|^/Applications/Cue\.app/` 与同名包名规则不会互相覆盖，
+// ports 只认 name（换端口 = 改同一条），regionPriority 的 ['JP','US'] 这类就是纯字符串。
+// 哪些数组的条目必须有某些字段：漏了会生成 `PROCESS-NAME,xxx,undefined` 这种内核拒载的规则，
+// 与其让它在内核日志里炸，不如在这里挡下来并说清楚缺什么。
+const ARRAY_REQUIRED = {
+  'appProxy.processes': ['value', 'proxy'],
+  'appProxy.ports': ['name', 'port', 'proxy'],
+};
+
+function missingFields(here, item) {
+  const need = ARRAY_REQUIRED[here];
+  if (!need || !isPlainObject(item)) return [];
+  return need.filter((f) => item[f] == null || item[f] === '');
+}
+
+function arrayIdentity(item) {
+  if (isPlainObject(item)) {
+    const t = item.type == null ? '' : String(item.type);
+    if (item.value != null) return `${t}|${item.value}`;
+    if (item.name != null) return `${t}|${item.name}`;
+    if (item.port != null) return `${t}|${item.port}`;
+    try {
+      return `json|${JSON.stringify(item)}`;
+    } catch {
+      return 'json|';
+    }
+  }
+  return String(item);
+}
+
+// 就地改写 arr（默认值数组本身），保持引用不变
+function applyArrayPatch(here, arr, patch, sink) {
+  let items = patch;
+  let replace = false;
+  if (!Array.isArray(patch)) {
+    if (isPlainObject(patch) && Array.isArray(patch.items)) {
+      if (patch.mode !== undefined && patch.mode !== 'replace') {
+        sink.bad.push(
+          `${here} 的包装写法只支持 { mode: 'replace', items: [...] }，` +
+            `收到 mode: ${JSON.stringify(patch.mode)}`,
+        );
+        return;
+      }
+      replace = true;
+      items = patch.items;
+    } else {
+      sink.bad.push(`${here} 需要数组，或 { mode: 'replace', items: [...] }，收到${describeValue(patch)}`);
+      return;
+    }
+  }
+
+  // 默认值的元素类型决定补丁能写什么：字符串数组只收字符串（+ remove 指令）
+  const strArr = arr.length > 0 && arr.every((x) => typeof x === 'string');
+  const removes = new Set();
+  const adds = [];
+  for (const it of items) {
+    if (isPlainObject(it) && it.remove != null) {
+      // remove: true → 按这一项自己的身份删；remove: 'xxx' → 按那个值删
+      removes.add(it.remove === true ? arrayIdentity(it) : String(it.remove));
+      continue;
+    }
+    if (strArr && typeof it !== 'string') {
+      sink.bad.push(
+        `${here} 的每一项都需要字符串（例如 'DOMAIN-SUFFIX,example.com'），收到${describeValue(it)}`,
+      );
+      return;
+    }
+    if (!strArr && !isPlainObject(it)) {
+      sink.bad.push(`${here} 的每一项都需要对象，收到${describeValue(it)}`);
+      return;
+    }
+    adds.push(it);
+  }
+
+  const out = [];
+  const idx = new Map();
+  let dropped = 0;
+  for (const x of replace ? [] : arr) {
+    const id = arrayIdentity(x);
+    const hit =
+      removes.has(id) ||
+      removes.has(String(x)) ||
+      (isPlainObject(x) && (removes.has(String(x.value)) || removes.has(String(x.name))));
+    if (hit) {
+      dropped++;
+      continue;
+    }
+    if (idx.has(id)) continue; // 默认值自己重了就先去重，避免内核「duplicate name」
+    idx.set(id, out.length);
+    out.push(x);
+  }
+
+  let added = 0;
+  let updated = 0;
+  for (const it of adds) {
+    const id = arrayIdentity(it);
+    const at = idx.get(id);
+    const prev = at === undefined ? undefined : out[at];
+    // 同身份且两边都是对象 → 逐字段合并：只写 proxy 就只改 proxy，port / type 这些自动留着
+    const merged = prev !== undefined && isPlainObject(prev) && isPlainObject(it) ? { ...prev, ...it } : it;
+    const miss = missingFields(here, merged);
+    if (miss.length) {
+      sink.bad.push(`${here} 的条目缺少 ${miss.join(' / ')}：${JSON.stringify(it)}`);
+      continue;
+    }
+    if (prev !== undefined) {
+      if (isPlainObject(prev) && isPlainObject(it)) Object.assign(prev, it);
+      else out[at] = it;
+      updated++;
+    } else {
+      idx.set(id, out.length);
+      out.push(it);
+      added++;
+    }
+  }
+
+  arr.length = 0;
+  arr.push(...out);
+
+  const bits = [];
+  if (replace) bits.push('整体替换');
+  if (added) bits.push(`追加 ${added}`);
+  if (updated) bits.push(`覆盖 ${updated}`);
+  if (dropped) bits.push(`删除 ${dropped}`);
+  sink.applied.push(`${here}[]${bits.length ? `（${bits.join('，')}）` : '（无变化）'}`);
+}
+
 function applyConfigFields(path, target, patch, sink) {
   for (const k of Object.keys(patch)) {
     const v = patch[k];
@@ -1289,6 +1447,10 @@ function applyConfigFields(path, target, patch, sink) {
     const cur = target[k];
     if (isPlainObject(cur) && isPlainObject(v)) {
       applyConfigFields(here, cur, v, sink);
+      continue;
+    }
+    if (Array.isArray(cur)) {
+      applyArrayPatch(here, cur, v, sink);
       continue;
     }
     // 语义不能「保留默认值」的键先判（见 CONFIG_GUARDS）
@@ -1324,20 +1486,10 @@ function applyConfigLayer(label, src) {
     const v = src[k];
     if (CONFIG_TARGETS[k]) {
       const tgt = CONFIG_TARGETS[k]();
-      // 数组目标（目前只有 aiStaticToAI）：整体替换。就地改内容——绑定是 const，
-      // 但数组长度和元素都是可变的；这样其它地方已经拿到的引用不会失效。
+      // 数组目标（目前只有 aiStaticToAI）：和对象里的数组一样走「追加 + 去重覆盖」。
+      // 就地改内容 —— 绑定是 const，但数组长度和元素都是可变的，别处已拿到的引用不会失效。
       if (Array.isArray(tgt)) {
-        if (!Array.isArray(v)) {
-          sink.bad.push(`${k} 需要数组，收到${describeValue(v)}`);
-          continue;
-        }
-        if (tgt.length && tgt.every((x) => typeof x === 'string') && !v.every((x) => typeof x === 'string')) {
-          sink.bad.push(`${k} 的每一项都需要字符串（例如 'DOMAIN-SUFFIX,example.com'）`);
-          continue;
-        }
-        tgt.length = 0;
-        tgt.push(...v);
-        sink.applied.push(`${k}[]`);
+        applyArrayPatch(k, tgt, v, sink);
         continue;
       }
       if (!isPlainObject(v)) {
@@ -1380,7 +1532,26 @@ function applyConfigLayer(label, src) {
   }
 }
 
+function resetConfigTargets() {
+  for (const k of Object.keys(CONFIG_TARGETS)) {
+    const live = CONFIG_TARGETS[k]();
+    const snap = DEFAULT_SNAPSHOT[k];
+    const copy = JSON.parse(JSON.stringify(snap));
+    if (Array.isArray(live)) {
+      live.length = 0;
+      live.push(...copy);
+    } else {
+      for (const f of Object.keys(copy)) live[f] = copy[f];
+    }
+  }
+  KEEP_SUB_GROUPS = DEFAULT_SNAPSHOT.keepSubGroups;
+  MODE_GUARD = DEFAULT_SNAPSHOT.modeGuard;
+  setMode(DEFAULT_SNAPSHOT.mode);
+}
+
 function applyUserConfig(config) {
+  // 先回滚到默认值，再按 USER_CONFIG → x-smart 的顺序叠补丁（见 DEFAULT_SNAPSHOT 的说明）
+  resetConfigTargets();
   const KEY = config['x-smart'] ? 'x-smart' : config['+x-smart'] ? '+x-smart' : '';
   /** @type {Array<[string, object]>} */
   const layers = [];
@@ -1808,7 +1979,9 @@ function main(config) {
   }
 
   if (proxyCount === 0 && proxyProviderCount === 0) {
-    throw new Error('配置文件中未找到任何代理节点');
+    // 常见来源：订阅拉取失败（域名失效 / 被墙）、订阅过期、或者选中的是空模板 profile。
+    // 这里必须抛错：没有节点时生成的组全是空壳，内核对空组成员会判无效，报错反而更远。
+    throw new Error('配置文件中未找到任何代理节点（订阅为空或拉取失败：查 profile.yaml 的 url 与客户端日志）');
   }
 
   // 【改造】原先这里硬编码了一个静态住宅节点（含 server/username/password 和
@@ -1835,7 +2008,7 @@ function main(config) {
   //      其余（ipv6 / use-hosts / respect-rules）沿用订阅，端口完全不碰。
   if (!FLCLASH_MODE) {
     // 开启 webrtcGuard 时必须把 +.stun.* 从 fake-ip-filter 移出：
-    // 否则 STUN 域名返回真实公网 IP 不进窄 TUN，RULE-SET,webrtcGuard 根本收不到包。
+    // 否则 STUN 域名返回真实公网 IP 不进窄 TUN，WEBRTC_GUARD_RULES 根本收不到包。
     config.dns = WEBRTC_GUARD.enabled
       ? {
           ...dnsConfig,
@@ -2419,8 +2592,15 @@ function main(config) {
     const subGroups = Array.isArray(config['proxy-groups']) ? config['proxy-groups'] : [];
     if (subGroups.length) {
       const ownNames = new Set(finalGroups.map((g) => g && g.name).filter(Boolean));
-      const targets = new Set(ownNames);
-      ['DIRECT', 'REJECT', 'PASS', 'GLOBAL'].forEach((n) => targets.add(n));
+      // 【2026-11-27 改】targets 不含我们自己的组名。
+      // 订阅自带的组如果写成 `proxies: [AUTO, 美国节点…]`，原来会因为 targets 里有 AUTO
+      // 而把这条引用留下，形成「订阅组 → 本脚本组」的边。一旦本脚本的某个组也在
+      // 极端输入下回指（include-all 把同名订阅组收编、filter 命中组名等），内核就报
+      //   loop is detected in ProxyGroup: [AUTO US]
+      // 并整份配置拒载（表现为「添加配置失败」）。订阅组只需要节点来兜 dialer-proxy，
+      // 引用我们的组没有任何正当用途，这里直接切断。
+      const targets = new Set(['DIRECT', 'REJECT', 'PASS', 'GLOBAL', 'REJECT-DROP', 'COMPATIBLE']);
+      const cutGroupRefs = [];
       const nodeList = Array.isArray(config.proxies) ? config.proxies : [];
       for (const p of nodeList) {
         if (p && typeof p.name === 'string') targets.add(p.name);
@@ -2431,7 +2611,10 @@ function main(config) {
         if (!g || typeof g.name !== 'string' || !g.name) continue;
         // 重名会让内核直接拒载（duplicate group name）→ 本脚本的版本优先
         if (ownNames.has(g.name)) continue;
-        const members = Array.isArray(g.proxies) ? g.proxies.filter((m) => targets.has(m)) : [];
+        const raw = Array.isArray(g.proxies) ? g.proxies : [];
+        const members = raw.filter((m) => targets.has(m));
+        const cutRefs = raw.filter((m) => ownNames.has(m));
+        if (cutRefs.length) cutGroupRefs.push(`${g.name} → ${cutRefs.join('/')}`);
         const dynamic = !!(g['include-all-proxies'] || g['include-all'] || g.use);
         if (!members.length && !dynamic) continue; // 空组又不动态收编 → 纯噪音
         const copy = Object.assign({}, g);
@@ -2440,6 +2623,12 @@ function main(config) {
         finalGroups.push(copy);
         kept++;
         keptNames.push(g.name);
+      }
+      if (cutGroupRefs.length) {
+        console.log(
+          `[节点清洗] 订阅组引用了本脚本的组，已切断（防内核判环）: ${cutGroupRefs.slice(0, 4).join('，')}` +
+            `${cutGroupRefs.length > 4 ? ' …' : ''}`,
+        );
       }
       if (kept) {
         console.log(
@@ -2493,6 +2682,9 @@ function main(config) {
     }
   }
 
+  // WebRTC / STUN 拦截不注册 provider：规则已由 WEBRTC_GUARD_RULES 内联进 rules，
+  // 不依赖远程规则集是否可达（详见顶层常量处的说明）。
+
   config['proxy-groups'] = finalGroups;
   config['rule-providers'] = finalProviders;
   config.rules = rules;
@@ -2524,12 +2716,23 @@ function main(config) {
 
     for (const item of wanted) {
       const port = Number(item && item.port);
-      if (!port) continue;
+      if (!port) {
+        // 写了名字却没写端口：静默跳过会让人以为「配了但没生效」，直接说清楚
+        console.log(`[专用端口] ${item && item.name ? item.name : '(未命名)'} 缺少 port，已跳过`);
+        continue;
+      }
       // 没有家宽时，这个入口改绑 AI 组：删掉端口会让已经填了 127.0.0.1:7865 的
       // 应用变成 connection refused（比换个出口更难排查）；改绑 AI 至少保持可用。
       const target = item.proxy === RESIDENTIAL.group ? residentialPolicy() : item.proxy;
-      // 名字或端口重复都会让内核起不来：先到先得，后面重复的静默丢弃
-      if (listeners.some((l) => l && (l.name === item.name || Number(l.port) === port))) continue;
+      // 名字或端口重复都会让内核起不来：先到先得，后面重复的丢弃并说明白
+      // （appProxy.ports 现在支持追加，用户很容易加一条跟 7865 撞端口的新条目）
+      const dup = listeners.find((l) => l && (l.name === item.name || Number(l.port) === port));
+      if (dup) {
+        console.log(
+          `[专用端口] ${item.name}:${port} 与已有的 ${dup.name}:${dup.port} 冲突（name / port 必须唯一），已跳过`,
+        );
+        continue;
+      }
       listeners.push({
         name: item.name,
         type: 'mixed', // mixed = HTTP + SOCKS5，通吃只支持其中一种的客户端
@@ -2540,6 +2743,49 @@ function main(config) {
     }
 
     if (listeners.length) config.listeners = listeners;
+  }
+
+  // ===== 组循环兜底：内核遇到互相引用的组会整份拒载 =====
+  // 报错长这样（客户端弹「添加配置失败」）：
+  //   loop is detected in ProxyGroup, please check following ProxyGroups: [AUTO US]
+  // 组之间互相引用时无法排定测速顺序，内核直接判配置无效。这里在返回前做一次图检测，
+  // 发现环就删掉环上最后一条边并告警：宁可少一个成员，也不要整份配置加载不了。
+  {
+    const groups = Array.isArray(config['proxy-groups']) ? config['proxy-groups'] : [];
+    const names = new Set(groups.map((g) => g && g.name).filter(Boolean));
+    const adj = new Map();
+    for (const g of groups) {
+      if (!g || !g.name) continue;
+      adj.set(g.name, Array.isArray(g.proxies) ? g.proxies.filter((m) => names.has(m)) : []);
+    }
+    const state = new Map(); // 0/未访问 1/栈中 2/完成
+    const cut = [];
+    const dfs = (n) => {
+      state.set(n, 1);
+      for (const m of adj.get(n) || []) {
+        const s = state.get(m) || 0;
+        if (s === 1) {
+          // n → m 这条边闭合了环，删掉它
+          const g = groups.find((x) => x && x.name === n);
+          if (g && Array.isArray(g.proxies)) {
+            g.proxies = g.proxies.filter((x) => x !== m);
+            if (!g.proxies.length) g.proxies = ['REJECT'];
+            cut.push(`${n} → ${m}`);
+          }
+          adj.set(n, (adj.get(n) || []).filter((x) => x !== m));
+        } else if (s === 0) {
+          dfs(m);
+        }
+      }
+      state.set(n, 2);
+    };
+    for (const n of adj.keys()) if (!(state.get(n) || 0)) dfs(n);
+    if (cut.length) {
+      console.log(
+        `[节点清洗] 代理组存在循环引用，已断边: ${cut.slice(0, 4).join('，')}` +
+          `${cut.length > 4 ? ' …' : ''}（不断的话内核会整份拒载）`,
+      );
+    }
   }
 
   // 返回修改后的配置

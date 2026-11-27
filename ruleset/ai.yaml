@@ -69,6 +69,22 @@ payload:
   - DOMAIN-SUFFIX,grazie.aws.intellij.net
   - DOMAIN-SUFFIX,neuroapi.host
   - DOMAIN-SUFFIX,codeium.com
+  - DOMAIN-SUFFIX,manus.im
+  - DOMAIN-SUFFIX,manuscdn.com
+  - DOMAIN,copilot.microsoft.com
+  - DOMAIN,sydney.bing.com
+  - DOMAIN-SUFFIX,midjourney.com
+  - DOMAIN-SUFFIX,mj-gallery.com
+  - DOMAIN-SUFFIX,lovable.dev
+  - DOMAIN-SUFFIX,opencode.ai
+  - DOMAIN-SUFFIX,framelink.ai
+  - DOMAIN-SUFFIX,deepwiki.com
+  - DOMAIN-SUFFIX,lmarena.ai
+  - DOMAIN-SUFFIX,arena.ai
+  - DOMAIN-SUFFIX,genspark.ai
+  - DOMAIN-SUFFIX,you.com
+  - DOMAIN-SUFFIX,nof1.ai
+  - DOMAIN-SUFFIX,difyai.com
 
   # ========== 非 AI 的通用服务（原来混在 AI 清单里）==========
   - DOMAIN-SUFFIX,figma.com

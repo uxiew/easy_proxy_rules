@@ -1,9 +1,12 @@
 # ============================================================
 # WebRTC 常见探测拦截（可选，默认不启用）
 # ============================================================
-# 启用方式：smart.js 顶部 WEBRTC_GUARD.enabled = true
-# 规则落点：smart.js 里 `RULE-SET,webrtcGuard, REJECT`
-#           位置在 LAN 技术规则之后、Anthropic / AI 业务规则之前。
+# 启用方式：smart.js 顶部 WEBRTC_GUARD.enabled = true（或 x-smart / 手机 USER_CONFIG）
+# 规则落点：smart.js 里由 WEBRTC_GUARD_RULES 内联展开成 11 条 `...,REJECT`，
+#           位置在 LAN 技术规则之后、进程规则 / Anthropic / AI 业务规则之前。
+#           ⚠️ 不要再改回 RULE-SET 远程引用：本清单托管在 raw.githubusercontent.com，
+#              CDN 不可达时 provider 会静默变成空集（开关打开却照样泄露），
+#              而内联规则不依赖任何下载。build-flclash.js 会比对本文件与代码是否一致。
 #
 # 格式：classical 规则集，每行「类型,值」，**不带策略列**；
 #       策略由上层的 RULE-SET 行决定（这里固定 REJECT）。

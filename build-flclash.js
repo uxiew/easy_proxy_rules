@@ -474,8 +474,26 @@ function inspect(text, options) {
   return problems;
 }
 
+// smart.js 里的内联 STUN 清单必须与 ruleset/webrtc-guard.list 逐条一致：
+// 清单是给人看的，代码才是实际运行的那份。漂移的后果是「文档写 11 条、实际拦 8 条」，
+// 而泄露测试只会告诉你「还是泄露」，不会告诉你是哪一条没生效。
+function checkWebrtcParity() {
+  const src = fs.readFileSync(SMART_PATH, 'utf8');
+  const block = src.match(/const WEBRTC_GUARD_RULES = \[([\s\S]*?)\];/);
+  if (!block) return ['smart.js 里找不到 WEBRTC_GUARD_RULES'];
+  const inline = [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1].trim());
+  const file = (readList('ruleset/webrtc-guard.list') || []).map((parts) => parts.join(','));
+  if (!inline.length) return ['WEBRTC_GUARD_RULES 为空'];
+  if (inline.length !== file.length || inline.some((v, i) => v !== file[i])) {
+    return [
+      `WEBRTC_GUARD_RULES（${inline.length} 条）与 ruleset/webrtc-guard.list（${file.length} 条）不一致`,
+    ];
+  }
+  return [];
+}
+
 function assertGenerated(targets) {
-  const failures = [];
+  const failures = [...checkWebrtcParity()];
   for (const target of targets) {
     const problems = inspect(target.text, target);
     for (const problem of problems) failures.push(`[${target.label}] ${problem}`);

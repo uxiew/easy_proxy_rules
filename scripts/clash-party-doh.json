@@ -1,0 +1,13 @@
+{
+  "dohUrl": "https://edge.1molchuan.top/plus{?dns}",
+  "browserDohUrl": "https://edge.1molchuan.top/dns-query",
+  "notes": "plus 中继已公开收回；/plus 当前等同普通 smart DoH。ECH 需在浏览器 DoH 中启用；在 mihomo DNS 中使用可能因外层 SNI=cloudflare-ech.com 导致按域名分流失效。",
+  "slot": "nameserver",
+  "position": "prepend",
+  "appDataDir": "~/Library/Application Support/mihomo-party",
+  "override": {
+    "id": "906811e439eb",
+    "name": "edge-doh"
+  },
+  "backupDir": "backups/clash-party-doh"
+}

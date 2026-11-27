@@ -54,13 +54,13 @@ x-smart:
     # group: '住宅出口'
 
   # ---------- 应用级分流 ----------
-  # 数组是整体替换：写了 ports 就等于把默认的 7865 那条也换掉，想保留要一起写
+  # 数组是「追加 + 同身份原位覆盖」：下面只写要加的那些，默认 10 条不会丢。
+  #   删默认项：{ value: 'com.whatsapp', remove: true }
+  #   只要自己的：processes: { mode: 'replace', items: [...] }
   # appProxy:
-  #   ports:
-  #     - { name: 'residential-in', port: 7865, proxy: '住宅出口' }
   #   processes:
-  #     - { value: 'com.openai.chatgpt', proxy: '住宅出口' }
-  #     - { value: '^/Applications/Claude\.app/', type: 'path-regex', proxy: '住宅出口' }
+  #     - { value: 'ai.manus.agents', proxy: 'US' }
+  #     - { value: '^/Applications/Cue\.app/', type: 'path-regex', proxy: 'US' }
 
   # ---------- 省流量 ----------
   # traffic:
