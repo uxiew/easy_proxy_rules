@@ -25,7 +25,23 @@ const USER_CONFIG = {};           // 你的覆盖项，只写要改的键
 | 覆写 YAML 的 `x-smart:` | 桌面端（Clash Party），推荐 | 最高 | [`x-smart.example.yaml`](../x-smart.example.yaml) |
 | `USER_CONFIG` | 手机（构建时注入）/ 单文件脚本 | 最低 | 见下文 |
 
-后面覆盖前面，**对象逐字段合并、数组整体替换**。两个入口都是可选的，不写就用 `DEFAULT_CONFIG`。
+后面覆盖前面。合并规则按 JS 直觉来：**对象逐字段合并，数组追加（按身份去重，同名原位覆盖）**，
+只写要改的那一项就行，不用把默认值抄一遍。两个入口都是可选的，不写就用 `DEFAULT_CONFIG`。
+
+数组的四种写法：
+
+| 想要 | 写法 | 结果 |
+| --- | --- | --- |
+| 加一条 | `processes: [{ value: 'ai.manus.agents', proxy: 'US' }]` | 默认 10 条不动，末尾补 1 条 |
+| 改默认那条 | 只写要改的字段：`{ name: 'residential-in', proxy: 'US' }` | 按身份找到默认项，逐字段覆盖，没写的 `port` 等自动保留 |
+| 删默认那条 | `processes: [{ value: 'com.whatsapp', remove: true }]` | 从默认值里摘掉；字符串数组写 `{ remove: 'DOMAIN-SUFFIX,xxx' }` |
+| 只留自己的 | `processes: { mode: 'replace', items: [...] }` | 整份替换（等价于旧行为） |
+
+![数组怎么合并](../assets/diagrams/config-merge.svg)
+
+「身份」怎么定：对象看 `type` + `value`／`name`／`port`（`processes` 因此不会把包名规则和路径正则
+混为一条，`ports` 只认 `name`），字符串数组看字符串本身。`regionPriority.targets.AUTO` 这类
+嵌套数组同样按追加处理。
 
 > 桌面端为什么推荐 `x-smart`：`smart.js` 通常是**远程覆写**，改本地文件下次更新就被覆盖；
 > 而 `x-smart` 写在你自己那个本地 YAML 里，跟着订阅走、不跟着脚本走。
@@ -119,9 +135,30 @@ x-smart:                 # ← 不要写 +x-smart
 | 键 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `ports` | 数组 | `[{ residential-in, 7865, 住宅出口 }]` | 专用端口：进这个端口跳过规则；仅桌面端 |
-| `processes` | 数组 | 内置 **9 条**（4 条 Android 包名 + macOS `Claude.app` / `claude` CLI 路径正则 / `ChatGPT.app` / `Antigravity.app` / `/opt/homebrew/bin/agy`） | `{ value, type?, proxy }`，`type` 可为 `path` / `path-regex` / `name-regex` / `uid` |
+| `processes` | 数组 | 内置 **10 条**（4 条 Android 包名 + macOS `Claude.app` / `claude` CLI 路径正则 / `ChatGPT.app` / `Antigravity.app` / `agy` / `devin-cli`） | `{ value, type?, proxy }`，`type` 可为 `path` / `path-regex` / `name-regex` / `uid` |
 
-数组是**整体替换**：写了 `ports` 或 `processes` 会完整覆盖默认条目（例如写 `ports` 会换掉默认的 `7865`，写 `processes` 会换掉默认的 9 条内置规则），想保留请把默认条目一并写上。
+数组是**追加**：写了 `processes` 只是在默认 10 条后面补，不会顶掉默认规则；想把默认的 `com.whatsapp`
+从住宅出口拿掉，写 `{ value: 'com.whatsapp', remove: true }`。要彻底不要默认值才用
+`{ mode: 'replace', items: [...] }`。规则生效顺序 = 默认在前、自己加的在后，同一身份原位覆盖（顺序不变）。
+
+同一身份命中默认项时是**逐字段覆盖**，所以 `ports` 只写 `{ name: 'residential-in', proxy: 'US' }`
+就能把 7865 那条换出口、端口不动。新增条目则必须有 `value` + `proxy`（`ports` 是 `name` + `port` + `proxy`），
+少字段会被拒并打日志——否则会生成 `PROCESS-NAME,xxx,undefined` 这种内核直接拒载的规则。
+
+**macOS 上 `PROCESS-NAME` 匹配可执行文件名，不是 bundle id。** 内核只记录
+`proc_pidpath`（可执行文件路径），mihomo 取它的 basename 当进程名；`Info.plist` 里的
+`CFBundleIdentifier` 不参与匹配（内核二进制中没有任何读 bundle id 的代码路径）。
+典型误判：Cue / Manus 桌面端的 bundle id 确实是 `ai.manus.agents`，但它的进程名是
+`Cue`，`PROCESS-NAME,ai.manus.agents` 在桌面永不命中。
+
+Electron 应用还有第二层：真正建连的是
+`Cue Helper.app --type=utility --utility-sub-type=network.mojom.NetworkService`，
+主进程几乎不直接联网，日志里的进程名因此是 `Cue Helper`。所以桌面端一律用路径正则，
+一条覆盖主进程与全部 Helper：
+
+```yaml
+- { value: '^/Applications/Cue\.app/', type: 'path-regex', proxy: 'US' }
+```
 
 ### `traffic` / `narrowTun` / `regionPriority` / `webrtcGuard` / `aiStaticToAI`
 
@@ -136,7 +173,7 @@ x-smart:                 # ← 不要写 +x-smart
 | `regionPriority.targets` | 对象 | `{AUTO:[…], AI:[…]}` | 组 → 地区顺序 |
 | `regionPriority.othersGroup` | 字符串 | `'OT'` | 「其它地区」兜底组，`''` = 不留 |
 | `regionPriority.interval` | 数字 | `120` | fallback 组检查间隔（秒） |
-| `webrtcGuard.enabled` | 布尔 | `false` | 拦 STUN 探测（开启后联动从 `fake-ip-filter` 移除 `+.stun.*`），**会打断语音** |
+| `webrtcGuard.enabled` | 布尔 | `false` | 拦 STUN 探测（开启后联动从 `fake-ip-filter` 移除 `+.stun.*`）；11 条规则内联进 `rules`，不依赖远程规则集，**会打断语音** |
 | `webrtcGuard.blockQuic` | 布尔 | `true` | 拦 UDP 443（QUIC 秒退 TCP 443），防无 UDP 住宅节点挂起与 QUIC 旁路，**不影响语音** |
 | `aiStaticToAI` | 字符串数组 | 4 条 | AI 静态资源 / 安装包走机场（不烧住宅） |
 

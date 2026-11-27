@@ -14,9 +14,12 @@
 | 搞清楚 7890 / 7865 的区别、有哪些组 | [端口、分组与文件结构](architecture.md) |
 | 解决「规则写对了但 App 一直转圈」 | [流量怎么进内核](traffic-entry.md) |
 | 配 Claude Code、桌面与移动端防漏防封清单 | [客户端接入与防封注意事项](clients.md) |
+| 代理崩了会不会漏真实 IP、要不要上 kill switch | [崩溃时的断网兜底](fail-closed.md) |
+| 想把 Clash Party 换成 FlClash，先看能不能过现有配置 | [Clash Party vs FlClash](clash-party-vs-flclash.md) |
 | 生成手机覆写、理解构建期自检 | [FlClash 与构建产物](flclash.md) |
 | 确认某条规则到底命中了什么 | [验证分流是否生效](verification.md) |
 | 排查报错、换订阅后的怪现象 | [踩过的坑](troubleshooting.md) |
+| 看还有哪些**没修**的坑与刻意的取舍 | [已知问题与边界](known-issues.md) |
 | 换了出口 IP / 凭据，维护防泄漏名单 | [防泄漏](security.md) |
 
 ## 全部文档
@@ -29,10 +32,26 @@
 | [configuration.md](configuration.md) | 配置项详解：住宅三态开关、节点识别与锁定、多台住宅 IP、跳板策略、DNS 与 WebRTC 边界 |
 | [custom-config.md](custom-config.md) | `x-smart` 与 `USER_CONFIG` 两个入口、完整键表、优先级与合并规则、类型与枚举校验 |
 | [clients.md](clients.md) | Claude Code、`claude-guard` / `claude-check`、桌面与移动端（Android / iOS）防漏防封清单、pf 硬阻断、Proxifier |
+| [fail-closed.md](fail-closed.md) | 代理崩溃时的断网兜底：三层防线、看护脚本与 launchd、PF 按网卡拦（`scripts/pf-killswitch.ts`）、换客户端取舍 |
+| [clash-party-vs-flclash.md](clash-party-vs-flclash.md) | 桌面端替换实测：同订阅 + 产物跑 `mihomo -t`、逐项差异、7865 与路径正则两条硬缺口、三分钟 GUI 验证法 |
 | [flclash.md](flclash.md) | Android 客户端对比、`flclash-private.js` 生成与安装、构建期自检、手机端专有陷阱 |
 | [security.md](security.md) | 三层防泄漏（hook / CI / 精确名单）、`sync-sensitive.mjs`、`.exit-ip.log` 与 Secret 维护 |
 | [troubleshooting.md](troubleshooting.md) | 实测踩坑与排错指南，按编号索引 |
+| [known-issues.md](known-issues.md) | 仍然存在的坑、刻意取舍、未实测部分、自查检查单 |
 | [verification.md](verification.md) | `claude-check` 一键体检、出口与端口验证、内核日志证据、fake-ip 下 `GEOIP,CN` 三答案验收 |
+
+## 配图
+
+图都在 [`assets/diagrams/`](../assets/diagrams)（纯 SVG，改起来就是改文本）：
+
+| 图 | 一眼看懂什么 | 出现在 |
+| --- | --- | --- |
+| [overview.svg](../assets/diagrams/overview.svg) | 三类入口 → 规则 → 三个出口，7865 为什么跳过规则 | 仓库首页 |
+| [override-chain.svg](../assets/diagrams/override-chain.svg) | 订阅 → `x-smart` YAML → `smart.js` → 内核的装配顺序 | 首页、[快速开始](getting-started.md) |
+| [group-chains.svg](../assets/diagrams/group-chains.svg) | 住宅链（含 `dialer-proxy` 跳板）与 AUTO 国家优先链 | [端口、分组](architecture.md) |
+| [traffic-paths.svg](../assets/diagrams/traffic-paths.svg) | 哪些流量进内核、哪些绕过内核 | [流量怎么进内核](traffic-entry.md) |
+| [config-merge.svg](../assets/diagrams/config-merge.svg) | 数组配置怎么追加 / 覆盖 / 删除 / 整份替换 | [自定义配置](custom-config.md) |
+| [fail-closed.svg](../assets/diagrams/fail-closed.svg) | 崩溃那一刻连不出去 vs 直连泄露，四道防线 | [断网兜底](fail-closed.md) |
 
 ## 建议阅读顺序
 
@@ -47,4 +66,6 @@
 - 新增长篇说明放 `docs/`，`README.md` 只放入口、速查表和指向这里的链接。
 - 文档里的相对路径从 `docs/` 出发，指向仓库根要写 `../`（例如 `../smart.js`）。
 - 「坑 N」统一引用 [troubleshooting.md](troubleshooting.md) 的编号；代码注释里也用这个文件名，别再写「见 README 坑 N」。
+- 配图放 `assets/diagrams/*.svg`（纯手写 SVG，禁止外链字体/图片，保证 GitHub 直出），
+  在 [配图](#配图) 表中登记一行，并在正文里补一句「这张图在说什么」。
 - 提交前跑 `node scripts/scan-sensitive.mjs --staged`；CI 会对全仓和全部提交信息再扫一遍。

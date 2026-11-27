@@ -34,6 +34,13 @@ Clash Party 退出后端口消失，客户端拿到的是 `ECONNREFUSED`，**不
 2. **代理活着但出口被切走** —— 「住宅出口」被点成 `AI`，端口是通的但用的是机场 IP，  
    比断网更危险（同账号 IP 跳变）。所以闸门不能只 `nc` 一下端口，还得校验出口 IP 确实是住宅 IP。
 
+```bash
+# ❌ 只测端口通不通：住宅出口被点成 AI 时照样「通过」
+nc -z 127.0.0.1 7865 && echo 端口在
+# ✅ 连出口一起测：org 必须是家宽运营商，不能是机房 / 机场
+curl -x http://127.0.0.1:7865 -s https://ipinfo.io/json | jq -r '.org, .country'
+```
+
 > ⚠️ `NO_PROXY` 只写 `localhost,127.0.0.1`，**不要**把 `anthropic.com` 加进去 —— 加一条就让所有代理努力归零。
 
 ## 启动守卫与环境体检（`claude-guard`）
@@ -87,8 +94,8 @@ source "$_cg_repo/claude-guard/claude-guard.zsh"
    - **为什么**：Clash Party 退出时会自动把 macOS 系统代理关掉（`HTTPEnable=0`）。后台还活着的 `Claude.app` 或网页检测到长连接断开，下一秒自动重连就会直接从物理网卡裸出国内宽带，没有终端 `7865` 那样的断链保护。
 
 3. **开启语音模式或防 WebRTC 打洞（STUN）泄露**
-   - **怎么做**：平时不用微信/会议语音时，在本地覆写 `x-smart` 打开 `webrtcGuard: { enabled: true }`；若常用 Chrome 网页版，给 Chrome 配置受管策略 `WebRtcIPHandling=disable_non_proxied_udp`（修改后需 `⌘Q` 重启 Chrome，在 `chrome://policy` 确认状态为 `Set`）。
-   - **为什么**：WebRTC（网页实时通信，语音对话 LiveKit 等会用到）走 UDP 打洞（STUN 协议），**根本不经过 `7890` 系统 HTTP/SOCKS 代理**；默认 `webrtcGuard.enabled: false` 时 `fake-ip-filter` 会放行 `+.stun.*` 返回真实服务器 IP（开启 `enabled: true` 后脚本会自动移出该豁免），在窄 TUN 下会顺着默认路由直连国内宽带，把真实公网 IP 暴露给对端（注意：`Claude.app` 是独立 Electron 应用，不读 Chrome 的受管策略文件）。
+   - **怎么做**：平时不用微信/会议语音时，在本地覆写 `x-smart` 打开 `webrtcGuard: { enabled: true }`；若常用 Chrome 网页版，给 Chrome 配置受管策略 `WebRtcIPHandling=disable_non_proxied_udp`（修改后需 `⌘Q` 重启 Chrome，在 `chrome://policy` 确认状态为 `Set`）。**手机上这条策略不存在**：Chrome for Android 没有任何 WebRTC IP 策略入口，只能靠客户端拦 STUN，或换浏览器——Brave for Android 设置里直接有 `WebRTC IP Handling Policy → Disable non-proxied UDP`；Firefox for Android 可在 `about:config` 把 `media.peerconnection.enabled` 设为 `false`。
+   - **为什么**：WebRTC（网页实时通信，语音对话 LiveKit 等会用到）走 UDP 打洞（STUN 协议），**根本不经过 `7890` 系统 HTTP/SOCKS 代理**；默认 `webrtcGuard.enabled: false` 时 `fake-ip-filter` 会放行 `+.stun.*` 返回真实服务器 IP（开启 `enabled: true` 后脚本会自动移出该豁免），在窄 TUN 下会顺着默认路由直连国内宽带，把真实公网 IP 暴露给对端（注意：`Claude.app` 是独立 Electron 应用，不读 Chrome 的受管策略文件）。手机端即使 UDP 进了 TUN，国内 STUN 服务器仍会被国内直连规则送出去，实测案例见 [坑 23](troubleshooting.md)。
 
 4. **桌面端 `Claude.app` 的本地 MCP 与内置虚拟机（Cowork）**
    - **怎么做**：在 `~/Library/Application Support/Claude/claude_desktop_config.json` 配置需要联网访问海外接口的 `mcpServers` 时，在对应服务的 `"env"` 里显式加上 `"HTTPS_PROXY": "http://127.0.0.1:7865"`（不涉及 AI 风控的普通工具填 `7890`）。
@@ -246,3 +253,13 @@ lsof -nP -a -p $(pgrep -f "Resources/bin/language_server" | head -1) -iTCP | gre
 # 对了：目标 127.0.0.1:7865 且 ESTABLISHED
 # 没对：目标仍是 172.217.x.x:443，状态 SYN_SENT
 ```
+
+两个易漏点：
+
+- **CLI 要单独写**。Proxifier 的 Applications 里只写 `Claude.app` / `Claude` 时，`claude`（Claude Code）
+  不在覆盖范围，只能靠 `~/.claude/settings.json` 兜住；补一条 `claude*` 才真正两层都有。
+- **它默认不在登录项**，重启后兜底直接消失。用一个 `RunAtLoad` 的 LaunchAgent
+  `/usr/bin/open -gj /Applications/Proxifier.app` 即可，不用去系统设置点。
+
+崩溃场景（Clash Party 挂了、Proxifier 还指着死端口会发生什么）与 PF kill switch 方案见
+[崩溃时的断网兜底](fail-closed.md)。

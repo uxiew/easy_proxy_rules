@@ -296,19 +296,37 @@ AI 流量静默退回机场（出口 IP 从住宅变成机场共享 IP，**不�
 一个额外边界：不跑 `main()` 的纯数据提取路径下 `'auto'` 等同 `true`（完全不探测），
 详见 [auto 的判定边界](configuration.md)。
 
-## 坑 23 · Android 上 `detectradar` 报 WebRTC/DNS 暴露，不是配置写错，是平台边界
+## 坑 23 · Android 上 `detectradar` 报 WebRTC/DNS 暴露：先分清「没进内核」还是「国内 STUN 走了直连」
 
 同一份 `smart.js`，桌面 Clash Party 下 `detectradar` 全绿，手机 FlClash 下报 WebRTC 与
-DNS 暴露。原因不在 YAML，也不在构建产物：
+DNS 暴露。**不要直接归因于平台边界**——2026-11-24 实测的一组数据说明它可能完全是规则问题：
 
-- 手机内核跑在 App 的 `VpnService` 里，只有被 VPN 接管的流量才受规则约束，
-  **没进内核的 UDP 拦不住**（规则再严也无解）；
-- 系统「私人 DNS」走 DoT/853、浏览器自带 DoH 时，解析根本不经过配置里的
-  `nameserver`，`dns-hijack: any:53` 也管不到 853/443 上的加密 DNS；
+```text
+网页出口    43.207.39.151     （代理，东京）
+国际 STUN   54.178.9.224      （也是代理，东京另一个 IP）
+国内 STUN   183.212.175.23    （真实宽带出口）← detectradar 判「UDP 走了其他出口」
+```
+
+两条结论同时成立：
+
+1. **UDP 确实进了 TUN 也走了代理**（否则国际 STUN 只会显示真实 IP）→ VpnService 不是本次主因；
+2. 国内 STUN 服务器（小米 / B 站等）命中了 `geosite:cn` / `GEOIP,CN` 的直连规则，被 `DIRECT` 送出去，
+   真实宽带 IP 就这样交了出去；而代理那一路的 UDP 出口与 TCP 出口又不是同一个 IP，
+   检测站按「HTTP 出口 ≠ srflx」判定，同样算泄露。
+
+所以「换节点」「关 IPv6」都修不好这条：出口 IP 由机场 NAT 决定，规则层唯一能做的是让 srflx 消失——
+`webrtcGuard.enabled: true`（11 条内联 `REJECT`，见 [WebRTC 探测要不要拦](configuration.md)），
+代价是微信/会议/游戏语音的打洞一起失效。
+
+仍然存在的平台边界（另一类故障，现象不同）：
+
+- 手机内核跑在 `VpnService` 里，只有被 VPN 接管的流量才受规则约束，**没进内核的 UDP 拦不住**；
+- 系统「私人 DNS」走 DoT/853、浏览器自带 DoH 时，解析根本不经过配置里的 `nameserver`，
+  `dns-hijack: any:53` 也管不到 853/443 上的加密 DNS；
 - `tun.enable` 开着 ≠ 泄漏已修好，`dns-hijack` 生效 ≠ 浏览器不用自己的 DoH。
 
-要治只能在 App/系统层收口（关掉系统私人 DNS、关浏览器安全 DNS、确认 UDP 进内核），
-规则层能做的只有「把已知 STUN 端口拒掉」，见 [WebRTC 探测要不要拦](configuration.md)。
+浏览器层能做的很有限：Chrome for Android **没有** `WebRtcIPHandling` 策略，
+桌面那条 `disable_non_proxied_udp` 在手机上不存在（见 [客户端接入](clients.md)）。
 
 ## 坑 24 · 多台住宅 IP ≠ 自动容错：`select` 回落第一个成员，会悄悄换出口
 
@@ -567,3 +585,30 @@ curl -s --unix-socket "$SOCK" http://127.0.0.1/configs | python3 -c "import sys,
 > 走前置后仍偶发超时、而网关 407 应答正常 → 多半是住宅商的**并发/额度限制**
 > （同账号另一台设备占着、或套餐到顶，US 网关的 `529 PROXY_LIMIT_REACHED` 就是明示），
 > 去面板看：两台设备的健康检查每 5 分钟各打一次，也在消耗并发额度。
+
+## 坑 33 · `loop is detected in ProxyGroup, please check following ProxyGroups: [AUTO US]`
+
+**症状**：客户端「添加配置 / 更新订阅」弹「添加配置失败」，正文是这句；整份配置被内核拒载，
+但同一个订阅在别的客户端里可能能加载。多见于节点很少的订阅（1～11 个节点）。
+
+**机制**：内核要按组的引用关系排出测速顺序，两个组互相引用就排不出来，直接判无效。
+
+**根因**：`keepSubGroups` 保留订阅自带策略组时，允许保留的成员名单（`targets`）里包含了
+本脚本自己建的组名（`AUTO` / `US` / `JP` …）。于是订阅组写成
+`proxies: [自动选择, 美国节点01…]` 时，`自动选择`（= 本脚本的 AUTO）这条引用被留下来，
+形成「订阅组 → AUTO → 地区组 → …」的边；一旦某次生成里地区组又回指订阅组
+（`include-all` 把同名订阅组一起收编、filter 命中组名），闭合成环。
+
+**修法（2026-11-27）**：两处。
+1. 保留订阅组时，`targets` 只含**真实节点名 + 内置策略**，不再含本脚本的组名——
+   订阅组只需要节点来兜 `dialer-proxy`，引用我们的组没有任何正当用途。
+   命中时会打 `[节点清洗] 订阅组引用了本脚本的组，已切断（防内核判环）: X → AUTO`。
+2. 返回配置前加一次图检测（DFS），发现环就删掉环上最后一条边并打
+   `[节点清洗] 代理组存在循环引用，已断边: A → B`。宁可少一个成员，也不要整份加载不了。
+
+**验证方法**：`bun scripts/check-groups.ts --profile <订阅 yaml>`（先过一遍 `smart.js` 再查环）；
+`❌` 行会打印 `A → B → A` 的完整路径。
+
+**顺带记一个不是 bug 的同类报错**：`getaddrinfo ENOTFOUND dingyue.aweijll.gq` 是订阅域名
+NXDOMAIN（`.gq` 免费域名被回收的典型表现，权威直接返回 Status 3）。内核、DNS、PF 都无关，
+只能找机场要新链接——本地怎么改都拉不下来。

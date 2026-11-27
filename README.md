@@ -2,7 +2,10 @@
 
 给 **Clash Party / FlClash / mihomo** 使用的覆写脚本（[`smart.js`](smart.js)）：将流量自动分为**国内直连**、**AI 严格锁定单台住宅出口（失败即阻断）**、**其余按国家自动择优**三层；桌面端 Clash Party 与手机端 FlClash 共用同一套配置契约。
 
-> 📚 详细原理、参数说明与排错指南见 [docs/](docs/README.md)。
+![分流全景](assets/diagrams/overview.svg)
+
+> 一句话：**7865 是克制的口子**（Claude Code 专用，跳过规则直奔住宅），**7890 是日常出口**（按规则分流）。
+> 详细原理、参数说明与排错指南见 [docs/](docs/README.md)。
 
 ---
 
@@ -28,6 +31,10 @@
 2. 将其设为**全局覆写**，出站模式保持「**规则**」。
 3. 若需接入住宅节点：再建一个本地 YAML 覆写（模板见 [`residential.example.yaml`](residential.example.yaml)），覆写顺序**必须为「住宅 YAML → smart.js → 其他 YAML」**。
    > 脚本会整体替换 `proxy-groups` / `rules` / `rule-providers`（`proxies` 不受影响）。首次启用若「住宅出口」停在 `REJECT`，在面板手动选中目标住宅节点一次即可（手机端构建时已自动锁定）。
+
+![覆写链顺序](assets/diagrams/override-chain.svg)
+
+顺序反了是最常见的「配了但没生效」：脚本跑完才轮到后面的 YAML，那时 `x-smart` 已经没人读了。
 
 **一分钟验证**（确认 `7865` 端口出口为目标家宽）：
 
@@ -108,6 +115,7 @@ x-smart:
 | 使用 Claude Code 终端守卫与环境体检 | [claude-guard](claude-guard/README.md) |
 | 构建手机端 FlClash 单文件覆写 | [FlClash 与构建产物](docs/flclash.md) |
 | 排查异常与常见问题 | [常见问题与踩坑排查](docs/troubleshooting.md) |
+| 看还有哪些没修的坑 / 刻意取舍 | [已知问题与边界](docs/known-issues.md) |
 | 确认某条规则命中了什么 | [验证分流是否生效](docs/verification.md) |
 | 出口 IP 与凭据防泄漏 | [防泄漏](docs/security.md) |
 
@@ -122,6 +130,8 @@ node build-flclash.js                  # 生成手机端单文件产物并执行
 git config core.hooksPath .githooks    # 首次 clone：启用提交前敏感信息扫描 hook
 node scripts/sync-sensitive.mjs        # 更换 IP/凭据后同步本地脱敏检测名单
 node scripts/scan-sensitive.mjs --all  # 手动全量扫描防泄漏
+bun scripts/check-groups.ts --profile <订阅.yaml>   # 加订阅前自查：组环 / 悬空引用 / 空组
+bun scripts/pf-killswitch.ts render               # 代理崩溃断网兜底（见 fail-closed.md）
 ```
 
 修改后手机端需重新导入生成的 `flclash-private.js`；桌面端在面板重载覆写即可。

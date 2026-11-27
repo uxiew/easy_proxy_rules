@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="470" viewBox="0 0 900 470" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',system-ui,sans-serif">
+  <defs>
+    <marker id="c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="cg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#059669"/>
+    </marker>
+  </defs>
+  <rect x="0.5" y="0.5" width="899" height="469" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
+
+  <text x="30" y="40" font-size="20" font-weight="700" fill="#0f172a">两条主链：AI 走住宅，其余按国家择优</text>
+  <text x="30" y="66" font-size="13" fill="#6b7280">组名固定（不要在其他覆写里重复定义），规则只认组名；换订阅时组结构不变，只有成员跟着变。</text>
+
+  <!-- 左：住宅链 -->
+  <rect x="26" y="88" width="418" height="286" rx="12" fill="#f0fdf4" stroke="#bbf7d0"/>
+  <text x="46" y="112" font-size="11" font-weight="600" fill="#047857" letter-spacing="1">AI 域名 / AI 进程规则</text>
+
+  <rect x="46" y="124" width="378" height="54" rx="9" fill="#ffffff" stroke="#86efac"/>
+  <text x="62" y="146" font-size="13.5" font-weight="600" fill="#065f46">住宅出口 · select · 只锁 1 台</text>
+  <text x="62" y="167" font-size="11.5" fill="#047857">成员只有 [🏠IP-JP, REJECT]，不自动切换、不混机场</text>
+
+  <path d="M235 178 L235 196" stroke="#059669" stroke-width="1.4" marker-end="url(#cg)"/>
+
+  <rect x="46" y="198" width="378" height="52" rx="9" fill="#ffffff" stroke="#86efac"/>
+  <text x="62" y="219" font-size="13" font-weight="600" fill="#065f46">🏠IP-JP（日本家宽静态 IP）</text>
+  <text x="62" y="239" font-size="11.5" fill="#047857">真正的落地出口；挂了就 REJECT，不会悄悄换 IP</text>
+
+  <path d="M235 250 L235 272" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#c)"/>
+  <text x="248" y="267" font-size="10.5" fill="#64748b">dialer-proxy（先经机场亚洲）</text>
+
+  <rect x="46" y="274" width="378" height="52" rx="9" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="62" y="295" font-size="13" font-weight="600" fill="#334155">前置-亚洲 · url-test</text>
+  <text x="62" y="315" font-size="11.5" fill="#64748b">日/港/台/韩/新/越/马/泰/菲 机场节点，tolerance 200 防抖</text>
+
+  <text x="46" y="352" font-size="11" fill="#04806a">本机在国内直连日本网关会被 RST，所以这一跳是必须的</text>
+
+  <!-- 右：AUTO 链 -->
+  <rect x="456" y="88" width="418" height="286" rx="12" fill="#fffbeb" stroke="#fde68a"/>
+  <text x="476" y="112" font-size="11" font-weight="600" fill="#b45309" letter-spacing="1">其余境外流量</text>
+
+  <rect x="476" y="124" width="378" height="54" rx="9" fill="#ffffff" stroke="#fcd34d"/>
+  <text x="492" y="146" font-size="13.5" font-weight="600" fill="#92400e">AUTO · fallback · 国家顺序</text>
+  <text x="492" y="167" font-size="11.5" fill="#a16207">JP → SG → KR → HK → TW → US … → CA → EU → OT</text>
+
+  <path d="M665 178 L665 196" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#c)"/>
+
+  <rect x="476" y="198" width="378" height="52" rx="9" fill="#ffffff" stroke="#fcd34d"/>
+  <text x="492" y="219" font-size="13" font-weight="600" fill="#92400e">地区组 · url-test（每个国家一个组）</text>
+  <text x="492" y="239" font-size="11.5" fill="#a16207">国家之间看顺序，国家内部挑延迟最低</text>
+
+  <path d="M665 250 L665 272" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#c)"/>
+
+  <rect x="476" y="274" width="378" height="52" rx="9" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="492" y="295" font-size="13" font-weight="600" fill="#334155">机场节点池</text>
+  <text x="492" y="315" font-size="11.5" fill="#64748b">同一节点只进一个组；0 个节点的组会被自动剔除</text>
+
+  <text x="476" y="352" font-size="11" fill="#a16207">顺序即优先级：日本还有一台活的就一直待在日本</text>
+
+  <!-- 底部兜底 -->
+  <rect x="26" y="388" width="848" height="60" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="44" y="413" font-size="12" fill="#334155"><tspan font-weight="700" fill="#475569">国内域名</tspan> → DIRECT　　<tspan font-weight="700" fill="#475569">广告 / 统计</tspan> → ADS_FILTER（REJECT ⇄ DIRECT）</text>
+  <text x="44" y="435" font-size="12" fill="#334155"><tspan font-weight="700" fill="#475569">其余都没命中</tspan> → CATCH（成员 AUTO，面板里可整体切 DIRECT / REJECT，不用改配置）</text>
+</svg>

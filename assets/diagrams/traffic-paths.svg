@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="400" viewBox="0 0 900 400" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',system-ui,sans-serif">
+  <rect x="0.5" y="0.5" width="899" height="399" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
+
+  <text x="30" y="40" font-size="20" font-weight="700" fill="#0f172a">流量到底有没有进内核</text>
+  <text x="30" y="66" font-size="13" fill="#6b7280">规则写对了也一直转圈，九成是流量根本没到内核。先用这张图判断它在哪一侧。</text>
+
+  <!-- 受控 -->
+  <rect x="26" y="84" width="412" height="212" rx="12" fill="#f0fdf4" stroke="#bbf7d0"/>
+  <text x="46" y="108" font-size="12" font-weight="700" fill="#15803d">✅ 进内核：规则、组、进程规则都生效</text>
+
+  <rect x="46" y="120" width="372" height="52" rx="8" fill="#ffffff" stroke="#86efac"/>
+  <text x="60" y="141" font-size="13" font-weight="600" fill="#065f46">系统代理 · 127.0.0.1:7890</text>
+  <text x="60" y="161" font-size="11.5" fill="#047857">浏览器、Electron、大多数 App（读系统代理的）</text>
+
+  <rect x="46" y="180" width="372" height="52" rx="8" fill="#ffffff" stroke="#86efac"/>
+  <text x="60" y="201" font-size="13" font-weight="600" fill="#065f46">专用端口 · 127.0.0.1:7865</text>
+  <text x="60" y="221" font-size="11.5" fill="#047857">自己填代理的 CLI：Claude Code、Proxifier</text>
+
+  <rect x="46" y="240" width="372" height="48" rx="8" fill="#ffffff" stroke="#86efac"/>
+  <text x="60" y="261" font-size="13" font-weight="600" fill="#065f46">TUN 虚拟网卡</text>
+  <text x="60" y="280" font-size="11.5" fill="#047857">不读代理的 Go / gRPC 客户端；窄 TUN 只接管指定网段</text>
+
+  <!-- 绕过 -->
+  <rect x="462" y="84" width="412" height="212" rx="12" fill="#fef2f2" stroke="#fecaca"/>
+  <text x="482" y="108" font-size="12" font-weight="700" fill="#b91c1c">❌ 绕过内核：规则写什么都管不着</text>
+
+  <rect x="482" y="120" width="372" height="52" rx="8" fill="#ffffff" stroke="#fecaca"/>
+  <text x="496" y="141" font-size="13" font-weight="600" fill="#991b1b">App 自己解析 DNS、直连 IP</text>
+  <text x="496" y="161" font-size="11.5" fill="#b91c1c">WhatsApp、Talkatone：进程规则能管，域名规则管不到</text>
+
+  <rect x="482" y="180" width="372" height="52" rx="8" fill="#ffffff" stroke="#fecaca"/>
+  <text x="496" y="201" font-size="13" font-weight="600" fill="#991b1b">系统私人 DNS / 浏览器 DoH</text>
+  <text x="496" y="221" font-size="11.5" fill="#b91c1c">解析绕过内核，拿到真 IP 后仍可能直连</text>
+
+  <rect x="482" y="240" width="372" height="48" rx="8" fill="#ffffff" stroke="#fecaca"/>
+  <text x="496" y="261" font-size="13" font-weight="600" fill="#991b1b">Android 分应用绕过</text>
+  <text x="496" y="280" font-size="11.5" fill="#b91c1c">VpnService 白名单里的 App 不走 FlClash</text>
+
+  <!-- 判断口诀 -->
+  <rect x="26" y="312" width="848" height="70" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="46" y="338" font-size="12.5" fill="#334155"><tspan font-weight="700">判断口诀：</tspan>内核日志里搜不到 <tspan font-family="ui-monospace,Menlo,monospace" fill="#1d4ed8">match</tspan> / <tspan font-family="ui-monospace,Menlo,monospace" fill="#1d4ed8">using</tspan> 记录，就是没进内核 —— 改规则、换节点都没用，先解决入口。</text>
+  <text x="46" y="363" font-size="12.5" fill="#334155"><tspan font-weight="700">进来看不见出口：</tspan>进程规则的 hitCount 不涨，说明流量没走内核；涨了但出口不对，才是规则本身的问题。</text>
+</svg>

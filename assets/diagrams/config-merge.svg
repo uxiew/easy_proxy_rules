@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" viewBox="0 0 900 420" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',system-ui,sans-serif">
+  <defs>
+    <marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+  <rect x="0.5" y="0.5" width="899" height="419" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
+
+  <text x="30" y="40" font-size="20" font-weight="700" fill="#0f172a">数组配置怎么合并：只写你要改的那条</text>
+  <text x="30" y="66" font-size="13" fill="#6b7280">默认值永远在，补丁依次并入；同一身份原位覆盖，新身份追加到末尾。不用再把默认条目抄一遍。</text>
+
+  <text x="30" y="104" font-size="11" font-weight="600" fill="#94a3b8" letter-spacing="1">默认（smart.js）</text>
+  <text x="320" y="104" font-size="11" font-weight="600" fill="#94a3b8" letter-spacing="1">你写的 x-smart</text>
+  <text x="610" y="104" font-size="11" font-weight="600" fill="#94a3b8" letter-spacing="1">合并结果</text>
+
+  <!-- 默认 -->
+  <rect x="26" y="112" width="244" height="196" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <g font-size="11" fill="#475569">
+    <rect x="40" y="126" width="216" height="26" rx="6" fill="#ffffff" stroke="#e2e8f0"/><text x="52" y="143">com.whatsapp → 住宅出口</text>
+    <rect x="40" y="158" width="216" height="26" rx="6" fill="#ffffff" stroke="#e2e8f0"/><text x="52" y="175">com.openai.chatgpt → 住宅出口</text>
+    <rect x="40" y="190" width="216" height="26" rx="6" fill="#ffffff" stroke="#e2e8f0"/><text x="52" y="207">Claude.app → 住宅出口</text>
+    <rect x="40" y="222" width="216" height="26" rx="6" fill="#ffffff" stroke="#e2e8f0"/><text x="52" y="239">Antigravity.app → AI</text>
+    <rect x="40" y="254" width="216" height="26" rx="6" fill="#f1f5f9" stroke="#e2e8f0" stroke-dasharray="3 3"/><text x="52" y="271" fill="#94a3b8">… 共 10 条</text>
+  </g>
+
+  <!-- 你的补丁 -->
+  <rect x="316" y="112" width="244" height="196" rx="10" fill="#eff6ff" stroke="#bfdbfe"/>
+  <g font-size="11">
+    <rect x="330" y="126" width="216" height="26" rx="6" fill="#ffffff" stroke="#93c5fd"/><text x="342" y="143" fill="#1e3a8a">ai.manus.agents → US</text>
+    <rect x="330" y="158" width="216" height="26" rx="6" fill="#ffffff" stroke="#93c5fd"/><text x="342" y="175" fill="#1e3a8a">com.whatsapp → US</text>
+    <rect x="330" y="190" width="216" height="26" rx="6" fill="#ffffff" stroke="#93c5fd"/><text x="342" y="207" fill="#1e3a8a">com.foo → US</text>
+    <text x="342" y="240" fill="#64748b">（只写要改的；没写的字段保留）</text>
+  </g>
+  <text x="330" y="288" font-size="10.5" fill="#64748b">身份 = type + value / name / port</text>
+
+  <!-- 结果 -->
+  <rect x="606" y="112" width="268" height="196" rx="10" fill="#f0fdf4" stroke="#bbf7d0"/>
+  <g font-size="11">
+    <rect x="620" y="126" width="240" height="26" rx="6" fill="#ffffff" stroke="#86efac"/><text x="632" y="143" fill="#065f46">com.whatsapp → US</text>
+    <rect x="196" y="126" width="0" height="0" fill="none"/>
+    <rect x="620" y="158" width="240" height="26" rx="6" fill="#ffffff" stroke="#86efac"/><text x="632" y="175" fill="#065f46">com.openai.chatgpt → 住宅出口</text>
+    <rect x="620" y="190" width="240" height="26" rx="6" fill="#ffffff" stroke="#86efac"/><text x="632" y="207" fill="#065f46">Claude.app → 住宅出口</text>
+    <rect x="620" y="222" width="240" height="26" rx="6" fill="#ffffff" stroke="#86efac"/><text x="632" y="239" fill="#065f46">ai.manus.agents → US</text>
+    <rect x="620" y="254" width="240" height="26" rx="6" fill="#ffffff" stroke="#86efac"/><text x="632" y="271" fill="#065f46">com.foo → US</text>
+  </g>
+  <rect x="620" y="126" width="4" height="26" rx="2" fill="#f59e0b"/>
+  <rect x="620" y="222" width="4" height="26" rx="2" fill="#3b82f6"/>
+  <text x="620" y="296" font-size="10.5" fill="#047857">共 12 条 <tspan fill="#92400e">橙=覆盖</tspan> <tspan fill="#1d4ed8">蓝=新增</tspan></text>
+
+  <!-- 箭头 -->
+  <path d="M270 210 L314 210" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#m)"/>
+  <path d="M560 210 L604 210" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#m)"/>
+
+  <!-- 两种例外 -->
+  <rect x="26" y="326" width="404" height="72" rx="10" fill="#fffbeb" stroke="#fde68a"/>
+  <text x="44" y="351" font-size="12" font-weight="700" fill="#92400e">想删掉默认项</text>
+  <text x="44" y="373" font-size="11.5" fill="#a16207">processes: [{ value: 'com.whatsapp', remove: true }]</text>
+  <text x="44" y="391" font-size="11" fill="#b45309">字符串数组写 { remove: 'DOMAIN-SUFFIX,xxx' }</text>
+
+  <rect x="446" y="326" width="428" height="72" rx="10" fill="#faf5ff" stroke="#e9d5ff"/>
+  <text x="464" y="351" font-size="12" font-weight="700" fill="#6b21a8">想彻底不要默认值</text>
+  <text x="464" y="373" font-size="11.5" fill="#7e22ce">processes: { mode: 'replace', items: [ … ] }</text>
+  <text x="464" y="391" font-size="11" fill="#9333ea">等价旧行为：整份替换，只留你写的这些</text>
+</svg>

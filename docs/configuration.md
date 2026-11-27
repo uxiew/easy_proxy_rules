@@ -19,7 +19,7 @@
 | `residential.aiStrict`         | `true`          | AI 服务商走住宅（推荐）                                                                                        |
 | `residential.allAI`            | `false`         | 整个 `forAI` 走住宅——**别开**，`ai.yaml` 里有 `DOMAIN-REGEX,google.*`，会连 `googlevideo.com`（YouTube 视频流）一起烧住宅流量 |
 | `appProxy.ports`              | `[7865 → 住宅出口]` | 专用端口列表：端口整体绑到指定组/节点，跳过规则。见 [应用级分流](traffic-entry.md)                                                                    |
-| `appProxy.processes`          | **9 条**（4 条 Android 包名 + macOS `Claude.app` / `/opt/homebrew/bin/claude` / `ChatGPT.app` / `Antigravity.app` / `/opt/homebrew/bin/agy`） | 进程/包名规则，插在 `rules` 最前。桌面写进程名或路径，Android 写包名 |
+| `appProxy.processes`          | **10 条**（4 条 Android 包名 + macOS `Claude.app` / `claude` CLI / `ChatGPT.app` / `Antigravity.app` / `agy` / `devin-cli`，桌面全部用路径正则） | 进程/包名规则，插在 `rules` 最前。桌面写路径正则，Android 写包名 |
 | `residential.escapeToAI`       | `false`         | 是否把 `AI` 放进「住宅出口」当手动逃生口。默认 `false` = 住宅挂了只能阻断，不会静默换机场 IP                                             |
 | `residential.dedicatedPort`    | `0`（已迁移）        | **旧字段**，仅兼容用：填非 0 值且 `appProxy.ports` 里没有 `residential-in` 时自动补一条                                   |
 | `residential.upstream.enabled` | `true`          | 建「前置-亚洲」组：住宅节点的 `dialer-proxy` 指向它                                                                   |
@@ -70,11 +70,20 @@ const modeGuard = false;   // 想交还面板控制时改成 false
 
 `default-nameserver` 只负责解析节点域名（如 `node.example.com`），放路由器 DNS 优先、公网 IP 兜底即可。
 
+```yaml
+# ✅ 带 IP 的 DoH：不需要任何引导
+nameserver: ['https://1.12.12.12/dns-query', 'https://120.53.53.53/dns-query']
+# ❌ 域名型 DoH：断外部 UDP 53 的网络上，连它自己都解析不出来
+nameserver: ['https://doh.pub/dns-query']
+```
+
 ## WebRTC 探测要不要拦（`webrtcGuard`）
 
 浏览器 WebRTC 打洞时直接向 STUN 服务器发 **UDP**，不吃 HTTP 代理，也不一定被 TUN 接管。  
-[`ruleset/webrtc-guard.list`](../ruleset/webrtc-guard.list) 提供一份**默认关闭**的拦截清单：
-`DST-PORT 3478/5349/19302-19309` + `DOMAIN-KEYWORD,stun` → `REJECT`（11 条）。
+`WEBRTC_GUARD_RULES`（与 [`ruleset/webrtc-guard.list`](../ruleset/webrtc-guard.list) 逐条一致，构建时比对）
+提供一份**默认关闭**的拦截清单：`DST-PORT 3478/5349/19302-19309` + `DOMAIN-KEYWORD,stun` → `REJECT`（11 条），
+**内联展开进 `rules`**，不注册 `rule-provider`——规则集托管在 `raw.githubusercontent.com`，
+CDN 不可达时 provider 会静默变成空集，表现为「开关打开了照样泄露」，比没开更难排查。
 
 开关在 `DEFAULT_CONFIG.webrtcGuard`（可用 `x-smart` 覆盖）：
 
@@ -86,19 +95,28 @@ x-smart:
 ```
 
 规则插入点固定在**内网回环（`LAN`/`private`）之后、进程规则与 AI 业务规则之前**（同时前置 `IP-CIDR6,2607:6bc0::/32,REJECT` 迫使 Anthropic IPv6 立即回退 IPv4，避免无 IPv6 出站能力的 HTTP 住宅代理返回 `502`）——放前面会把内网流量拦掉，
-放后面会被 `Claude.app` 等进程规则和 AI 规则抢先接走，等于没装。`enabled: false` 时不生成 `webrtcGuard` 的 `rule-provider`，
-不会产生任何下载请求。
+放后面会被 `Claude.app` 等进程规则和 AI 规则抢先接走，等于没装。`enabled: false` 时不产生任何规则。
 
-**它拦不到什么（别把它当成「关闭 WebRTC」）：**
+**检测站在比什么**（决定了「打开开关」是不是唯一解）：
+
+| 检测结果 | 含义 |
+| --- | --- |
+| HTTP 出口 = 代理 IP，STUN 显示真实 Broadband IP | STUN 目标命中了国内直连规则（小米/B 站等国内 STUN 服务器），被 `DIRECT` 送出去了 |
+| STUN 显示另一个代理 IP | UDP 进了 TUN、也走了代理，但机场的 UDP 出口与 TCP 出口不是同一个 IP ——检测站仍判「UDP 走了其他出口」 |
+| 完全没有 STUN 结果 | 规则已拦，或 TUN 未接管 |
+
+前两种都无法靠「换节点」修好：出口 IP 由机场 NAT 决定。要全绿只能让 srflx 候选消失，也就是 `enabled: true`。
+
+**它拦不到什么：**
 
 | 拦不到的情况 | 原因 |
 | --- | --- |
 | 自定义端口的 STUN、私有端口的 TURN 中继 | 只覆盖常见端口 |
-| 纯 IP 探测（域名没被内核嗅探出来） | 关键字规则失效，只剩端口规则 |
-| **从未进入内核的 UDP** | 系统代理模式 / App 自己发 / IPv6 未接管 —— 这是平台边界，规则层无解 |
+| 从未进入内核的 UDP | 系统代理模式 / App 自己发 / IPv6 未接管 —— 平台边界，规则层无解 |
 
-最后一条正是 Android 上 `detectradar` 能拿到真实 IP 的原因：手机 FlClash 走 `VpnService`，
-内核之外的 UDP 直接由系统发出去，规则再严也管不到（见 [坑 23](troubleshooting.md)）。
+Android 上 `detectradar` 报「UDP 走了其他出口」**不一定是**最后一行：实测国际 STUN 走的是代理出口
+（说明 UDP 确实进了 TUN），但国内 STUN 服务器走 `DIRECT` 暴露真实宽带 IP，两条判定同时成立。
+先看 STUN 列表里国内/国外分组的出口 IP 是否分裂，再决定是开 `webrtcGuard` 还是查 TUN（见 [坑 23](troubleshooting.md)）。
 
 **代价**：会同时打断 Google Meet、微信/QQ 语音、Discord、游戏语音等一切依赖 STUN 打洞的功能。
 宁可不通话也不想被探测时再打开；需要通话就单独放行对应域名/端口，并重新验证——放行即缩小防护范围。
@@ -333,6 +351,16 @@ primary: '住宅-JP',      // 订阅节点名带速度标记时，抄一段稳�
 
 `前置-亚洲` 一个节点都匹配不到时（订阅里全是欧洲节点是常态），脚本自动降到 `strip` ——
 不会把住宅挂到一个只有 `REJECT` 的空组上。
+
+同一条订阅节点，四种模式下的结果：
+
+```yaml
+# 订阅原样：{ name: '[JP] 家宽01', ..., dialer-proxy: '手动选择' }
+inject: 'fill'      # 已有 dialer-proxy → 不动（只有「没写」的才补 前置-亚洲）
+inject: 'strip'     # 删掉这一行 → 本机直连住宅网关
+inject: 'override'  # 改成 '前置-亚洲'（手选组名不认）
+inject: false       # 一个字都不碰
+```
 
 ### 写在覆写 YAML 里（`x-smart`）
 

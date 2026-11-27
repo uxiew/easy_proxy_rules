@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="520" viewBox="0 0 900 520" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',system-ui,sans-serif">
+  <defs>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+  <rect x="0.5" y="0.5" width="899" height="519" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
+
+  <text x="30" y="42" font-size="20" font-weight="700" fill="#0f172a">覆写链：x-smart 必须排在脚本前面</text>
+  <text x="30" y="68" font-size="13" fill="#6b7280">Clash Party 按覆写列表自上而下执行；脚本一旦跑完，后面 YAML 里的 x-smart 就再也读不到了。</text>
+
+  <!-- 步骤 -->
+  <g>
+    <rect x="40" y="100" width="556" height="62" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+    <circle cx="66" cy="131" r="13" fill="#e2e8f0"/>
+    <text x="66" y="136" font-size="12" font-weight="700" fill="#475569" text-anchor="middle">1</text>
+    <text x="92" y="126" font-size="14" font-weight="600" fill="#0f172a">订阅 profile.yaml</text>
+    <text x="92" y="147" font-size="11.5" fill="#64748b">机场给的节点、订阅自带策略组与规则</text>
+    <text x="620" y="126" font-size="11.5" fill="#475569">节点原样进来</text>
+    <text x="620" y="147" font-size="11.5" fill="#94a3b8">smart.js 不删节点，只重写组和规则</text>
+  </g>
+  <path d="M318 162 L318 180" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#b)"/>
+
+  <g>
+    <rect x="40" y="182" width="556" height="62" rx="10" fill="#eff6ff" stroke="#93c5fd"/>
+    <circle cx="66" cy="213" r="13" fill="#dbeafe"/>
+    <text x="66" y="218" font-size="12" font-weight="700" fill="#1d4ed8" text-anchor="middle">2</text>
+    <text x="92" y="208" font-size="14" font-weight="600" fill="#1e3a8a">本地覆写 YAML（住宅 / 自定义）</text>
+    <text x="92" y="229" font-size="11.5" fill="#475569">x-smart: residential.primary / appProxy.processes …</text>
+    <text x="620" y="208" font-size="11.5" font-weight="600" fill="#1d4ed8">只放覆盖项</text>
+    <text x="620" y="229" font-size="11.5" fill="#94a3b8">键名与手机端 USER_CONFIG 完全一致</text>
+  </g>
+  <path d="M318 244 L318 262" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#b)"/>
+
+  <g>
+    <rect x="40" y="264" width="556" height="62" rx="10" fill="#fef3c7" stroke="#fcd34d"/>
+    <circle cx="66" cy="295" r="13" fill="#fde68a"/>
+    <text x="66" y="300" font-size="12" font-weight="700" fill="#92400e" text-anchor="middle">3</text>
+    <text x="92" y="290" font-size="14" font-weight="600" fill="#92400e">smart.js（远程脚本）</text>
+    <text x="92" y="311" font-size="11.5" fill="#a16207">读取 x-smart → 生成 proxy-groups / rules / rule-providers</text>
+    <text x="620" y="290" font-size="11.5" font-weight="600" fill="#b45309">整体替换 3 个字段</text>
+    <text x="620" y="311" font-size="11.5" fill="#94a3b8">proxies 不受影响</text>
+  </g>
+  <path d="M318 326 L318 344" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#b)"/>
+
+  <g>
+    <rect x="40" y="346" width="556" height="62" rx="10" fill="#ecfdf5" stroke="#a7f3d0"/>
+    <circle cx="66" cy="377" r="13" fill="#d1fae5"/>
+    <text x="66" y="382" font-size="12" font-weight="700" fill="#065f46" text-anchor="middle">4</text>
+    <text x="92" y="372" font-size="14" font-weight="600" fill="#065f46">work/config.yaml → mihomo 内核</text>
+    <text x="92" y="393" font-size="11.5" fill="#047857">最终生效配置；面板里看到的就是这一份</text>
+    <text x="620" y="372" font-size="11.5" fill="#475569">可复查</text>
+    <text x="620" y="393" font-size="11.5" fill="#94a3b8">grep listeners / 7865 / route-address</text>
+  </g>
+
+  <!-- 对错对照 -->
+  <rect x="30" y="428" width="840" height="72" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="48" y="454" font-size="12.5" font-weight="700" fill="#15803d">✅ 正确</text>
+  <text x="112" y="454" font-size="12" fill="#334155">住宅 YAML（x-smart） → smart.js → 其他 YAML</text>
+  <text x="48" y="480" font-size="12.5" font-weight="700" fill="#b91c1c">❌ 反了</text>
+  <text x="112" y="480" font-size="12" fill="#334155">smart.js → 住宅 YAML：脚本读不到 x-smart，住宅组不建，AI 规则指向不存在的组，内核拒载</text>
+</svg>

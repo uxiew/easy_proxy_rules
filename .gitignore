@@ -13,3 +13,6 @@ claude-guard/.exit-ip.log
 
 # 本地仓库备份，别误提交
 *.bundle
+
+# DoH 覆写工具的备份：含 Clash Party 真实订阅/节点配置，不进仓库
+backups/

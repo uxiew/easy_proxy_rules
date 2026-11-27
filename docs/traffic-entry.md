@@ -2,6 +2,10 @@
 
 规则写对了却一直转圈，问题几乎都在这里：`PROCESS-*` 只给「已经进入内核」的连接贴标签。
 
+![进内核还是绕过去](../assets/diagrams/traffic-paths.svg)
+
+先回答「这条连接进内核了吗」，再谈走哪个组——顺序反了会白改一晚上。
+
 > ← [文档索引](README.md) · [仓库首页](../README.md)
 
 ---
@@ -26,7 +30,9 @@ x-smart:
       - { value: org.telegram.messenger, proxy: US }   # Android 包名
 ```
 
-> 数组是**整体替换**：写了 `ports` 就等于换掉默认那条 7865，想保留就一起写上。
+> 数组是**追加**：写了 `processes` 只是往后补，默认 10 条照常生效；`ports` 按 `name` 认，
+> 重写默认那条同名项就是原位覆盖。删默认项写 `{ value: 'xxx', remove: true }`，
+> 要整份替换才用 `{ mode: 'replace', items: [...] }`。详见[配置项](custom-config.md)。
 
 ### 方式一：专用端口（桌面端）
 
@@ -76,7 +82,7 @@ Android 上是**三层**机制，别混：
 | ② 进内核后走哪个组      | `appProxy.processes`（包名） | 同一个 VPN 内，Telegram 走 US、Chrome 走 AUTO |
 | ③ 同一 App 内按域名细分 | `rules`                   | 例如 Chrome 里 claude.ai 走住宅、其余走 AUTO    |
 
-> **仓库默认已启用 9 条**（见 `smart.js` 的 `DEFAULT_CONFIG.appProxy.processes`）：
+> **仓库默认已启用 10 条**（见 `smart.js` 的 `DEFAULT_CONFIG.appProxy.processes`；**只需要加自己那几条，默认值会自动合并**）：
 >
 > | 规则 | 目标 | 生效端 |
 > | --- | --- | --- |
@@ -85,7 +91,8 @@ Android 上是**三层**机制，别混：
 > | `PROCESS-PATH-REGEX,^/opt/homebrew/(bin/claude$\|Caskroom/claude-code)` | `住宅出口` | macOS（Claude Code CLI，含 Cask 软链接真实路径） |
 > | `PROCESS-PATH-REGEX,^/Applications/ChatGPT\.app/` | `住宅出口` | macOS（ChatGPT 桌面端） |
 > | `PROCESS-PATH-REGEX,^/Applications/Antigravity\.app/` | `AI` | macOS（Antigravity 桌面端） |
-> | `PROCESS-PATH,/opt/homebrew/bin/agy` | `AI` | macOS（Antigravity CLI） |
+> | `PROCESS-PATH-REGEX,^/opt/homebrew/bin/agy` | `AI` | macOS（Antigravity CLI） |
+> | `PROCESS-PATH-REGEX,^/opt/homebrew/Caskroom/devin-cli/` | `AI` | macOS（Devin CLI，软链接解引用后的真实路径） |
 >
 > - **桌面端用路径正则而不是进程名**：Claude / ChatGPT / Antigravity 都是 Electron，真正建连的常是 `Xxx Helper`（network service）子进程，进程名还会被 macOS 截到 16 字符，精确匹配必漏。
 > - **`claude` CLI 用路径正则而非精确路径**：Homebrew Cask 安装的 `/opt/homebrew/bin/claude` 是软链接，macOS 内核 `proc_pidpath` 拿到的是 `/opt/homebrew/Caskroom/claude-code@latest/<版本>/claude`，精确写 `/opt/homebrew/bin/claude` 会永远失配。用正则同时兜住软链接目标与直接安装路径，配合窄 TUN 为绕过 shell 守卫的调用兜底。

@@ -18,7 +18,11 @@
 3. 想用静态住宅出口，再建一个本地 YAML 覆写，内容参考 [`residential.example.yaml`](../residential.example.yaml)。
 
 > ⚠️ 本脚本会**整体替换** `proxy-groups` / `rules` / `rule-providers` 三个字段。  
-> 所以所有 YAML 覆写都必须排在 `smart.js` **之后**，否则它们的规则会被整段丢掉（`proxies` 不受影响）。
+> **规则类** YAML 必须排在 `smart.js` **之后**，否则规则会被整段丢掉（`proxies` 不受影响）；  
+> **配置类**（写 `x-smart:` 的那份）必须排在 `smart.js` **之前**，否则脚本读不到它。
+> 两种诉求写在不同文件里最省心。
+
+![覆写链顺序](../assets/diagrams/override-chain.svg)
 
 ## 一分钟验证
 
@@ -47,7 +51,7 @@ curl -x http://127.0.0.1:7865 -s -A "Mozilla/5.0" https://api.ip.sb/geoip | jq '
 | 覆写 YAML 里的规则「凭空消失」 | 本页「三步启用」的覆写顺序警告 |
 | 规则写对了、组名也对，但 App 一直转圈 | [流量怎么进内核](traffic-entry.md) |
 | AI 站点打不开 / ChatGPT 报「非预期的 SSL 证书」 | [坑 11](troubleshooting.md)、[FlClash 手机端](flclash.md) |
-| 手机 `detectradar` 报 WebRTC / DNS 暴露 | [坑 23](troubleshooting.md)（平台边界，不是配置错） |
+| 手机 `detectradar` 报 WebRTC / DNS 暴露 | [坑 23](troubleshooting.md)（先看国内外 STUN 出口是否分裂，多半是国内 STUN 走了直连，不是平台边界） |
 | 没有家宽静态 IP，不想建住宅组 | [没有家宽怎么办](configuration.md)（设 `enabled: false`） |
 | 改了规则集没生效 | [坑 4](troubleshooting.md)（本仓库规则走 raw，别挂镜像） |
 | Tailscale 内网（`*.ts.net` / `100.64.0.0/10`）打不开或 502 | 需在系统代理绕过列表放行 `100.64.0.0/10` 与 `*.ts.net`，macOS 窄 TUN 另需配分域解析见 [流量怎么进内核](traffic-entry.md#路线-atun还要处理-dns) |

@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="480" viewBox="0 0 900 480" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',system-ui,sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="899" height="479" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
+
+  <text x="30" y="40" font-size="20" font-weight="700" fill="#0f172a">分流全景：一次请求是怎么选到出口的</text>
+  <text x="30" y="66" font-size="13" fill="#6b7280">入口只有三类，落点由规则决定；7865 是唯一「跳过规则」的口子，专给 Claude Code 这类不读系统代理的程序。</text>
+
+  <text x="30" y="104" font-size="11" font-weight="600" fill="#94a3b8" letter-spacing="1">流量入口</text>
+  <text x="330" y="104" font-size="11" font-weight="600" fill="#94a3b8" letter-spacing="1">规则判定</text>
+  <text x="560" y="104" font-size="11" font-weight="600" fill="#94a3b8" letter-spacing="1">出口 / 策略组</text>
+
+  <!-- 入口 -->
+  <g>
+    <rect x="28" y="118" width="252" height="64" rx="10" fill="#eff6ff" stroke="#bfdbfe"/>
+    <text x="44" y="143" font-size="14" font-weight="600" fill="#1e3a8a">系统代理 · 7890</text>
+    <text x="44" y="165" font-size="11.5" fill="#475569">浏览器、日常 App、Electron</text>
+  </g>
+  <g>
+    <rect x="28" y="194" width="252" height="64" rx="10" fill="#eff6ff" stroke="#bfdbfe"/>
+    <text x="44" y="219" font-size="14" font-weight="600" fill="#1e3a8a">TUN + 进程规则</text>
+    <text x="44" y="241" font-size="11.5" fill="#475569">不读系统代理的客户端（Claude.app）</text>
+  </g>
+  <g>
+    <rect x="28" y="270" width="252" height="64" rx="10" fill="#eff6ff" stroke="#bfdbfe"/>
+    <text x="44" y="295" font-size="14" font-weight="600" fill="#1e3a8a">Android 包名</text>
+    <text x="44" y="317" font-size="11.5" fill="#475569">FlClash 应用分流（PROCESS-NAME）</text>
+  </g>
+
+  <!-- 判定框 -->
+  <rect x="320" y="118" width="180" height="216" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="4 3"/>
+  <text x="410" y="145" font-size="13" font-weight="600" fill="#334155" text-anchor="middle">rules 顺序匹配</text>
+  <g font-size="11" fill="#475569">
+    <rect x="334" y="158" width="152" height="30" rx="6" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="346" y="178">GEOSITE,cn → DIRECT</text>
+    <rect x="334" y="196" width="152" height="30" rx="6" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="346" y="216">AI 域名 / IP → 住宅出口</text>
+    <rect x="334" y="234" width="152" height="30" rx="6" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="346" y="254">其余 → AUTO</text>
+    <rect x="334" y="272" width="152" height="30" rx="6" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="346" y="292">都不中 → CATCH</text>
+  </g>
+  <text x="410" y="322" font-size="10.5" fill="#94a3b8" text-anchor="middle">进程 / 包名规则排在最前面</text>
+
+  <!-- 出口 -->
+  <g>
+    <rect x="548" y="118" width="324" height="64" rx="10" fill="#f1f5f9" stroke="#cbd5e1"/>
+    <text x="564" y="143" font-size="13.5" font-weight="600" fill="#334155">DIRECT · 国内直连</text>
+    <text x="564" y="165" font-size="11.5" fill="#64748b">不耗机场流量，本机直出</text>
+  </g>
+  <g>
+    <rect x="548" y="194" width="324" height="64" rx="10" fill="#ecfdf5" stroke="#a7f3d0"/>
+    <text x="564" y="219" font-size="13.5" font-weight="600" fill="#065f46">住宅出口 · 只锁 1 台</text>
+    <text x="564" y="241" font-size="11.5" fill="#047857">日本家宽静态 IP；锁不上就 REJECT，不回落机场</text>
+  </g>
+  <g>
+    <rect x="548" y="270" width="324" height="64" rx="10" fill="#fef3c7" stroke="#fcd34d"/>
+    <text x="564" y="295" font-size="13.5" font-weight="600" fill="#92400e">AUTO · 国家优先</text>
+    <text x="564" y="317" font-size="11.5" fill="#a16207">JP → SG → KR → HK → TW → US … → OT</text>
+  </g>
+
+  <!-- 箭头：入口 → 判定 -->
+  <path d="M280 150 L318 150" stroke="#94a3b8" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
+  <path d="M280 226 L318 226" stroke="#94a3b8" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
+  <path d="M280 302 L318 302" stroke="#94a3b8" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
+  <!-- 判定 → 出口 -->
+  <path d="M500 150 L546 150" stroke="#94a3b8" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
+  <path d="M500 226 L546 226" stroke="#94a3b8" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
+  <path d="M500 302 L546 302" stroke="#94a3b8" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
+
+  <!-- 7865 直连带 -->
+  <rect x="28" y="368" width="844" height="82" rx="10" fill="#eff6ff" stroke="#93c5fd" stroke-dasharray="5 3"/>
+  <text x="46" y="394" font-size="13.5" font-weight="600" fill="#1d4ed8">7865 专用端口：完全跳过上面的判定框</text>
+  <text x="46" y="418" font-size="11.5" fill="#475569">进这个端口的流量一律从「住宅出口」出去。Claude Code 的 settings.json 把它钉死在这里，</text>
+  <text x="46" y="437" font-size="11.5" fill="#475569">所以住宅链一断，它就直接失败——这也是 fail-closed 的由来。</text>
+  <rect x="716" y="204" width="88" height="21" rx="10.5" fill="#dbeafe" stroke="#93c5fd"/>
+  <text x="760" y="219" font-size="10.5" font-weight="600" fill="#1d4ed8" text-anchor="middle">7865 直达此处</text>
+</svg>

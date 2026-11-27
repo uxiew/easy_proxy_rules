@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="440" viewBox="0 0 900 440" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',system-ui,sans-serif">
+  <defs>
+    <marker id="f" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+  <rect x="0.5" y="0.5" width="899" height="439" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
+
+  <text x="30" y="40" font-size="20" font-weight="700" fill="#0f172a">代理挂掉的那一刻，真实 IP 会不会漏出去</text>
+  <text x="30" y="66" font-size="13" fill="#6b7280">答案取决于客户端被钉在哪个端口：钉死 7865 就是 fail-closed（失败即拒绝），钉 7890 才会悄悄直连。</text>
+
+  <!-- 正常 -->
+  <rect x="26" y="88" width="412" height="170" rx="12" fill="#f0fdf4" stroke="#bbf7d0"/>
+  <text x="46" y="112" font-size="12" font-weight="700" fill="#15803d">代理正常</text>
+
+  <rect x="46" y="124" width="120" height="46" rx="8" fill="#ffffff" stroke="#86efac"/>
+  <text x="106" y="152" font-size="12" fill="#065f46" text-anchor="middle">Claude Code</text>
+  <path d="M166 147 L204 147" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#f)"/>
+  <rect x="206" y="124" width="150" height="46" rx="8" fill="#ffffff" stroke="#86efac"/>
+  <text x="281" y="145" font-size="11.5" fill="#065f46" text-anchor="middle">127.0.0.1:7865</text>
+  <text x="281" y="161" font-size="10.5" fill="#047857" text-anchor="middle">住宅出口 · 单台家宽</text>
+  <path d="M356 147 L394 147" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#f)"/>
+  <text x="398" y="151" font-size="12" fill="#065f46">API</text>
+
+  <text x="46" y="196" font-size="11.5" fill="#047857">出口 IP = 那台住宅；Claude 侧看到的一直是同一个地址。</text>
+  <text x="46" y="224" font-size="11.5" fill="#047857">7865 由内核监听：listeners 里的 mixed 入口，跳过 rules 直接走「住宅出口」。</text>
+
+  <!-- 崩溃 -->
+  <rect x="462" y="88" width="412" height="170" rx="12" fill="#fffbeb" stroke="#fde68a"/>
+  <text x="482" y="112" font-size="12" font-weight="700" fill="#b45309">代理崩溃 / 核心退出</text>
+
+  <rect x="482" y="124" width="120" height="46" rx="8" fill="#ffffff" stroke="#fcd34d"/>
+  <text x="542" y="152" font-size="12" fill="#92400e" text-anchor="middle">Claude Code</text>
+  <path d="M602 147 L640 147" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#f)"/>
+  <rect x="642" y="124" width="150" height="46" rx="8" fill="#ffffff" stroke="#fca5a5"/>
+  <text x="717" y="145" font-size="11.5" fill="#991b1b" text-anchor="middle">127.0.0.1:7865</text>
+  <text x="717" y="161" font-size="10.5" fill="#b91c1c" text-anchor="middle">没有监听 → 连接被拒</text>
+
+  <text x="482" y="196" font-size="11.5" fill="#b45309">不会退回 7890、也不会直接连 api.anthropic.com —— 请求根本发不出去。</text>
+  <text x="482" y="224" font-size="11.5" fill="#b45309">代价是这段时间 Claude 用不了；收益是真实 IP 一次都没露。</text>
+
+  <!-- 四层防线 -->
+  <text x="26" y="290" font-size="11" font-weight="600" fill="#94a3b8" letter-spacing="1">四道防线（按施工成本由低到高）</text>
+
+  <rect x="26" y="300" width="200" height="118" rx="10" fill="#eff6ff" stroke="#bfdbfe"/>
+  <text x="42" y="324" font-size="12.5" font-weight="700" fill="#1e3a8a">① 钉死端口</text>
+  <text x="42" y="345" font-size="11" fill="#475569">settings.json / 环境变量里</text>
+  <text x="42" y="362" font-size="11" fill="#475569">写死 127.0.0.1:7865</text>
+  <text x="42" y="386" font-size="10.5" fill="#1d4ed8">最可靠：不依赖任何进程活着</text>
+  <text x="42" y="404" font-size="10.5" fill="#64748b">优先级最高</text>
+
+  <rect x="236" y="300" width="200" height="118" rx="10" fill="#eff6ff" stroke="#bfdbfe"/>
+  <text x="252" y="324" font-size="12.5" font-weight="700" fill="#1e3a8a">② 崩溃看护</text>
+  <text x="252" y="345" font-size="11" fill="#475569">15 秒轮询，核心不在就拉起</text>
+  <text x="252" y="362" font-size="11" fill="#475569">5 分钟内 3 次失败则暂停</text>
+  <text x="252" y="386" font-size="10.5" fill="#1d4ed8">把 5 分钟的空窗压到 15 秒</text>
+  <text x="252" y="404" font-size="10.5" fill="#64748b">launchd 常驻</text>
+
+  <rect x="446" y="300" width="200" height="118" rx="10" fill="#eff6ff" stroke="#bfdbfe"/>
+  <text x="462" y="324" font-size="12.5" font-weight="700" fill="#1e3a8a">③ Proxifier 拉起</text>
+  <text x="462" y="345" font-size="11" fill="#475569">不开 TUN 时 Antigravity 的唯一解</text>
+  <text x="462" y="362" font-size="11" fill="#475569">规则补齐 claude*</text>
+  <text x="462" y="386" font-size="10.5" fill="#1d4ed8">兜住「内核没起来」的窗口</text>
+  <text x="462" y="404" font-size="10.5" fill="#64748b">需要 App 常驻</text>
+
+  <rect x="656" y="300" width="218" height="118" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="672" y="324" font-size="12.5" font-weight="700" fill="#334155">④ PF 按网卡拦（可选）</text>
+  <text x="672" y="345" font-size="11" fill="#475569">只放行节点 IP + 局域网</text>
+  <text x="672" y="362" font-size="11" fill="#475569">其余出站 drop</text>
+  <text x="672" y="386" font-size="10.5" fill="#475569">最强，但要 sudo 且换订阅要刷表</text>
+  <text x="672" y="404" font-size="10.5" fill="#64748b">见 fail-closed.md</text>
+</svg>
